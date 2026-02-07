@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Stations — ALIN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="features.html" class="nav__link">Features</a><a href="stations.html" class="nav__link nav__link--active">Stations</a><a href="pricing.html" class="nav__link">Pricing</a><a href="docs.html" class="nav__link">Docs</a><a href="about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="login.html" class="nav__signin">Sign in</a><a href="signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="features.html" class="nav__mobile-link">Features</a><a href="stations.html" class="nav__mobile-link">Stations</a><a href="pricing.html" class="nav__mobile-link">Pricing</a><a href="docs.html" class="nav__mobile-link">Docs</a><a href="about.html" class="nav__mobile-link">About</a><a href="login.html" class="nav__mobile-link">Sign In</a><a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
+  <section class="page-hero"><div class="container"><span class="page-hero__overline">The Six Stations</span><h1 class="page-hero__title">One Network, Six Powerhouses</h1><p class="page-hero__desc">Each station is purpose-built for a specific workflow. Together they form a comprehensive AI command center.</p></div></section>
+
+  <section class="section"><div class="container">
+    <div class="stations__grid" style="grid-template-columns:repeat(2,1fr);gap:1.5rem;max-width:900px;margin:0 auto;">
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;">
+        <div class="station-card__emoji" style="font-size:2rem;">💬</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Chat Station</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">The primary interface. Natural conversation with persistent context across sessions. Multi-model streaming supports Claude and OpenAI side by side. Smart model routing picks the best provider per message. File uploads, code blocks, markdown rendering, and branching conversations.</p>
+      </div>
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.06s;">
+        <div class="station-card__emoji" style="font-size:2rem;">🖥️</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Code Lab</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Full development environment with syntax highlighting, code execution in a sandboxed Docker environment, file system operations, and AI-powered code generation. Run Node.js, Python, and shell commands. Git integration for version control.</p>
+      </div>
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.12s;">
+        <div class="station-card__emoji" style="font-size:2rem;">📋</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">TBWO Command</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">The orchestration center. Create Time-Budgeted Work Orders and watch ALIN break them into phases with specialized Agent Pods. Real-time execution timeline, pod visualization, checkpoint gating, and detailed receipts for every decision.</p>
+      </div>
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.04s;">
+        <div class="station-card__emoji" style="font-size:2rem;">🔬</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Research Hub</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Deep web research powered by Brave Search with intelligent synthesis. Ask complex questions and get comprehensive, sourced answers. Citation tracking, source evaluation, and the ability to generate structured intelligence reports with 20+ sources.</p>
+      </div>
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.1s;">
+        <div class="station-card__emoji" style="font-size:2rem;">🎨</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Image Studio</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Create and iterate on visuals with DALL-E 3 integration. Style direction, prompt refinement, image gallery management, and creative asset organization. Generate UI mockups, illustrations, icons, and concept art all within your workflow.</p>
+      </div>
+
+      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.16s;">
+        <div class="station-card__emoji" style="font-size:2rem;">🎙️</div>
+        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Voice Room</h3>
+        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Hands-free interaction through Whisper speech-to-text and ElevenLabs text-to-speech. Emotion-aware voice synthesis with adaptive modulation. Control any station by voice, dictate messages, and hear responses naturally.</p>
+      </div>
+
+    </div>
+  </div></section>
+
+  <section class="section section--alt"><div class="container">
+    <div class="section__header animate-on-scroll"><span class="section__overline">Architecture</span><h2 class="section__title">Hub-and-Spoke Design</h2><p class="section__desc">All six stations orbit a central intelligence hub. Shared memory, shared context, unified identity.</p></div>
+    <div class="features__grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="feature-card animate-on-scroll"><div class="feature-card__icon">🔗</div><h3 class="feature-card__title">Shared Context</h3><p class="feature-card__desc">Start a conversation in Chat, continue in Code Lab, review in Research. Context follows you across every station seamlessly.</p></div>
+      <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🧠</div><h3 class="feature-card__title">Unified Memory</h3><p class="feature-card__desc">All stations read and write to the same 8-layer memory system. What ALIN learns in one station applies everywhere.</p></div>
+      <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">📡</div><h3 class="feature-card__title">Message Bus</h3><p class="feature-card__desc">Stations communicate through a pub/sub message bus with request/response patterns, correlation IDs, and priority levels.</p></div>
+    </div>
+  </div></section>
+
+  <section class="cta"><div class="container"><div class="cta__content animate-on-scroll"><h2 class="cta__title">Six Stations.<br>One Intelligence.</h2><p class="cta__desc">Experience the full command center. Free during beta.</p><div class="cta__actions"><a href="signup.html" class="btn btn--primary btn--large">Get Started Free</a><a href="pricing.html" class="btn btn--secondary btn--large">See Pricing</a></div></div></div></section>
+<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="features.html" class="footer__link">Features</a><a href="stations.html" class="footer__link">Stations</a><a href="pricing.html" class="footer__link">Pricing</a><a href="changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="docs.html" class="footer__link">Documentation</a><a href="api.html" class="footer__link">API Reference</a><a href="guides.html" class="footer__link">Guides</a><a href="blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="about.html" class="footer__link">About</a><a href="careers.html" class="footer__link">Careers</a><a href="contact.html" class="footer__link">Contact</a><a href="support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="privacy.html" class="footer__bottom-link">Privacy</a><a href="terms.html" class="footer__bottom-link">Terms</a><a href="cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));</script></body></html>

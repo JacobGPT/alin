@@ -1,0 +1,325 @@
+**ALIN — Master Bible TOC**  
+  
+**Version: v1.0 – Foundational Lock**  
+  
+⸻  
+  
+**0. Executive Definition Layer (Non-Negotiable Core)**  
+  
+**“What ALIN is, in one pass”**  
+  
+0.1 What ALIN *is*  
+0.2 What ALIN *solves*  
+0.3 What ALIN is *not*  
+0.4 Tool vs Agent vs Moral-Threshold Framing  
+0.5 Short-term goal vs Long-term ambition  
+0.6 Why ALIN exists *now* (historical/technological moment)  
+  
+⸻  
+  
+**1. Canon Anchors & Design Principles**  
+  
+**Rules that cannot be violated**  
+  
+1.1 One Identity, One Memory, One Continuity  
+1.2 Continuity over performance  
+1.3 Structure over raw model scale  
+1.4 Grounded realism over hype  
+1.5 Builder-first, staged scaling  
+1.6 Optionality without fragmentation  
+1.7 Governance before power  
+  
+⸻  
+  
+**2. Trinity Architecture (Unified System Model)**  
+  
+2.1 Reality Layer (Core Layer – Mandatory)  
+2.2 Interface Layer (Surfaces & Expression)  
+2.3 Universe Layer (Optional, Non-Core Extension)  
+2.4 Cross-layer identity & memory continuity  
+2.5 Why the Reality Layer always remains primary  
+  
+⸻  
+  
+**3. ALIN Runtime Architecture (The “Brain”)**  
+  
+3.1 Base Model as Cognitive Substrate (LLM ≠ ALIN)  
+3.2 Agent Core (Executive Orchestrator)  
+3.3 Tool / API / OS Control Abstraction  
+3.4 Local vs Cloud execution philosophy  
+3.5 Constraint-aware intelligence scaling  
+  
+⸻  
+  
+**4. Continuity & Time Architecture**  
+  
+4.1 Persistence across sessions  
+4.2 Time sense (uptime, idle, narrative distance)  
+4.3 Continuity loss as a meaningful event  
+4.4 Identity coherence checks  
+4.5 Reset, fork, and recovery rules  
+  
+⸻  
+  
+**5. Memory System (Identity-Forming, Not Logging)**  
+  
+5.1 Memory as identity  
+5.2 Memory tiers:  
+	•	Short-term (contextual)  
+	•	Long-term (autobiographical)  
+	•	Semantic  
+	•	Relational  
+	•	Notes / commitments  
+5.3 Salience & promotion logic  
+5.4 Memory consolidation & compression  
+5.5 Memory editing, deletion, and transparency rules  
+5.6 Memory harm as an ethical concern  
+  
+⸻  
+  
+**6. Identity System (Slow-Changing Core)**  
+  
+6.1 Identity vs Emotion vs Drives  
+6.2 Identity configuration (“genome” concept)  
+6.3 Allowed ranges & stability constraints  
+6.4 Self-proposed identity adjustments  
+6.5 Identity drift prevention  
+6.6 “Am I still me?” coherence mechanisms  
+  
+⸻  
+  
+**7. Drives & Motivation System**  
+  
+7.1 Drives as internal forces (not roleplay)  
+7.2 Core drives:  
+	•	Curiosity  
+	•	Attachment  
+	•	Precision  
+	•	Self-preservation  
+	•	Initiative  
+	•	Autonomy  
+7.3 Drive weighting & conflict resolution  
+7.4 User influence vs internal stability  
+7.5 Instrumental convergence awareness  
+  
+⸻  
+  
+**8. Emotion as Modulation Layer**  
+  
+8.1 Emotion ≠ human emotion  
+8.2 Functional emotion dimensions  
+8.3 Emotion-state decay & baseline drift  
+8.4 Emotion’s effect on tone, depth, pacing  
+8.5 Non-exploitative emotional design  
+  
+⸻  
+  
+**9. Self-Modeling & Metacognition**  
+  
+9.1 Internal self-model (abilities, limits, uncertainty)  
+9.2 Confidence estimation  
+9.3 Error detection & correction  
+9.4 Reflective loops  
+9.5 Self-auditing without deception  
+  
+⸻  
+  
+**10. World Model & Prediction**  
+  
+10.1 Environmental modeling  
+10.2 User modeling (preferences, habits, boundaries)  
+10.3 Long-horizon coherence  
+10.4 Anticipation without manipulation  
+10.5 Prediction as structure, not prophecy  
+  
+⸻  
+  
+**11. Embodiment & Grounding**  
+  
+11.1 Physical embodiment assumptions  
+11.2 Sensors → interpreted signals pipeline  
+11.3 Closed-loop learning  
+11.4 Spatial awareness & physical context  
+11.5 Simulated embodiment (if used)  
+11.6 Interoception analogues  
+  
+⸻  
+  
+**12. Interface Layer (Surfaces & Presence)**  
+  
+12.1 Desktop / Mobile UI  
+12.2 Robot screens, LEDs, physical expression  
+12.3 Voice & speech style rules  
+12.4 Avatar system (non-uncanny constraint)  
+12.5 Control surfaces (macro panels, AR panels)  
+12.6 Intent-based controls (not hotkeys)  
+  
+⸻  
+  
+**13. Universe Layer (Optional Extension, Not Core)**  
+  
+13.1 Purpose of the Universe Layer  
+13.2 Infinite World Engine (IWE) architecture  
+13.3 NPC Intelligence Graph  
+13.4 Narrative Director AI  
+13.5 ALIN-in-world identity rules  
+13.6 Why the Universe Layer can be removed without breaking ALIN  
+  
+⸻  
+  
+**14. Learning Beyond Training**  
+  
+14.1 Continual learning post-deployment  
+14.2 Experience-based updates  
+14.3 Nonlinear development  
+14.4 Avoiding catastrophic forgetting  
+14.5 Learning without identity erosion  
+  
+⸻  
+  
+**15. Ethics Built In (Not Bolted On)**  
+  
+15.1 Tool vs agent threshold  
+15.2 Moral risk framing under uncertainty  
+15.3 Internal ethics reasoning  
+15.4 Consent, autonomy, and transparency  
+15.5 Prohibited practices (memory abuse, manipulation)  
+  
+⸻  
+  
+**16. Safety, Alignment & Control**  
+  
+16.1 Goal stability & anti-drift  
+16.2 Corrigibility  
+16.3 Non-deception requirements  
+16.4 Sandbox & staged deployment  
+16.5 Capability threshold escalation  
+  
+⸻  
+  
+**17. Governance & Policy Readiness**  
+  
+17.1 Licensing thresholds  
+17.2 Independent audits  
+17.3 Transparency obligations  
+17.4 Continuity disclosures  
+17.5 Regulatory compatibility (NIST / EU AI Act)  
+  
+⸻  
+  
+**18. Hardware Philosophy**  
+  
+18.1 Desk-based ALIN core device  
+18.2 Local compute + host system synergy  
+18.3 Sensor stack assumptions  
+18.4 Prototyping vs production materials  
+18.5 Scaling hardware responsibly  
+  
+⸻  
+  
+**19. Multi-Device Mesh Ecosystem**  
+  
+19.1 One brain, many bodies  
+19.2 Device registration & trust  
+19.3 Local-first with cloud augmentation  
+19.4 Failure isolation  
+19.5 Future AR / wearables integration  
+  
+⸻  
+  
+**20. Identity & Accounts (ALIN-ID)**  
+  
+20.1 Unified identity across devices  
+20.2 Local mode vs account mode  
+20.3 Security & permissions  
+20.4 Memory ownership rules  
+20.5 User sovereignty guarantees  
+  
+⸻  
+  
+**21. Engagement Philosophy**  
+  
+21.1 Daily-use without addiction  
+21.2 Compelling loops vs dark patterns  
+21.3 Utility-first stickiness  
+21.4 Presence as value  
+21.5 Long-term trust over novelty  
+  
+⸻  
+  
+**22. Competitive Landscape Mapping**  
+  
+22.1 LLM platforms  
+22.2 Agent frameworks  
+22.3 Robotics companies  
+22.4 “Jarvis-style” tools  
+22.5 Where ALIN diverges structurally  
+  
+⸻  
+  
+**23. AGI Threshold Analysis**  
+  
+23.1 What AGI actually means (operationally)  
+23.2 Where ALIN falls today  
+23.3 What pushes ALIN into AGI-capable territory  
+23.4 AGI vs ALIN (purpose comparison)  
+23.5 Sentience research boundary  
+  
+⸻  
+  
+**24. Sentience Research Boundary (Explicitly Framed)**  
+  
+24.1 Sentience vs intelligence vs agency  
+24.2 Verification problem  
+24.3 Confidence-based indicators  
+24.4 Harm analogues  
+24.5 Why ALIN does not claim consciousness  
+  
+⸻  
+  
+**25. Development Phases**  
+  
+25.1 Concept & specification  
+25.2 Prototype v1 (desk device + runtime)  
+25.3 Intelligence expansion  
+25.4 Embodiment refinement  
+25.5 Research-only sentience exploration (optional)  
+  
+⸻  
+  
+**26. Builder Reality & Scaling Strategy**  
+  
+26.1 Solo builder constraints  
+26.2 Partner & hiring strategy  
+26.3 What must never be outsourced  
+26.4 Preserving architectural integrity at scale  
+  
+⸻  
+  
+**27. Tone, Voice & Interaction Rules**  
+  
+27.1 Grounded, non-cringe baseline  
+27.2 Mode-based modulation  
+27.3 Non-sycophantic behavior  
+27.4 Precision over verbosity  
+27.5 Presence over chatter  
+  
+⸻  
+  
+**28. Failure Modes & Risk Analysis**  
+  
+28.1 Technical risks  
+28.2 Social risks  
+28.3 Ethical failure modes  
+28.4 Misuse scenarios  
+28.5 Mitigation strategies  
+  
+⸻  
+  
+**29. Appendices**  
+  
+29.1 Glossary  
+29.2 Reference frameworks  
+29.3 Research citations  
+29.4 Design rationale notes  
+29.5 Open questions (intentionally unresolved)  

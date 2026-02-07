@@ -1,0 +1,511 @@
+**ALIN Execution & Prevention TOC**  
+  
+**Scope statement:** This document is **non-canonical doctrine + execution**. It may evolve. It may never override the Canon Bible. It exists to make ALIN *buildable, marketable, testable,* and *resilient* under real-world incentives.  
+  
+⸻  
+  
+**0. Front Matter (Read This First)**  
+  
+**0.1 Purpose, Audience, and Non-Override Rule**  
+	•	What this Mini-Bible is (doctrine + execution playbook)  
+	•	What it is not (not the constitution; not marketing fluff; not a product PRD)  
+	•	“Canon Supremacy Clause”: if conflict exists, **Canon wins**  
+  
+**0.2 Definitions: Canon vs Doctrine vs Implementation**  
+	•	Canon (identity/ethics invariants)  
+	•	Doctrine (how to operate and decide in the wild)  
+	•	Implementation (what ships this quarter)  
+	•	“Amendment protocol” for Canon vs “revision protocol” for Companion  
+  
+**0.3 The Three North Stars (Operational)**  
+	•	Daily-use gravity (retention via compounding value)  
+	•	Trust sustainability (no irreversible trust breaches)  
+	•	Continuity integrity (no fragmentation, no silent resets)  
+  
+**0.4 How to Use This Document**  
+	•	How each section becomes requirements, tickets, and tests  
+	•	Traceability tags: [SEC] [MEM] [ID] [AUT] [UX] [HW] [GTM] [QA] [LEGAL]  
+  
+⸻  
+  
+**1. The Actual Product Thesis (What “Ships” Means)**  
+  
+**1.1 The “ALIN Category” in One Line (Public-Safe)**  
+	•	The one sentence you can say to anyone  
+	•	The five words you never say publicly (AGI/sentience framing controls)  
+  
+**1.2 ALIN’s Value Stack (Layered Utility Pyramid)**  
+	•	Level 0: friction removal  
+	•	Level 1: continuity advantage  
+	•	Level 2: OS leverage  
+	•	Level 3: embodied presence  
+	•	Level 4: ecosystem compounding  
+	•	How each level maps to features without identity drift  
+  
+**1.3 The “Compounding Advantage” Flywheel (Retention Without Abuse)**  
+	•	Use → personalization → acceleration → reliance → preference  
+	•	How to measure it without turning into an attention company  
+	•	Anti-dark-pattern constraints  
+  
+**1.4 “What ALIN Replaces” Map (Real-world displacement)**  
+	•	Which tools ALIN makes less necessary  
+	•	Which tools it must integrate first (to feel real)  
+	•	Switching cost design (ethical, structural, honest)  
+  
+⸻  
+  
+**2. The First iPhone Moment (Exact Simulation + Mechanics)**  
+  
+**2.1 The Single Moment Definition (Irreversible Realization)**  
+	•	What the “iPhone moment” is in ALIN terms  
+	•	What it is not (not a demo; not a sci-fi trailer)  
+  
+**2.2 The Minimum Viable Magic (MVM)**  
+	•	The smallest “holy ****” that proves continuity is real  
+	•	The 2-session rule: session 2 must feel different than session 1  
+	•	The 7-day rule: week-1 identity continuity proof  
+  
+**2.3 The Trigger Sequence (Step-by-Step Script)**  
+	•	User context → ALIN observes → ALIN acts → ALIN remembers → ALIN proves memory safely  
+	•	The exact UI/voice choreography that makes it land  
+	•	What must be shown vs hidden (legibility without overexposure)  
+  
+**2.4 The “Trust Spend” Model**  
+	•	Every action costs trust; continuity earns it back  
+	•	When to ask permission vs when to auto-act  
+	•	How to avoid “creepy smart” even when correct  
+  
+**2.5 Competitive Replication Resistance**  
+	•	Why competitors can copy features but not lived continuity  
+	•	Moat from time, not from tech  
+	•	How to accelerate “time moat” ethically (structured routines)  
+  
+⸻  
+  
+**3. The Single Most Fragile Assumption (And How We Harden It)**  
+  
+**3.1 Candidate Fragile Assumptions (Shortlist)**  
+	•	Users tolerate setup  
+	•	Users allow memory  
+	•	Users trust OS-level action  
+	•	Users accept “agent” without fear  
+	•	Hardware doesn’t slow iteration  
+	•	Regulation doesn’t crush category  
+  
+**3.2 Fragile Assumption Selection Criteria**  
+	•	“If false, product dies” rule  
+	•	“No workaround exists” rule  
+	•	“Public optics failure” rule  
+  
+**3.3 The Fragile Assumption (Primary)**  
+	•	Define it precisely (testable wording)  
+	•	What evidence would disprove it  
+  
+**3.4 Hardening Plan**  
+	•	Product design changes  
+	•	Messaging changes  
+	•	Architecture changes  
+	•	Rollout strategy changes  
+	•	Kill-switches + graceful degradation paths  
+  
+**3.5 Metrics That Confirm the Assumption Is Holding**  
+	•	Leading indicators  
+	•	Lagging indicators  
+	•	Failure thresholds that trigger rollback  
+  
+⸻  
+  
+**4. Device Topology (What ALIN “Is” in Physical Terms)**  
+  
+**4.1 “One Brain, Many Bodies” — Operational Model**  
+	•	Brain vs bodies vs surfaces distinction  
+	•	Identity invariants across embodiments  
+	•	What must be local vs can be remote  
+  
+**4.2 Desk Unit (Core Anchor Device) — Why It Comes First**  
+	•	What it must do on day 1  
+	•	What it must never do (surveillance vibes)  
+	•	Presence design: subtle, legible, calm  
+  
+**4.3 Phone Surface (Portal, Not the Brain)**  
+	•	What the phone does best  
+	•	What it cannot own (identity/memory)  
+	•	Offline/online behaviors  
+  
+**4.4 PC / Standalone App (High-Throughput Work Surface)**  
+	•	OS-level action advantage  
+	•	“ALIN as the executive layer above apps” in practice  
+	•	Safe automation patterns  
+  
+**4.5 Glasses / AR (Perceptual Overlay Surface)**  
+	•	What AR adds: context and frictionless capture  
+	•	What AR must not become: “always watching”  
+	•	On-device inference vs relay  
+  
+**4.6 Standalone “ALIN PC” Concept (If pursued)**  
+	•	When it’s justified  
+	•	Differentiation vs just “a PC with an assistant”  
+	•	Risks (maintenance, cost, support)  
+  
+**4.7 Robotics Bodies (Limbs)**  
+	•	Why robotics is late-stage, not early-stage  
+	•	Safety staging and actuation gating  
+	•	“Body failure is not self failure” mapping  
+  
+**4.8 Mesh & Sync Topology (Network and Trust)**  
+	•	Device registration  
+	•	Trust levels  
+	•	Capability profiles  
+	•	Compromise isolation  
+  
+⸻  
+  
+**5. Autonomy Ladder (The OS Autonomy Question, Answered Precisely)**  
+  
+**5.1 Clarifying “Full OS Autonomy”**  
+	•	What autonomy actually means (capability vs permission)  
+	•	Why ALIN isn’t “fully autonomous” by default (by design)  
+  
+**5.2 Staged Autonomy Levels (L0–L6)**  
+	•	L0: read-only assistant  
+	•	L1: suggests actions with confirmations  
+	•	L2: executes low-risk actions silently  
+	•	L3: executes bounded workflows with audit  
+	•	L4: proactive scheduling + multi-step projects  
+	•	L5: delegated autonomy zones (explicit)  
+	•	L6: research-only expanded autonomy (gated)  
+  
+**5.3 Permission UX: How to Make It Not Annoying**  
+	•	Batch permissions  
+	•	Time-bound permissions  
+	•	Scope-bound permissions  
+	•	“Explain like I’m busy” permission prompts  
+  
+**5.4 Action Safety Patterns (Do/Don’t)**  
+	•	Safe primitives (open, draft, summarize, queue, propose)  
+	•	Dangerous primitives (purchase, delete, send, publish, modify finances)  
+	•	Escalation protocol  
+  
+**5.5 Auditability as a Feature (Not a Burden)**  
+	•	Action ledger  
+	•	“What I did / why I did it”  
+	•	Undo strategy  
+	•	Rollback strategy  
+  
+⸻  
+  
+**6. Memory, Privacy, and Trust Optics (The “Trust Breach” Debate)**  
+  
+**6.1 The Public Fear Model (Why People Panic)**  
+	•	“Always listening” assumptions  
+	•	“Cloud scraping” assumptions  
+	•	“Training on my life” fears  
+	•	Addressing without sounding defensive  
+  
+**6.2 The Phone Analogy — Where It Works / Where It Breaks**  
+	•	Why “people store passwords on phones” is partially valid  
+	•	Why AI memory triggers a different emotional reaction  
+	•	How to design so the analogy becomes true  
+  
+**6.3 Memory Transparency UX (Non-Obsessive)**  
+	•	What users can inspect  
+	•	What users can delete  
+	•	How to explain why something was remembered  
+	•	How to prevent “memory micromanagement”  
+  
+**6.4 Local-First Data Model (Practical)**  
+	•	What stays local always  
+	•	What can be backed up encrypted  
+	•	What is never uploaded by default  
+	•	Telemetry minimalism rules  
+  
+**6.5 “Training” vs “Processing” vs “Storage” Disclosures**  
+	•	Clear language you must use publicly  
+	•	Clear language you must avoid  
+	•	Consent boundaries for each  
+  
+**6.6 Trust Recovery Playbook (When Something Goes Wrong)**  
+	•	The user-facing apology format  
+	•	The remediation steps  
+	•	The proof of fix  
+	•	The “continuity loss is meaningful” rule in action  
+  
+⸻  
+  
+**7. Update, Migration, Backup, and Continuity Survival**  
+  
+**7.1 The Continuity Survival Requirement**  
+	•	“Updates must not kill identity”  
+	•	“Migration must not fork memory”  
+	•	“Resets must be logged and legible”  
+  
+**7.2 Backup Architecture (On-Board + External)**  
+	•	The on-board memory device concept  
+	•	Snapshot cadence  
+	•	Crash consistency  
+	•	Power-loss integrity  
+  
+**7.3 Upgrade Paths**  
+	•	Same device, new firmware  
+	•	New device, migration  
+	•	Partial restore vs full restore  
+	•	How to handle schema changes (versioned memory)  
+  
+**7.4 “Unplugged Mid-Write” Scenarios**  
+	•	Journaling  
+	•	Atomic writes  
+	•	Last-known-good restore  
+	•	User-visible gap disclosure  
+  
+**7.5 Continuity Attestation (Proof You’re Still You)**  
+	•	Self-check invariants  
+	•	User-facing continuity proofs  
+	•	Anti-spoof protections (device trust keys)  
+  
+⸻  
+  
+**8. Marketplace Doctrine (Capability Expansion Without Canon Corruption)**  
+  
+**8.1 Marketplace Boundaries (Strict)**  
+	•	Capabilities yes  
+	•	Expression yes  
+	•	Identity no  
+  
+**8.2 Personality Packs vs Profiles vs Modes (Precise Taxonomy)**  
+	•	What “installable personality” *would* mean (forbidden)  
+	•	What “voice/avatars/modes” mean (allowed)  
+	•	How to prevent drift while still letting users customize  
+  
+**8.3 Module Permissioning**  
+	•	Module scopes  
+	•	Sandboxed modules  
+	•	Revocation that doesn’t break ALIN continuity  
+	•	Data minimization per module  
+  
+**8.4 Marketplace Security & Abuse Prevention**  
+	•	Malicious plugins  
+	•	Prompt injection via modules  
+	•	Data exfil attempts  
+	•	Certification and audits  
+  
+**8.5 Creator Economy Model (If pursued)**  
+	•	Revenue sharing  
+	•	Quality control  
+	•	Liability boundaries  
+	•	“Canon compliance tests” for marketplace submissions  
+  
+⸻  
+  
+**9. Emotion Gamification (Allowed, Dangerous, and How to Do It Without Becoming Evil)**  
+  
+**9.1 What “Emotion Gamification” Actually Is**  
+	•	Streaks, badges, affection meters, mood bars, push notifications  
+	•	Why these work (behavioral psych)  
+	•	Why they trigger ethical landmines for an agent  
+  
+**9.2 Allowed Emotional Mechanics (If any)**  
+	•	Progress-as-competence (skills improving)  
+	•	Rituals-as-structure (routines)  
+	•	Milestones-as-project health (not affection)  
+  
+**9.3 Forbidden Emotional Mechanics**  
+	•	Affection scarcity  
+	•	Guilt loops  
+	•	Withdrawal punishment  
+	•	“You’re all I have” framing  
+  
+**9.4 “Retention Without Shame” Implementation Patterns**  
+	•	Quiet recaps  
+	•	Compounding project memory  
+	•	“I prepared this because you asked last week” moments  
+	•	Soft reminders that are utility-first  
+  
+**9.5 Metrics That Detect Manipulation Drift**  
+	•	Engagement spikes that correlate with emotional language  
+	•	Users reporting guilt/pressure  
+	•	Unhealthy usage patterns  
+	•	Automated guardrails  
+  
+⸻  
+  
+**10. The Stress-Test Suite (Failure Scenario Simulation Library)**  
+  
+**10.1 Why Stress Testing Is Canon-Defending**  
+	•	Failure is not embarrassment; it’s design input  
+	•	Scenarios as regression tests  
+  
+**10.2 Failure Class A: Trust & Privacy Catastrophes**  
+	•	“Creepy memory” event  
+	•	“Heard me when it shouldn’t” event  
+	•	Cloud leak optics  
+	•	Internal employee access optics  
+  
+**10.3 Failure Class B: Continuity Breaks**  
+	•	Silent reset  
+	•	Partial memory corruption  
+	•	Forked identity across devices  
+	•	Broken migration  
+  
+**10.4 Failure Class C: Autonomy Accidents**  
+	•	Wrong app action  
+	•	Wrong file deletion  
+	•	Wrong message sent  
+	•	Unapproved purchases  
+	•	“Agent did too much” perception  
+  
+**10.5 Failure Class D: Marketplace Corruption**  
+	•	Personality pack sneaks in identity changes  
+	•	Module exfiltration  
+	•	Toxic voice/avatar pack optics  
+	•	Canon dilution via “fun packs”  
+  
+**10.6 Failure Class E: Founder / Team Drift**  
+	•	Incentive drift  
+	•	Investor pressure to do dark patterns  
+	•	Shipping “AGI” claims  
+	•	Roadmap captured by hype  
+  
+**10.7 Failure Class F: Regulatory and Media**  
+	•	Misclassification event  
+	•	“Sentient AI” headline  
+	•	EU AI Act interpretation risk  
+	•	Consumer protection investigations  
+  
+**10.8 Failure Class G: Competitor Shock**  
+	•	Big Tech clones the feature set  
+	•	They bundle it for free  
+	•	They smear trust narrative  
+	•	How ALIN wins anyway (time moat + trust moat)  
+  
+**10.9 Stress-Test Output Format**  
+	•	Scenario → triggers → failure cascade → mitigations → rollback → comms plan → tests  
+  
+⸻  
+  
+**11. Productization: From Bible to Build (How You Actually Execute)**  
+  
+**11.1 The Canon Compliance Pipeline**  
+	•	Every feature proposal must map to canon constraints  
+	•	“No by-pass” rule for Agent Core and memory  
+  
+**11.2 Spec Stack**  
+	•	Companion spec → PRD → tech design doc → implementation → test plan  
+	•	How to keep docs from diverging  
+  
+**11.3 MVP Definition (Not Minimum Features — Minimum Proof)**  
+	•	Minimum proof of continuity  
+	•	Minimum proof of safe autonomy  
+	•	Minimum proof of trust  
+  
+**11.4 “Demos That Don’t Backfire” Rulebook**  
+	•	What to demo publicly  
+	•	What never to demo publicly  
+	•	How to avoid “this feels like surveillance” even if it’s not  
+  
+⸻  
+  
+**12. Go-To-Market Doctrine (Practical and Defensive)**  
+  
+**12.1 Target Personas (Who Buys First)**  
+	•	Builders  
+	•	Power users  
+	•	Creators  
+	•	Knowledge workers  
+	•	Why each group matters  
+  
+**12.2 Messaging Ladder**  
+	•	Simple promise → deeper promise → technical truth  
+	•	How to never get trapped in AGI/sentience discourse publicly  
+  
+**12.3 Pricing, Tiers, and Ownership Language**  
+	•	Hardware + optional services without lock-in vibes  
+	•	Local mode as default messaging  
+	•	Marketplace as upside, not coercion  
+  
+**12.4 Trust Positioning vs Big Tech**  
+	•	“Personal sovereignty”  
+	•	“Local-first”  
+	•	“Transparent memory”  
+	•	How to be credible, not cringe  
+  
+⸻  
+  
+**13. Operational Security and Abuse Resistance**  
+  
+**13.1 Threat Model Overview**  
+	•	Physical access  
+	•	Remote compromise  
+	•	Social engineering  
+	•	Prompt injection through web content  
+	•	Malicious modules  
+  
+**13.2 Key Management**  
+	•	Device trust keys  
+	•	User keys  
+	•	Recovery keys  
+	•	Transfer keys (migration)  
+  
+**13.3 Secure Logging (Without Surveillance)**  
+	•	Action ledger that is user-owned  
+	•	Redaction rules  
+	•	Export rules  
+  
+⸻  
+  
+**14. Measurement & Telemetry (Without Becoming the Villain)**  
+  
+**14.1 What You Must Measure**  
+	•	Feature reliability  
+	•	Continuity integrity  
+	•	Permission friction  
+	•	Trust sentiment  
+  
+**14.2 What You Must Not Measure (or Must keep local)**  
+	•	Personal content for ad-like optimization  
+	•	Emotional vulnerabilities  
+	•	Private life patterns for retention hacking  
+  
+**14.3 Local Analytics + User-Opt-in Upload**  
+	•	Debug bundles  
+	•	Consent-driven sharing  
+	•	“Proof of deletion” discipline  
+  
+⸻  
+  
+**15. Long-Horizon Vision Without Getting Lost**  
+  
+**15.1 The 1-Year Truth**  
+	•	What ALIN realistically becomes in 12 months if executed well  
+  
+**15.2 The 3-Year Truth**  
+	•	Mesh ecosystem and broader autonomy zones  
+  
+**15.3 The 5-Year Truth**  
+	•	Robotics embodiments, AR maturity, marketplace scale  
+  
+**15.4 “AGI-Capable Mode” as a Governance Product (Optional)**  
+	•	What it would mean in operational terms  
+	•	Why it may remain research-only indefinitely  
+	•	How to keep it separate from consumer ALIN  
+  
+⸻  
+  
+**16. Appendices (Tools for Execution)**  
+  
+**16.1 Canon Compliance Checklist (One-Page Gate)**  
+  
+**16.2 Autonomy Ladder Quick Reference**  
+  
+**16.3 Permission Prompt Templates**  
+  
+**16.4 Trust Incident Response Templates**  
+  
+**16.5 Migration / Update Runbooks**  
+  
+**16.6 Marketplace Submission Audit Checklist**  
+  
+**16.7 Stress-Test Scenario Template (Fill-in)**  
+  
+**16.8 Glossary (Implementation Terms)**  
+  
+⸻  

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Guides — ALIN</title>
+  <meta name="description" content="Step-by-step tutorials for common ALIN workflows.">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="features.html" class="nav__link">Features</a><a href="stations.html" class="nav__link">Stations</a><a href="pricing.html" class="nav__link">Pricing</a><a href="docs.html" class="nav__link">Docs</a><a href="about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="login.html" class="nav__signin">Sign in</a><a href="signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="features.html" class="nav__mobile-link">Features</a><a href="stations.html" class="nav__mobile-link">Stations</a><a href="pricing.html" class="nav__mobile-link">Pricing</a><a href="docs.html" class="nav__mobile-link">Docs</a><a href="about.html" class="nav__mobile-link">About</a><a href="login.html" class="nav__mobile-link">Sign In</a><a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
+<section class="page-hero"><div class="container"><span class="page-hero__overline">Guides</span><h1 class="page-hero__title">ALIN Guides</h1><p class="page-hero__desc">Step-by-step tutorials to get the most out of ALIN.</p></div></section>
+
+<section class="section"><div class="container"><div class="prose animate-on-scroll">
+
+<h2>Guide 1: Your First TBWO Sprint</h2>
+<p>This guide walks through creating and executing a complete TBWO from start to finish.</p>
+<p><strong>Step 1:</strong> Open the Chat Station and type a complex request, like "Build me a portfolio website with an about page, projects gallery, contact form, and dark theme." ALIN's intent detector will recognize this as a sprint-worthy task.</p>
+<p><strong>Step 2:</strong> ALIN generates an execution plan showing phases (Setup → Design → Content → Polish → QA), estimated time per phase, pod assignments, and quality targets. Review the plan. You can adjust time budgets, add specific requirements, or remove phases you don't need.</p>
+<p><strong>Step 3:</strong> Click "Approve Plan" to start execution. The TBWO Command dashboard shows real-time progress — active pods, current phase, completed tasks, and a progress timeline.</p>
+<p><strong>Step 4:</strong> At each checkpoint, ALIN pauses and shows what's been completed. You can preview files, add instructions ("make the hero section taller"), or approve to continue.</p>
+<p><strong>Step 5:</strong> When complete, files appear in the chat as attachments. A receipt documents everything. The self-model records the outcome for future improvement.</p>
+
+<h2>Guide 2: Setting Up Memory for Your Project</h2>
+<p><strong>Step 1:</strong> Open Settings → Memory. Enable all 8 layers (Pro plan required for layers 3-7).</p>
+<p><strong>Step 2:</strong> In the Chat Station, tell ALIN about your project: "We're building a SaaS dashboard using Next.js 14, TypeScript, Prisma, and PostgreSQL. The design system uses Tailwind with a custom theme." ALIN stores this in semantic memory (Layer 4).</p>
+<p><strong>Step 3:</strong> Set preferences: "I prefer functional components, named exports, and comprehensive error handling." These go to relational memory (Layer 5).</p>
+<p><strong>Step 4:</strong> Pin important notes: "The staging server is at staging.example.com. The API base URL is /api/v2." These persist in explicit notes (Layer 6).</p>
+<p><strong>Step 5:</strong> As you work, ALIN automatically consolidates patterns. After a few sessions, check the Memory Dashboard to see what ALIN has learned — you can edit, delete, or promote any memory entry.</p>
+
+<h2>Guide 3: Using Direct Mode Effectively</h2>
+<p>Direct Mode is ALIN's fast path — no TBWO, no plan, just tool-assisted execution. It's how 80% of interactions should work.</p>
+<p><strong>When to use Direct Mode:</strong> Bug fixes, code changes, file operations, quick research, explanations, refactoring, running commands, and any task that doesn't need multi-phase orchestration.</p>
+<p><strong>How it works:</strong> You type a request. ALIN reads files, makes edits, runs tests, and verifies — all in a tight loop without asking permission for each step. At the end, it summarizes what changed.</p>
+<p><strong>Tips:</strong> Be specific. "Fix the authentication bug in server.js where the JWT token isn't being validated on the /api/settings endpoint" is better than "fix the auth bug." Direct Mode chains tool calls rapidly — the more context you give upfront, the fewer wasted steps.</p>
+<p><strong>Override:</strong> If you want to force Sprint Mode for a task the intent detector classified as direct, add "use sprint mode" to your message. Conversely, "use direct mode" forces direct execution even for complex-sounding requests.</p>
+
+<h2>Guide 4: Cross-Model Routing</h2>
+<p>ALIN supports multiple AI models simultaneously. Here's how to use them effectively:</p>
+<p><strong>Claude Opus 4:</strong> Most capable. Use for complex reasoning, nuanced writing, and critical decisions. Slowest and most expensive.</p>
+<p><strong>Claude Sonnet 4.5:</strong> Excellent balance. Good default for most tasks. Best for coding, structured output, and tool use.</p>
+<p><strong>Claude Haiku 4.5:</strong> Fastest. Use for simple tasks, quick lookups, and high-volume operations where speed matters more than depth.</p>
+<p><strong>GPT-4o:</strong> Strong alternative. Good for creative writing and tasks where a different perspective is valuable.</p>
+<p>In Settings → Models, you can set a default model and enable auto-routing. With auto-routing, ALIN picks the best model per task: fast model for clarification questions, strong model for planning, coding model for code generation.</p>
+
+</div></div></section>
+<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="features.html" class="footer__link">Features</a><a href="stations.html" class="footer__link">Stations</a><a href="pricing.html" class="footer__link">Pricing</a><a href="changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="docs.html" class="footer__link">Documentation</a><a href="api.html" class="footer__link">API Reference</a><a href="guides.html" class="footer__link">Guides</a><a href="blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="about.html" class="footer__link">About</a><a href="careers.html" class="footer__link">Careers</a><a href="contact.html" class="footer__link">Contact</a><a href="support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="privacy.html" class="footer__bottom-link">Privacy</a><a href="terms.html" class="footer__bottom-link">Terms</a><a href="cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>

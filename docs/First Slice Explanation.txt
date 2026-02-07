@@ -1,0 +1,646 @@
+  
+  
+  
+First Slice Explanation  
+  
+——————  
+  
+TBWO — Time-Budgeted Work Order  
+  
+A Time-Budgeted Work Order is a structured request where the user grants ALIN explicit, bounded authority to plan and execute real work within a defined time and scope—while producing inspectable proof.  
+  
+Why it exists  
+  
+TBWO is how ALIN does serious work without becoming an unbounded agent.  
+  
+It solves three problems at once:  
+	1.	Scope creep (work expanding silently)  
+	2.	Trust gaps (“What did it actually do?”)  
+	3.	Agent drift (free-roaming autonomy)  
+  
+⸻  
+  
+What makes a TBWO different from a normal task  
+  
+A normal AI task is:  
+	•	“Build me a website”  
+	•	“Design this in Blender”  
+	•	“Work on this overnight”  
+  
+A TBWO is:  
+	•	Explicit  
+	•	Bounded  
+	•	Inspectable  
+	•	Reversible (where possible)  
+  
+⸻  
+  
+Core components of a TBWO  
+  
+Every TBWO contains:  
+	1.	Objective  
+	•	What outcome is being produced  
+	2.	Time Budget  
+	•	e.g. 30 minutes, 6 hours, 1 week  
+	•	Enforced at planning and execution  
+	3.	Scope  
+	•	Files, tools, domains, surfaces it may touch  
+	•	Nothing outside this boundary is allowed  
+	4.	Quality Target  
+	•	e.g. “Apple-level clean,” “production-ready,” “draft”  
+	5.	Execution Plan  
+	•	Milestones mapped to the time budget  
+	•	Visible before work begins  
+	6.	Authority Gates  
+	•	What requires approval  
+	•	What may run autonomously (if any)  
+	7.	Receipts  
+	•	Proof of what was done, changed, or produced  
+	•	No receipt = no action  
+	8.	Stop Conditions  
+	•	When ALIN must halt and ask instead of guessing  
+  
+⸻  
+  
+What a TBWO is not  
+  
+A TBWO is not:  
+	•	an always-on agent  
+	•	a “do whatever you think is best” mode  
+	•	a swarm of autonomous AIs  
+	•	silent background control  
+	•	magical execution without oversight  
+  
+It is delegation, not surrender.  
+  
+⸻  
+  
+Example (Website Sprint TBWO)  
+  
+“Build a premium single-page marketing site for my product.  
+Time budget: 1 week.  
+Stack: static + modern framework.  
+Quality: Apple-level clean.  
+Deliverable: local build + repo.  
+Do not deploy live.”  
+  
+ALIN:  
+	•	plans the week  
+	•	spawns controlled pods  
+	•	produces artifacts  
+	•	delivers receipts  
+	•	stops when the budget ends  
+  
+⸻  
+  
+Why TBWO is critical to ALIN  
+  
+TBWO is the mechanism that allows ALIN to feel extremely powerful while remaining:  
+	•	trustworthy  
+	•	bounded  
+	•	auditable  
+	•	canon-aligned  
+  
+Without TBWO:  
+	•	ALIN becomes MoltBot-like  
+	•	autonomy expands invisibly  
+	•	trust collapses over time  
+  
+With TBWO:  
+	•	power scales  
+	•	trust compounds  
+	•	authority stays human-owned  
+  
+⸻  
+  
+One-line memory anchor  
+  
+TBWO = “You may do this, for this long, in this space, and you must show your work.”  
+  
+———  
+Idea  
+———  
+1) Single most compelling flagship TBWO template for First Slice  
+Flagship TBWO: “Website Sprint” (Premium Production Mode)  
+Why this one, over Blender or anything else:  
+	•	Universally legible outcome  
+A finished website is immediately understandable to any user. No explanation needed. Blender outputs are impressive but domain-specific; websites are culturally obvious proof.  
+	•	End-to-end production pipeline  
+It exercises every ALIN primitive without expanding scope:  
+	•	clarification questions  
+	•	time budgeting  
+	•	planning  
+	•	agent pods (design / frontend / motion / copy / QA)  
+	•	artifact versioning  
+	•	receipts  
+	•	rollback  
+	•	delivery  
+	•	High “human-team illusion” without deception  
+It genuinely feels like “a small team worked on this,” while remaining inspectable and auditable — perfect alignment with Spectacle & Surface doctrine.  
+	•	Natural upsell anchor  
+“Website Sprint” cleanly justifies a paid tier without contaminating Canon. It’s a first-party execution template, not general autonomy.  
+	•	Low regulatory / safety risk  
+Compared to finance, social posting, or personal automation, a website build is low-risk and reversible.  
+Constraint that keeps it safe:  
+It ships as one curated template, not “ALIN can build anything for a week.”  
+⸻  
+2) Top 3 failure modes in the first 90 days  
+These are not generic “AI is bad” risks — they’re ALIN-specific risks given your bibles.  
+⸻  
+Failure Mode #1: Output is “technically fine” but not premium  
+Symptom:  
+The site works, but users say:  
+“This is good… but not Apple-level.”  
+Why this is dangerous:  
+Your flagship promise is taste + integration, not just correctness. A mediocre site collapses the Spectacle engine.  
+Root cause:  
+	•	weak design system synthesis  
+	•	inconsistent spacing/typography  
+	•	animations that feel generic  
+	•	overfitting to references without taste arbitration  
+Mitigation (aligned with canon):  
+	•	lock the template to 1–2 opinionated design languages at launch  
+	•	constrain animation patterns  
+	•	introduce a Design Lead Pod whose sole job is coherence, not generation  
+	•	bias toward fewer sections, fewer animations, higher polish  
+This is a taste problem, not a model problem.  
+⸻  
+Failure Mode #2: The clarification phase feels like friction, not intelligence  
+Symptom:  
+Users feel ALIN is “asking too many questions” before starting.  
+Why this is dangerous:  
+It violates your friction rule:  
+	•	remove cognitive friction  
+	•	keep agency friction  
+If clarification feels bureaucratic, the magic dies before it starts.  
+Root cause:  
+	•	unclear minimum spec threshold  
+	•	lack of inference from user history  
+	•	ALIN acting like a form, not a collaborator  
+Mitigation:  
+	•	cap clarification to 3–5 questions max  
+	•	always present assumed defaults (“I’ll assume X unless you say otherwise”)  
+	•	use user history silently to prefill taste and stack choices  
+	•	allow “start now, refine later” checkpoints  
+Clarification should feel like competence, not compliance.  
+⸻  
+Failure Mode #3: Receipts are correct but not useful  
+Symptom:  
+Receipts exist, but users don’t look at them.  
+Why this is dangerous:  
+Receipts are one of ALIN’s core differentiators. If they’re ignored, you lose trust leverage.  
+Root cause:  
+	•	receipts too verbose  
+	•	too technical  
+	•	not tied to visible outcomes  
+Mitigation:  
+	•	dual-layer receipts:  
+	•	Executive summary (“What I did, what changed, what’s left”)  
+	•	Deep audit (files, diffs, commits)  
+	•	inline receipts directly attached to artifacts (“This animation came from X”)  
+	•	make rollback tangible (“Revert motion system” button)  
+Receipts must earn attention, not demand it.  
+⸻  
+3) One concrete metric that proves it’s working  
+Metric: “Reconstruction Refusal Rate” (RRR)  
+Definition:  
+After a Website Sprint completes, ask this single question 7–14 days later:  
+“If ALIN disappeared tomorrow, would you rebuild this site from scratch yourself?”  
+Success threshold:  
+	•	≥60% answer “No” → the TBWO worked  
+	•	≥75% → you have a genuine flagship  
+Why this metric is canon-perfect:  
+	•	It directly measures reconstruction cost, your stated moat  
+	•	It’s not vanity (not time saved, not tokens, not wow)  
+	•	It reflects trust + dependency, not novelty  
+	•	It scales to other TBWOs later  
+If users wouldn’t rebuild without ALIN, you’ve crossed from “cool tool” into infrastructure.  
+⸻  
+Final synthesis (important)  
+If only one TBWO exists in First Slice, Website Sprint is the correct choice because:  
+	•	it proves ALIN’s thesis without expanding authority  
+	•	it creates an undeniable, legible artifact  
+	•	it stresses every subsystem you care about  
+	•	it fails loudly if ALIN isn’t actually good yet  
+Everything else (Blender, video, apps, docs) becomes easier after this.  
+  
+———-  
+**Website Sprint — End-to-End Experience Flow**  
+(First-Party Premium Execution Mode)  
+———-  
+  
+**0. Purpose of This Flow**  
+Website Sprint exists to answer one user question unmistakably:  
+“Can ALIN take responsibility for something real, over time, and deliver it like a disciplined human team—without losing my trust?”  
+This flow is designed to:  
+* feel serious, calm, and professional    
+* demonstrate parallel competence    
+* keep the user in control without micromanaging    
+* make ALIN feel structurally necessary, not impressive-for-a-minute   
+  
+**1. Entry Point: How a User Starts a Website Sprint**  
+Website Sprint is never hidden and never ambient.  
+It is entered through explicit intent.  
+**Entry surfaces:**  
+* “New Website Sprint” button inside a Project    
+* “Start a Website Sprint” from ALIN command input    
+* Contextual suggestion (rare):   “This looks like a good fit for a Website Sprint. Want me to propose one?”    
+ALIN never auto-escalates into a Sprint.  
+  
+**2. Preflight Screen: Commitment Before Execution**  
+Before any questions or work begin, ALIN presents a Preflight Summary:  
+“Website Sprint — Before We Start”  
+Shown clearly:  
+* What a Website Sprint is    
+* What it will do    
+* What it will not do    
+* That it will:    
+    * use time-budgeted execution    
+    * spawn controlled agent pods    
+    * produce inspectable artifacts + receipts    
+* That it requires explicit approval    
+This step filters unserious usage and sets tone.  
+  
+  
+**3. Clarification Phase (Strictly Bounded)**  
+**Rules (hard constraints):**  
+* Maximum 5 questions    
+* Each question includes a default assumption    
+* Questions must reduce risk of wrong build, not over-specify    
+**Example experience:**  
+ALIN says:  
+“I’ll ask a few questions so I don’t build the wrong thing. I’ll assume sensible defaults where possible.”  
+Questions feel like confidence, not bureaucracy.  
+Each question appears one at a time, not as a form.  
+User can:  
+* answer    
+* accept default    
+* say “decide for me”    
+Clarification ends decisively. No loops.  
+  
+  
+**4. Sprint Plan Reveal (The First “Oh Shit” Moment)**  
+ALIN produces a Sprint Plan before doing any work.  
+This is a single, calm screen, not a wall of text.  
+**The plan shows:**  
+* Scope summary (pages, style, stack)    
+* Time budget allocation (e.g. design / build / motion / QA)    
+* Agent Pods to be used    
+* Deliverables    
+* Known risks or tradeoffs    
+Language is factual, not salesy.  
+At the bottom:  
+“Approve Plan & Begin Sprint”  
+Nothing runs until this is clicked.  
+This moment establishes:  
+* authority separation    
+* professional discipline    
+* user trust    
+**5. Execution Phase: What the User Sees While Work Happens**  
+**Core principle:**  
+The user is never locked out of their computer.  
+Website Sprint runs alongside their life, not on top of it.  
+  
+**5.1 Website Sprint Dashboard**  
+Once execution starts, the user sees a dedicated Sprint Dashboard.  
+It shows:  
+* Current stage (Planning / Design / Build / Motion / QA)    
+* Active Agent Pods (by role, not personality)    
+* Time remaining    
+* Next checkpoint    
+* Autonomy status (always visible)    
+No animation fluff. Calm motion only.  
+  
+  
+**5.2 Agent Pod Visibility (Without Anthropomorphism)**  
+Pods are shown as roles, not characters.  
+Example:  
+* Design Pod — Active    
+* Frontend Pod — Waiting on Design    
+* Motion Pod — Scheduled    
+* QA Pod — Pending    
+Pods do not “talk.”  
+They produce outputs.  
+This avoids fake sentience while preserving spectacle.  
+  
+  
+**5.3 Progress Without Interruption**  
+While the Sprint runs:  
+* User can:    
+    * browse    
+    * code    
+    * watch YouTube    
+    * leave the computer    
+* ALIN does not:    
+    * steal focus    
+    * move the mouse    
+    * pop modal interruptions    
+Progress appears as non-invasive updates:  
+* “Design system drafted.”    
+* “Components compiling cleanly.”    
+* “Motion pass ready for review.”    
+Each update links to evidence.  
+  
+  
+**6. Checkpoints (Human-in-the-Loop Without Friction)**  
+At predefined milestones, ALIN may pause briefly.  
+Checkpoint prompts look like:  
+“Here’s the direction. Do you want me to continue, adjust, or hold?”  
+User options:  
+* Continue    
+* Small adjustment    
+* Pause    
+* Cancel Sprint    
+No pressure language. No urgency theater.  
+  
+  
+**7. Artifact Preview (Seeing Work, Not Promises)**  
+As artifacts become available, ALIN surfaces them immediately.  
+Examples:  
+* Live local preview    
+* Static render    
+* File tree    
+* Diff between versions    
+User can:  
+* inspect    
+* comment    
+* ignore and let it continue    
+Nothing is hidden behind “final reveal” theatrics.  
+  
+  
+**8. Completion Moment (Second “Oh Shit” Moment)**  
+When the Sprint completes, ALIN does not celebrate.  
+It delivers.  
+**Final delivery includes:**  
+* Working website artifacts    
+* Clear run / build instructions    
+* Receipt Bundle (collapsed by default)    
+* “What’s done / What’s left / What I’d do next”    
+Tone:  
+“Here’s what I built. Here’s how it works. Here’s what I’d improve if you want to continue.”  
+This restraint is critical.  
+  
+  
+**9. Receipts: Proof Without Overwhelm**  
+Receipts are shown in two layers:  
+**9.1 Executive Receipt (default view)**  
+* What was built    
+* Assumptions made    
+* Tradeoffs due to time    
+* Known limitations    
+**9.2 Deep Audit (expandable)**  
+* Files created / modified    
+* Build logs    
+* Pod outputs    
+* Rollback options    
+Receipts are:  
+* readable    
+* skimmable    
+* optional to dive into    
+Trust is offered, not forced.  
+  
+  
+**10. Post-Sprint Reflection (Trust Accumulation)**  
+After a short delay (days, not minutes), ALIN asks one question:  
+“If this disappeared tomorrow, would you rebuild it yourself?”  
+No rating scales.  
+No dopamine loops.  
+This feeds internal validation, not vanity metrics.  
+  
+  
+  
+**11. Why This Flow Works (Canon Alignment)**  
+This experience:  
+* proves continuity    
+* demonstrates parallel competence    
+* preserves user authority    
+* avoids emotional dependence    
+* creates reconstruction cost    
+* scales to future TBWOs cleanly    
+It feels like:  
+“A calm, competent system that handled something real.”  
+Not:  
+“A cool AI demo.”  
+  
+  
+**12. Explicit Non-Goals of This Experience**  
+Website Sprint is not:  
+* instant    
+* magical    
+* anthropomorphic    
+* self-expanding    
+* opaque    
+* addictive    
+It is:  
+* deliberate    
+* inspectable    
+* bounded    
+* professional    
+————  
+End — Website Sprint Experience Flow  
+ ————  
+  
+⸻————-  
+Website Sprint First Slice  
+———————-  
+Time-Budgeted Work Order (TBWO) — Spec v1.0  
+Classification: First-Party Premium Execution Template  
+Status: Flagship TBWO for First Slice  
+Purpose: Deliver an Apple-level, production-ready website through a bounded, inspectable, multi-agent pipeline—without violating ALIN canon (authority gating, memory governance, receipts).  
+⸻  
+0) Definition (One-Sentence Contract)  
+Website Sprint is a time-budgeted execution mode where ALIN plans, parallelizes, and delivers a complete website using controlled agent pods, producing working artifacts plus auditable receipts—under explicit user authority and visible checkpoints.  
+⸻  
+1) Entry Conditions & Eligibility  
+Website Sprint is available only when:  
+	•	User has an active Premium Execution subscription tier  
+	•	User explicitly opts into TBWO mode for this task  
+	•	User approves:  
+	•	time budget  
+	•	tool permissions  
+	•	artifact storage location  
+	•	ALIN confirms that scope fits within the requested time budget  
+Non-eligibility triggers:  
+	•	Requests involving payments, posting to live domains, or identity-sensitive integrations without explicit Tier-2 approval  
+	•	Requests exceeding the declared time budget after planning  
+⸻  
+2) Inputs (What the User Provides)  
+Required  
+	•	Goal: What the site is for (product, portfolio, brand, docs, landing page)  
+	•	Time Budget: (e.g., 2h / 1 day / 1 week)  
+	•	Quality Target: (minimal / premium / cinematic / Apple-level clean)  
+	•	Pages: explicit list or “single-page”  
+	•	Approval Scope: draft-only vs deploy-ready artifacts  
+Optional  
+	•	Brand assets (logo, colors)  
+	•	References (sites, styles)  
+	•	Tech constraints (static / framework preference)  
+	•	Hosting preference (output only; no live deploy by default)  
+ALIN may infer defaults from user history, but must surface assumptions before execution.  
+⸻  
+3) Clarification Phase (Strictly Bounded)  
+Rules:  
+	•	Max 5 questions  
+	•	Questions must reduce risk of wrong build, not over-specify  
+	•	Each question includes a default assumption  
+Example format:  
+“I’ll assume a single-page marketing site with a minimal aesthetic unless you want multi-page. Is that correct?”  
+User can override or accept defaults instantly.  
+⸻  
+4) Planning Phase (Visible, Approve-to-Proceed)  
+ALIN produces a Sprint Plan containing:  
+	•	Scope summary  
+	•	Milestones mapped to time budget  
+	•	Agent Pods to be spawned  
+	•	Deliverables per milestone  
+	•	Risk notes (what may be simplified if time runs short)  
+User must explicitly approve this plan.  
+No agent pods spawn before approval.  
+⸻  
+5) Execution Model  
+5.1 Lead Orchestrator (ALIN Core)  
+	•	Owns plan  
+	•	Spawns pods  
+	•	Resolves conflicts  
+	•	Merges outputs  
+	•	Maintains unified audit log  
+	•	Produces final delivery + receipts  
+⸻  
+5.2 Agent Pods (Controlled Forks)  
+All pods are:  
+	•	role-locked  
+	•	tool-whitelisted  
+	•	memory-scoped  
+	•	time-budgeted  
+	•	non-persistent after completion  
+Pod Roles (v1.0)  
+	1.	Design Pod  
+	•	Outputs: layout system, spacing rules, typography scale, color tokens  
+	•	Constraint: must produce a coherent design system, not page-by-page chaos  
+	2.	Frontend Pod  
+	•	Outputs: responsive components, page structure, build-clean repo  
+	•	Constraint: no experimental frameworks unless approved  
+	3.	Motion Pod  
+	•	Outputs: animation specs + implementation  
+	•	Constraint: subtle, performance-safe motion only  
+	4.	Copy Pod  
+	•	Outputs: headlines, section copy, CTAs  
+	•	Constraint: clarity over cleverness  
+	5.	QA Pod  
+	•	Outputs: performance check, responsive check, broken-state scan  
+	•	Constraint: reports issues; does not rewrite design  
+Pods cannot talk to each other directly.  
+All coordination flows through the Lead Orchestrator.  
+⸻  
+6) Time Budget Enforcement  
+	•	Time budget is enforced at planning, pod allocation, and milestone levels  
+	•	If time risk emerges:  
+	•	ALIN must downgrade scope visibly (e.g., fewer animations)  
+	•	Never silently reduce quality standards  
+	•	Overruns require explicit user approval  
+⸻  
+7) UI Contract (User-Facing Experience)  
+7.1 Website Sprint Dashboard  
+Displays:  
+	•	current stage  
+	•	active pods  
+	•	progress bars per milestone  
+	•	upcoming checkpoints  
+	•	autonomy status indicator  
+7.2 Checkpoints  
+At predefined milestones, ALIN may:  
+	•	request clarification  
+	•	confirm direction  
+	•	propose adjustments  
+User can:  
+	•	approve  
+	•	redirect  
+	•	cancel  
+7.3 Artifact Preview  
+	•	Live preview (where possible)  
+	•	File tree visibility  
+	•	Diff highlights between versions  
+⸻  
+8) Receipts & Proof System (Mandatory)  
+8.1 Receipt Bundle Structure  
+Every Website Sprint outputs a Receipt Bundle containing:  
+A) Executive Receipt (Human-Readable)  
+	•	What was built  
+	•	What assumptions were made  
+	•	What was simplified due to time  
+	•	What remains unfinished (if any)  
+B) Technical Receipt  
+	•	Files created/modified  
+	•	Build status  
+	•	Dependencies used  
+	•	Performance metrics (basic)  
+C) Pod Receipts  
+For each pod:  
+	•	role  
+	•	actions taken  
+	•	artifacts produced  
+	•	confidence notes  
+D) Rollback Map  
+	•	what can be reverted  
+	•	how to revert  
+	•	limitations  
+No receipt = incomplete sprint.  
+⸻  
+9) Deliverables (Definition of “Done”)  
+A Website Sprint is complete only if:  
+	•	Site builds without errors  
+	•	Core pages render responsively  
+	•	Motion does not degrade performance  
+	•	Copy is complete (no placeholders)  
+	•	Receipt Bundle is delivered  
+	•	User can run or host artifacts independently  
+⸻  
+10) Constraints (Hard Rules)  
+Website Sprint cannot:  
+	•	deploy live without explicit Tier-2 approval  
+	•	modify external services silently  
+	•	exceed time budget without approval  
+	•	store new durable memory without consent  
+	•	self-expand scope mid-execution  
+Website Sprint must:  
+	•	remain inspectable  
+	•	remain reversible  
+	•	remain bounded  
+⸻  
+11) Failure Handling  
+If a sprint fails:  
+	•	ALIN produces a Failure Receipt  
+	•	Explains what blocked completion  
+	•	Delivers partial artifacts  
+	•	Suggests a recovery plan  
+Failure is explicit, not hidden.  
+⸻  
+12) Success Criteria (Internal)  
+	•	Users trust the output enough to keep it  
+	•	Users do not want to rebuild without ALIN  
+	•	Receipts are actually read  
+	•	Sprint feels like a small professional team—not magic  
+⸻  
+13) Explicit Non-Goals (v1.0)  
+Website Sprint is not:  
+	•	a general app builder  
+	•	an unbounded agent swarm  
+	•	a live-deployment system  
+	•	a replacement for professional agencies  
+	•	a personality demo  
+It is a proof-of-competence engine.  
+⸻  
+Final Lock  
+Website Sprint exists to prove one thing:  
+ALIN can deliver large, real outcomes under constraint—without breaking trust.  
+Once this works, everything else becomes easier.  
+————-  
+  
+End First Slice Experience  
+  
+————-  
+Not hype.  
+  
+A foundation.  
+  
+⸻  

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>API Reference — ALIN</title>
+  <meta name="description" content="ALIN REST API documentation — endpoints, authentication, request formats, and response schemas.">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="features.html" class="nav__link">Features</a><a href="stations.html" class="nav__link">Stations</a><a href="pricing.html" class="nav__link">Pricing</a><a href="docs.html" class="nav__link">Docs</a><a href="about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="login.html" class="nav__signin">Sign in</a><a href="signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="features.html" class="nav__mobile-link">Features</a><a href="stations.html" class="nav__mobile-link">Stations</a><a href="pricing.html" class="nav__mobile-link">Pricing</a><a href="docs.html" class="nav__mobile-link">Docs</a><a href="about.html" class="nav__mobile-link">About</a><a href="login.html" class="nav__mobile-link">Sign In</a><a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
+<section class="page-hero"><div class="container"><span class="page-hero__overline">API</span><h1 class="page-hero__title">API Reference</h1><p class="page-hero__desc">Integrate ALIN into your workflow with the REST API.</p></div></section>
+
+<section class="section"><div class="container"><div class="prose animate-on-scroll">
+
+<h2>Authentication</h2>
+<p>All API requests require a JWT token in the <code>Authorization</code> header:</p>
+<p><code>Authorization: Bearer &lt;your-token&gt;</code></p>
+<p>Obtain a token via <code>POST /api/auth/login</code> or <code>POST /api/auth/signup</code>. Tokens expire after 7 days.</p>
+
+<h2>Auth Endpoints</h2>
+<p><strong>POST /api/auth/signup</strong> — Create account. Body: <code>{ email, password, displayName }</code>. Returns <code>{ token, user }</code>.</p>
+<p><strong>POST /api/auth/login</strong> — Sign in. Body: <code>{ email, password }</code>. Returns <code>{ token, user }</code>.</p>
+<p><strong>GET /api/auth/me</strong> — Get current user profile. Requires auth.</p>
+<p><strong>PATCH /api/auth/profile</strong> — Update profile. Body: <code>{ displayName?, email? }</code>. Requires auth.</p>
+<p><strong>POST /api/auth/change-password</strong> — Change password. Body: <code>{ oldPassword, newPassword }</code>. Requires auth.</p>
+
+<h2>Chat Streaming</h2>
+<p><strong>POST /api/chat/stream</strong> — Stream an AI response via SSE. Requires auth + plan check. Body: <code>{ messages, model, provider, system?, tools?, thinking?, thinkingBudget?, maxTokens? }</code>.</p>
+<p>SSE events: <code>start</code>, <code>text_delta</code>, <code>thinking_start</code>, <code>thinking_delta</code>, <code>tool_use</code>, <code>usage</code>, <code>done</code>, <code>error</code>.</p>
+<p><strong>POST /api/chat/continue</strong> — Continue after tool results. Same format as /stream.</p>
+
+<h2>Conversations</h2>
+<p><strong>GET /api/conversations</strong> — List all conversations.</p>
+<p><strong>POST /api/conversations</strong> — Create conversation. Body: <code>{ id, title?, model? }</code>.</p>
+<p><strong>GET /api/conversations/:id</strong> — Get conversation with messages.</p>
+<p><strong>PATCH /api/conversations/:id</strong> — Update conversation metadata.</p>
+<p><strong>DELETE /api/conversations/:id</strong> — Delete conversation and messages.</p>
+
+<h2>Messages</h2>
+<p><strong>POST /api/messages</strong> — Create message. Body: <code>{ id, conversationId, role, content, model?, tokens?, thinkingContent? }</code>.</p>
+<p><strong>PATCH /api/messages/:id</strong> — Update message.</p>
+<p><strong>DELETE /api/messages/:id</strong> — Delete message.</p>
+
+<h2>TBWO</h2>
+<p><strong>GET /api/tbwos</strong> — List all TBWOs.</p>
+<p><strong>POST /api/tbwos</strong> — Create TBWO. Requires Pro plan.</p>
+<p><strong>GET /api/tbwos/:id</strong> — Get TBWO details.</p>
+<p><strong>PATCH /api/tbwos/:id</strong> — Update TBWO.</p>
+<p><strong>POST /api/tbwo/:id/receipts</strong> — Add receipt to TBWO.</p>
+
+<h2>Memory</h2>
+<p><strong>GET /api/memories</strong> — List memory entries.</p>
+<p><strong>POST /api/memories</strong> — Create memory entry.</p>
+<p><strong>DELETE /api/memories/:id</strong> — Delete memory entry.</p>
+
+<h2>Self-Model</h2>
+<p><strong>POST /api/self-model/outcomes</strong> — Record execution outcome.</p>
+<p><strong>GET /api/self-model/outcomes</strong> — List outcomes. Query: <code>?type=&amp;limit=</code>.</p>
+<p><strong>POST /api/self-model/tool-reliability</strong> — Record tool usage.</p>
+<p><strong>GET /api/self-model/tool-reliability</strong> — Get tool stats.</p>
+<p><strong>POST /api/self-model/corrections</strong> — Record user correction.</p>
+<p><strong>GET /api/self-model/corrections</strong> — List corrections. Query: <code>?minCount=</code>.</p>
+<p><strong>POST /api/self-model/layer-memory</strong> — Store layer memory.</p>
+<p><strong>GET /api/self-model/layer-memory</strong> — List layer memories. Query: <code>?layer=&amp;limit=</code>.</p>
+<p><strong>POST /api/self-model/layer-memory/prune</strong> — Remove expired memories.</p>
+
+<h2>File Operations (Desktop Only)</h2>
+<p><strong>POST /api/files/read</strong> — Read file. Body: <code>{ filePath }</code>.</p>
+<p><strong>POST /api/files/write</strong> — Write file. Body: <code>{ filePath, content }</code>.</p>
+<p><strong>POST /api/files/list</strong> — List directory. Body: <code>{ dirPath }</code>.</p>
+<p><strong>POST /api/files/scan</strong> — Scan directory tree with contents.</p>
+<p><strong>POST /api/files/search</strong> — Search code across files.</p>
+
+<h2>Code Execution (Desktop Only)</h2>
+<p><strong>POST /api/code/execute</strong> — Run code. Body: <code>{ code, language }</code>. Supports Python, JavaScript, shell.</p>
+
+<h2>System</h2>
+<p><strong>GET /api/health</strong> — Health check.</p>
+<p><strong>GET /api/system/metrics</strong> — CPU, memory, GPU metrics (Desktop only).</p>
+
+<h2>Rate Limits</h2>
+<p>Free: 10 messages/hour, max 3 tool calls/message. Pro: unlimited. Enterprise: unlimited with custom routing. Rate limit headers: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>.</p>
+
+</div></div></section>
+<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="features.html" class="footer__link">Features</a><a href="stations.html" class="footer__link">Stations</a><a href="pricing.html" class="footer__link">Pricing</a><a href="changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="docs.html" class="footer__link">Documentation</a><a href="api.html" class="footer__link">API Reference</a><a href="guides.html" class="footer__link">Guides</a><a href="blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="about.html" class="footer__link">About</a><a href="careers.html" class="footer__link">Careers</a><a href="contact.html" class="footer__link">Contact</a><a href="support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="privacy.html" class="footer__bottom-link">Privacy</a><a href="terms.html" class="footer__bottom-link">Terms</a><a href="cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>

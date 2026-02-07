@@ -1,0 +1,113 @@
+**ALIN First-Party Products & Experience Bible TOC**  
+  
+*(Canonical — Revenue Anchor & User-Facing Reality)*  
+  
+⸻  
+  
+**Section 0 — Purpose, Scope & Canon Alignment**  
+	•	0.1 Why First-Party Products Define Reality  
+	•	0.2 What This Bible Is Allowed to Decide  
+	•	0.3 What This Bible Is Not Allowed to Touch (Canon Locks)  
+	•	0.4 Why Revenue Must Emerge From Trust, Not Extraction  
+	•	0.5 How Product Decisions Shape ALIN’s Long-Term Power  
+	•	0.6 Relationship to First Slice & Future Slices  
+  
+⸻  
+  
+**Section 1 — What ALIN Actually Ships (v1)**  
+	•	1.1 Why ALIN Is Not “An App”  
+	•	1.2 The ALIN Overlay Explained Clearly  
+	•	1.3 Supported Platforms (Initial)  
+	•	1.4 Installation, Onboarding, and First Run  
+	•	1.5 What the User Thinks They Installed vs What They Actually Did  
+	•	1.6 Why This Already Feels Different Than Everything Else  
+  
+⸻  
+  
+**Section 2 — The Core Paid Experience**  
+	•	2.1 Continuity as a Product (Not a Feature)  
+	•	2.2 Project Objects as the Primary Surface  
+	•	2.3 Task Contracts as the Trust Interface  
+	•	2.4 Background Work as a Premium Capability  
+	•	2.5 Receipts, Logs, and Replay as Differentiators  
+	•	2.6 Why This Replaces Multiple Tools Without Competing With Them  
+  
+⸻  
+  
+**Section 3 — Subscription Model (Without Dark Patterns)**  
+	•	3.1 Why Subscription Is the Correct Model  
+	•	3.2 What Is Free vs Paid (Principled Boundary)  
+	•	3.3 Pricing as a Trust Signal  
+	•	3.4 What Happens When a Subscription Lapses  
+	•	3.5 No Punitive Lockouts, No Hostage Data  
+	•	3.6 Why This Model Scales Without Corrupting ALIN  
+  
+⸻  
+  
+**Section 4 — The First Slice as a Sellable Product**  
+	•	4.1 Why the First Slice Is Enough to Charge For  
+	•	4.2 Who the First Slice Is For (and Not For)  
+	•	4.3 “Holy Shit” Moments That Justify Payment  
+	•	4.4 What Users Are Actually Paying To Avoid  
+	•	4.5 Retention Through Value, Not Habit Loops  
+	•	4.6 When a User Clearly “Gets It”  
+  
+⸻  
+  
+**Section 5 — Experience Quality & Apple-Level Finish**  
+	•	5.1 Fit, Finish, and Restraint as Revenue Drivers  
+	•	5.2 Latency, Calm, and Confidence  
+	•	5.3 Why ALIN Never Feels Experimental  
+	•	5.4 Reducing Cognitive Load as a Feature  
+	•	5.5 Saying “No” to Half-Baked Power  
+	•	5.6 Why This Is Where Most AI Products Fail  
+  
+⸻  
+  
+**Section 6 — Expansion Without Fragmentation**  
+	•	6.1 How New Capabilities Are Added  
+	•	6.2 Why ALIN Never Becomes a “Feature Soup”  
+	•	6.3 Slice Progression as Product Evolution  
+	•	6.4 Preventing Power Creep  
+	•	6.5 Paid Expansion vs Core Integrity  
+	•	6.6 Compatibility With Marketplace Extensions  
+  
+⸻  
+  
+**Section 7 — Hardware as an Amplifier (Not a Requirement)**  
+	•	7.1 Why Hardware Comes Later  
+	•	7.2 What Hardware Adds That Software Cannot  
+	•	7.3 Continuity Across Software + Device  
+	•	7.4 Desk Presence as a Premium Experience  
+	•	7.5 Avoiding Gimmick Hardware  
+	•	7.6 Why Hardware Feels Inevitable Once Software Exists  
+  
+⸻  
+  
+**Section 8 — Long-Term Product Trajectory**  
+	•	8.1 From Overlay to OS-Level Authority  
+	•	8.2 When ALIN Replaces Apps by Outgrowing Them  
+	•	8.3 Why Users Open ALIN Before Everything Else  
+	•	8.4 The Path to “Default Layer” Status  
+	•	8.5 Avoiding the Platform Trap Too Early  
+	•	8.6 Why Patience Wins Here  
+  
+⸻  
+  
+**Section 9 — Explicit Non-Goals**  
+	•	9.1 Why ALIN Is Not a Social Network  
+	•	9.2 Why ALIN Does Not Chase Virality  
+	•	9.3 Why ALIN Avoids Agent Swarms  
+	•	9.4 Why ALIN Refuses Emotional Dependence  
+	•	9.5 Why ALIN Grows Slower but Stronger  
+	•	9.6 How These Constraints Protect the Product  
+  
+⸻  
+  
+**Section 10 — Final Product Canon Statement**  
+	•	10.1 ALIN Exists to Reduce Human Cognitive Burden  
+	•	10.2 Revenue Must Never Undermine Trust  
+	•	10.3 Power Must Be Earned, Visible, and Bounded  
+	•	10.4 This Product Is Allowed to Be Expensive  
+	•	10.5 This Product Is Not Allowed to Be Addictive  
+	•	10.6 Closing Statement  

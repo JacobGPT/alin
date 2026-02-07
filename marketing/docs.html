@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Documentation — ALIN</title>
+  <meta name="description" content="Complete documentation for ALIN — architecture, setup, stations, TBWO system, memory, and API reference.">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="features.html" class="nav__link">Features</a><a href="stations.html" class="nav__link">Stations</a><a href="pricing.html" class="nav__link">Pricing</a><a href="docs.html" class="nav__link">Docs</a><a href="about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="login.html" class="nav__signin">Sign in</a><a href="signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="features.html" class="nav__mobile-link">Features</a><a href="stations.html" class="nav__mobile-link">Stations</a><a href="pricing.html" class="nav__mobile-link">Pricing</a><a href="docs.html" class="nav__mobile-link">Docs</a><a href="about.html" class="nav__mobile-link">About</a><a href="login.html" class="nav__mobile-link">Sign In</a><a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
+<section class="page-hero"><div class="container"><span class="page-hero__overline">Documentation</span><h1 class="page-hero__title">ALIN Docs</h1><p class="page-hero__desc">Everything you need to get started and master the ALIN platform.</p></div></section>
+
+<section class="section"><div class="container"><div class="prose animate-on-scroll">
+
+<h2>Getting Started</h2>
+<p>ALIN is available as a desktop application (full feature set with file system access, code execution, and hardware monitoring) and as a web application (chat, research, image generation, and TBWO planning). To get started with the desktop app, download the installer for your platform from the <a href="index.html#download">download page</a>, run it, and sign in with your account. The web app is accessible at your ALIN instance URL after signing in.</p>
+<p>On first launch, ALIN will walk you through initial setup: connecting your API keys (if self-hosted), choosing your default model, and optionally importing existing conversations. The Home Dashboard shows all six stations with live status previews — click any station card to enter that workspace.</p>
+
+<h2>Architecture Overview</h2>
+<p>ALIN uses a <strong>hub-and-spoke architecture</strong>. The Intelligence Hub (center) maintains shared state: conversations, the 8-layer memory system, user preferences, the self-model, and the Canon governance rules. Six specialized stations orbit this hub, each with its own UI and interaction model but sharing the same context layer.</p>
+<p>On the backend, ALIN runs a Node.js/Express server with SQLite for persistence. All AI API calls route through server-side proxy endpoints (<code>/api/chat/stream</code> and <code>/api/chat/continue</code>) — API keys never touch the browser. The server handles authentication via JWT tokens, plan enforcement via middleware, and rate limiting per user tier.</p>
+<p>On the frontend, ALIN is built with React + TypeScript + Zustand for state management. The component architecture follows the station model: each station has its own view component, but shares common UI primitives (InputArea, MessageBubble, Sidebar, etc.) through the design system.</p>
+
+<h2>Stations</h2>
+<h3>Chat Station</h3>
+<p>The primary interface for conversational AI. Supports multi-model streaming (Claude and OpenAI), file uploads with preview, code blocks with syntax highlighting, markdown rendering, message branching, conversation pinning, and response regeneration. Chat operates in two modes: <strong>Direct Mode</strong> (fast tool-assisted responses where the model chains tool calls freely) and <strong>Sprint Mode</strong> (full TBWO execution for complex tasks). The intent detector automatically classifies incoming messages, or you can override manually.</p>
+
+<h3>Code Lab</h3>
+<p>A development environment with sandboxed code execution (Node.js, Python, shell), file system browsing, syntax highlighting, and AI-powered code generation. Code Lab integrates with the file system through the server's <code>/api/files/*</code> and <code>/api/code/execute</code> endpoints. Git operations are available through <code>/api/git/execute</code>. Desktop app only — requires local file system access.</p>
+
+<h3>TBWO Command</h3>
+<p>The orchestration center for Time-Budgeted Work Orders. See the TBWO System section below for full documentation. Pro plan and above.</p>
+
+<h3>Research Hub</h3>
+<p>Deep web research powered by Brave Search (via server proxy at <code>/api/search/brave</code>) with DuckDuckGo fallback. The research station synthesizes results, tracks citations, evaluates source quality, and can generate structured intelligence reports from 20+ sources. Results are stored in the memory system for cross-session reference.</p>
+
+<h3>Image Studio</h3>
+<p>Visual creation with DALL-E 3 integration. Supports prompt refinement, style direction, image gallery management, and iterative generation. Generated images are stored as artifacts and can be referenced in other stations. Pro plan and above.</p>
+
+<h3>Voice Room</h3>
+<p>Hands-free interaction through Whisper speech-to-text and ElevenLabs text-to-speech. Supports emotion-aware voice synthesis with adaptive modulation based on conversation context. Voice commands can control any station. Desktop app recommended for best microphone access.</p>
+
+<h2>TBWO System</h2>
+<p>Time-Budgeted Work Orders are ALIN's framework for autonomous task execution. A TBWO consists of:</p>
+<p><strong>Objective:</strong> What you want built or accomplished, described in natural language.</p>
+<p><strong>Time Budget:</strong> How long ALIN should spend. This directly controls complexity — a 10-minute budget produces a quick result, a 45-minute budget produces a comprehensive one with more phases, more polish iterations, and higher quality output.</p>
+<p><strong>Quality Target:</strong> The quality level you expect (draft, standard, polished, production). This affects how many review passes and refinement cycles are included in the plan.</p>
+<p><strong>Plan:</strong> ALIN generates an execution plan with phases, tasks, role assignments, and time estimates. The plan is domain-aware — a website sprint follows a different phase structure than a research report or a codebase audit. You review and approve the plan before execution begins.</p>
+<p><strong>Agent Pods:</strong> Specialized AI agents assigned to specific roles (Design, Frontend, Backend, QA, Copy, Research, Orchestrator). Pods execute in parallel where possible, pass artifacts to each other through the artifact bus, and communicate through a pub/sub message system with priority levels and correlation IDs.</p>
+<p><strong>Checkpoints:</strong> At defined intervals, execution pauses for progress review. Checkpoints show what's been completed, what's next, and any decisions that were made autonomously. You can adjust the plan, add instructions, or abort.</p>
+<p><strong>Receipts:</strong> After completion, a detailed receipt documents every decision, assumption, file produced, tool called, time spent, and quality assessment. Receipts are the foundation of ALIN's trust model — you can always see exactly what happened and why.</p>
+
+<h2>8-Layer Memory System</h2>
+<p>ALIN's memory is structured into 8 layers with different retention policies and purposes:</p>
+<p><strong>Layer 0 — Immediate:</strong> Current session context. Volatile, cleared when the session ends. This is the conversation you're having right now.</p>
+<p><strong>Layer 1 — Short-Term:</strong> 24-hour working memory. Auto-expires. Stores recent decisions, tool results, and temporary notes that are useful for follow-up but don't need permanent storage.</p>
+<p><strong>Layer 2 — Working:</strong> Project-scoped memory. Persists for 7 days or until the project closes. Stores project-specific context like file structures, naming conventions, and in-progress decisions.</p>
+<p><strong>Layer 3 — Episodic:</strong> Permanent, timestamped experiences. Stores what happened in each session — not the full conversation, but structured summaries of actions taken, decisions made, and outcomes achieved.</p>
+<p><strong>Layer 4 — Semantic:</strong> Permanent factual knowledge. Stores learned facts about your codebase, your organization, technical details, and domain knowledge that ALIN has accumulated across sessions.</p>
+<p><strong>Layer 5 — Relational:</strong> User model and preference graph. Stores your communication style, technical skill level, preferred frameworks, formatting preferences, and interaction patterns.</p>
+<p><strong>Layer 6 — Notes:</strong> User-created explicit memories. Things you've told ALIN to remember permanently — API keys (encrypted), project specifications, team member names, recurring instructions.</p>
+<p><strong>Layer 7 — Self-Model:</strong> ALIN's model of its own behavior. Stores execution outcome patterns, tool reliability data, promoted correction patterns, and operational insights. This layer is what makes ALIN improve over time.</p>
+
+<h2>Self-Model and Training</h2>
+<p>ALIN has two training systems that can be independently enabled in Settings:</p>
+<p><strong>Personal Learning</strong> tracks your corrections and ALIN's execution outcomes. When you override ALIN's choices 3+ times in the same direction, the pattern is promoted to the self-model (Layer 7) and ALIN adjusts its behavior permanently. Tool reliability is tracked per-tool — if a tool fails frequently, ALIN learns to use alternatives or add error handling. Execution outcomes (quality scores, user edit counts, phase success rates) are aggregated by task type so ALIN knows which types of work it handles well and which need more caution.</p>
+<p><strong>Community Learning</strong> (opt-in) anonymizes execution traces and uploads them to help all ALIN users. When enabled, ALIN strips personal content from execution data and shares the structural patterns — tool sequences, timing, retry counts, quality scores — so the planner can learn from the collective experience of all users running similar tasks. Users who contribute get access to the collective intelligence; users who opt out still get personal learning but not community insights.</p>
+
+<h2>Authentication and Plans</h2>
+<p>ALIN uses JWT-based authentication. Tokens expire after 7 days and are refreshed on each session start. Passwords are hashed with bcrypt (10 rounds). The first user to sign up on a new instance automatically receives the Pro plan.</p>
+<p>Plan enforcement happens at two levels: server-side middleware rejects unauthorized requests (model access, rate limits, feature gating), and client-side capability detection hides UI elements that aren't available on the user's plan. The server is always the authority — client-side gating is purely for UX.</p>
+
+<h2>Configuration</h2>
+<p>Server configuration is handled through environment variables in <code>.env</code>:</p>
+<p><code>ANTHROPIC_API_KEY</code> — Your Anthropic API key (required for Claude models)<br>
+<code>OPENAI_API_KEY</code> — Your OpenAI API key (required for GPT models)<br>
+<code>BRAVE_API_KEY</code> — Your Brave Search API key (required for Research station)<br>
+<code>JWT_SECRET</code> — Secret key for signing JWT tokens (change in production)<br>
+<code>PORT</code> — Server port (default: 3002)<br>
+<code>DOWNLOAD_URL_WIN</code> / <code>DOWNLOAD_URL_MAC</code> / <code>DOWNLOAD_URL_LINUX</code> — Desktop app download URLs</p>
+
+</div></div></section>
+<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="features.html" class="footer__link">Features</a><a href="stations.html" class="footer__link">Stations</a><a href="pricing.html" class="footer__link">Pricing</a><a href="changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="docs.html" class="footer__link">Documentation</a><a href="api.html" class="footer__link">API Reference</a><a href="guides.html" class="footer__link">Guides</a><a href="blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="about.html" class="footer__link">About</a><a href="careers.html" class="footer__link">Careers</a><a href="contact.html" class="footer__link">Contact</a><a href="support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="privacy.html" class="footer__bottom-link">Privacy</a><a href="terms.html" class="footer__bottom-link">Terms</a><a href="cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>

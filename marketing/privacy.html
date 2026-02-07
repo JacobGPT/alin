@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Privacy Policy — ALIN</title>
+  <meta name="description" content="How ALIN handles your data — collection, storage, processing, and your rights.">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="features.html" class="nav__link">Features</a><a href="stations.html" class="nav__link">Stations</a><a href="pricing.html" class="nav__link">Pricing</a><a href="docs.html" class="nav__link">Docs</a><a href="about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="login.html" class="nav__signin">Sign in</a><a href="signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="features.html" class="nav__mobile-link">Features</a><a href="stations.html" class="nav__mobile-link">Stations</a><a href="pricing.html" class="nav__mobile-link">Pricing</a><a href="docs.html" class="nav__mobile-link">Docs</a><a href="about.html" class="nav__mobile-link">About</a><a href="login.html" class="nav__mobile-link">Sign In</a><a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
+<section class="page-hero"><div class="container"><span class="page-hero__overline">Legal</span><h1 class="page-hero__title">Privacy Policy</h1><p class="page-hero__desc">Your privacy matters. Here's exactly how ALIN handles your data. Last updated February 2026.</p></div></section>
+
+<section class="section"><div class="container"><div class="prose animate-on-scroll">
+
+<h2>1. Data We Collect</h2>
+<p><strong>Account Data:</strong> When you create an account, we collect your email address, display name, and a bcrypt-hashed version of your password. We never store plaintext passwords.</p>
+<p><strong>Conversation Data:</strong> Messages you send and receive through ALIN, including text content, file uploads, code blocks, and AI responses. This data is stored in your instance's SQLite database.</p>
+<p><strong>Memory Data:</strong> Information stored in ALIN's 8-layer memory system, including session context, project notes, user preferences, and self-model data. You control what persists through memory settings and can delete any layer at any time.</p>
+<p><strong>Execution Data:</strong> TBWO execution traces including objectives, plans, pod configurations, tool call sequences, timing data, quality scores, and receipts. This data is used for the self-model and, if you opt in, for community learning.</p>
+<p><strong>Usage Analytics (opt-in only):</strong> If you enable analytics in Settings → Privacy, we collect anonymized usage patterns: which stations you use, session duration, feature adoption metrics, and error rates. No message content, file contents, or personal information is included.</p>
+
+<h2>2. How We Use Your Data</h2>
+<p><strong>Service Delivery:</strong> Your conversation and memory data is used solely to provide the ALIN service — streaming AI responses, persisting conversations, maintaining memory across sessions, and executing TBWOs.</p>
+<p><strong>AI Processing:</strong> Messages are sent to third-party AI providers (Anthropic for Claude models, OpenAI for GPT models) for processing. These providers have their own privacy policies and data retention rules. ALIN routes all API calls through the server proxy — your API keys are never exposed to the browser.</p>
+<p><strong>Self-Model Training:</strong> If Personal Learning is enabled (default: on), ALIN uses your correction patterns and execution outcomes to improve its behavior for you specifically. This data never leaves your instance unless you opt into Community Learning.</p>
+<p><strong>Community Learning (opt-in):</strong> If you enable Community Learning, anonymized execution traces (with all personal content stripped — no message text, file contents, names, or identifiable information) are uploaded to our servers to improve the collective intelligence available to all ALIN users. You can disable this at any time in Settings → Privacy → Training.</p>
+<p><strong>We Never:</strong> Sell your data to third parties. Use your data for advertising. Share your conversation content with other users. Train our own AI models on your data without explicit opt-in consent.</p>
+
+<h2>3. Data Storage</h2>
+<p><strong>Local Storage:</strong> On the desktop app, all data is stored locally in a SQLite database on your machine. You have full control over this database and can export, backup, or delete it at any time.</p>
+<p><strong>Server Storage:</strong> On the web app, data is stored in the server's SQLite database. If you're using ALIN's hosted service, data is stored on our servers with AES-256 encryption at rest. If you're self-hosting, data stays entirely on your infrastructure.</p>
+<p><strong>Browser Storage:</strong> The web app uses localStorage for UI preferences (theme, sidebar state, scroll position) and the authentication token. No conversation content is stored in the browser.</p>
+
+<h2>4. Data Retention</h2>
+<p>Conversation data is retained indefinitely unless you delete it. Memory layers have different retention policies: Layer 1 (short-term) auto-expires after 24 hours, Layer 2 (working) after 7 days, Layers 3-7 are permanent unless manually deleted. The self-model data is retained as long as your account exists. Execution traces are retained for 90 days for analytics, then aggregated and anonymized.</p>
+
+<h2>5. Your Rights</h2>
+<p><strong>Access:</strong> You can export all your data at any time through Settings → Privacy → Export Data. This produces a JSON file containing all conversations, memories, settings, and self-model data.</p>
+<p><strong>Deletion:</strong> You can delete individual conversations, specific memory layers, or your entire account through Settings → Privacy. Account deletion removes all associated data within 30 days from our servers. On the desktop app, deleting the local database is immediate.</p>
+<p><strong>Correction:</strong> You can edit or correct any stored data through the respective interfaces — conversation editing, memory management, and profile settings.</p>
+<p><strong>Portability:</strong> Your exported data is in standard JSON format and can be imported into a new ALIN instance or used with other tools.</p>
+<p><strong>Objection:</strong> You can disable Community Learning, usage analytics, and specific memory layers independently. Disabling a feature stops data collection for that feature immediately.</p>
+
+<h2>6. Third-Party Services</h2>
+<p>ALIN integrates with the following third-party services, each with their own privacy policies:</p>
+<p><strong>Anthropic (Claude API):</strong> Processes AI requests. See <a href="https://www.anthropic.com/privacy" style="color:var(--color-primary-400);">Anthropic's Privacy Policy</a>.<br>
+<strong>OpenAI (GPT API):</strong> Processes AI requests. See <a href="https://openai.com/privacy" style="color:var(--color-primary-400);">OpenAI's Privacy Policy</a>.<br>
+<strong>Brave Search API:</strong> Processes web search queries. See <a href="https://brave.com/privacy/" style="color:var(--color-primary-400);">Brave's Privacy Policy</a>.<br>
+<strong>ElevenLabs:</strong> Processes text-to-speech requests. See <a href="https://elevenlabs.io/privacy-policy" style="color:var(--color-primary-400);">ElevenLabs' Privacy Policy</a>.<br>
+<strong>Stripe:</strong> Processes payments. See <a href="https://stripe.com/privacy" style="color:var(--color-primary-400);">Stripe's Privacy Policy</a>.</p>
+
+<h2>7. Security</h2>
+<p>API keys are stored server-side only and never transmitted to the browser. Passwords are hashed with bcrypt (10 rounds). Authentication uses JWT tokens with 7-day expiry. All server communication uses HTTPS in production. The SQLite database is file-system protected with standard OS-level permissions. Self-hosted instances inherit your infrastructure's security posture.</p>
+
+<h2>8. Changes to This Policy</h2>
+<p>We'll notify you of material changes through the ALIN application and via email. Continued use after notification constitutes acceptance of the updated policy.</p>
+
+<h2>9. Contact</h2>
+<p>For privacy questions, data requests, or concerns, contact us at <a href="contact.html" style="color:var(--color-primary-400);">our contact page</a> or email privacy@alin.dev.</p>
+
+</div></div></section>
+<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="features.html" class="footer__link">Features</a><a href="stations.html" class="footer__link">Stations</a><a href="pricing.html" class="footer__link">Pricing</a><a href="changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="docs.html" class="footer__link">Documentation</a><a href="api.html" class="footer__link">API Reference</a><a href="guides.html" class="footer__link">Guides</a><a href="blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="about.html" class="footer__link">About</a><a href="careers.html" class="footer__link">Careers</a><a href="contact.html" class="footer__link">Contact</a><a href="support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="privacy.html" class="footer__bottom-link">Privacy</a><a href="terms.html" class="footer__bottom-link">Terms</a><a href="cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>

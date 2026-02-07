@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ALIN — Advanced Linguistic Intelligence Network</title>
+  <meta name="description" content="Six specialized AI stations working as one unified intelligence. Chat, code, research, create, and orchestrate from one powerful command center.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav" id="nav">
+    <div class="container nav__inner">
+      <a href="index.html" class="nav__logo"><span>ALIN</span></a>
+      <div class="nav__links">
+        <a href="#features" class="nav__link">Features</a>
+        <a href="#stations" class="nav__link">Stations</a>
+        <a href="pricing.html" class="nav__link">Pricing</a>
+        <a href="docs.html" class="nav__link">Docs</a>
+        <a href="about.html" class="nav__link">About</a>
+      </div>
+      <div class="nav__auth">
+        <a href="login.html" class="nav__signin">Sign in</a>
+        <a href="signup.html" class="nav__cta">Get Started</a>
+      </div>
+      <button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+    <div class="nav__mobile" id="mobileMenu">
+      <div class="nav__mobile-inner">
+        <a href="#features" class="nav__mobile-link">Features</a>
+        <a href="#stations" class="nav__mobile-link">Stations</a>
+        <a href="pricing.html" class="nav__mobile-link">Pricing</a>
+        <a href="docs.html" class="nav__mobile-link">Docs</a>
+        <a href="about.html" class="nav__mobile-link">About</a>
+        <a href="login.html" class="nav__mobile-link">Sign In</a>
+        <a href="signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero__orb hero__orb--1"></div>
+    <div class="hero__orb hero__orb--2"></div>
+    <div class="hero__orb hero__orb--3"></div>
+    <div class="hero__content">
+      <div class="hero__badge"><span class="hero__badge-dot"></span>Now in Public Beta</div>
+      <h1 class="hero__title">Delegation,<br><span class="hero__title-gradient">Not Surrender.</span></h1>
+      <p class="hero__subtitle">Six specialized AI stations working as one unified intelligence. ALIN doesn't just chat — it plans, executes, delivers, and learns.</p>
+      <div class="hero__actions">
+        <a href="signup.html" class="btn btn--primary btn--large">Start Building Free</a>
+        <a href="features.html" class="btn btn--secondary btn--large">Explore Features</a>
+      </div>
+      <div class="code-block" style="animation: fadeInUp 0.8s var(--ease-out) 0.5s both;">
+        <div class="code-block__header"><span class="code-block__dot code-block__dot--red"></span><span class="code-block__dot code-block__dot--yellow"></span><span class="code-block__dot code-block__dot--green"></span></div>
+        <div class="code-block__body">
+          <span class="cm">// Just tell ALIN what you want</span><br>
+          <span class="kw">await</span> alin.<span class="fn">execute</span>(<span class="str">"Build my portfolio site"</span>);<br><br>
+          <span class="cm">// ALIN plans → spawns pods → delivers files</span><br>
+          <span class="cm">// ✓ 7 phases · 5 pods · 23 min · receipt attached</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats">
+    <div class="container">
+      <div class="stats__grid">
+        <div class="stat animate-on-scroll"><div class="stat__value">6</div><div class="stat__label">Specialized Stations</div></div>
+        <div class="stat animate-on-scroll" style="transition-delay:0.08s"><div class="stat__value">60K+</div><div class="stat__label">Lines of Architecture</div></div>
+        <div class="stat animate-on-scroll" style="transition-delay:0.16s"><div class="stat__value">8</div><div class="stat__label">Memory Layers</div></div>
+        <div class="stat animate-on-scroll" style="transition-delay:0.24s"><div class="stat__value">∞</div><div class="stat__label">Bounded Autonomy</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section__header animate-on-scroll">
+        <span class="section__overline">Core Architecture</span>
+        <h2 class="section__title">Built Different, By Design</h2>
+        <p class="section__desc">Every system in ALIN exists for a reason. No feature bloat, no wrappers — purpose-built intelligence.</p>
+      </div>
+      <div class="features__grid">
+        <div class="feature-card animate-on-scroll"><div class="feature-card__icon">⚡</div><h3 class="feature-card__title">TBWO Orchestration</h3><p class="feature-card__desc">Time-Budgeted Work Orders break complex tasks into pods that execute autonomously with receipts, checkpoints, and bounded autonomy.</p></div>
+        <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🧠</div><h3 class="feature-card__title">8-Layer Memory</h3><p class="feature-card__desc">From immediate context to permanent self-model. ALIN remembers your preferences, learns from corrections, and gets better with every session.</p></div>
+        <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">🎯</div><h3 class="feature-card__title">Intent Detection</h3><p class="feature-card__desc">No modes to switch. Say what you want and ALIN decides: quick answer, tool call, or full sprint. One input, infinite capability.</p></div>
+        <div class="feature-card animate-on-scroll" style="transition-delay:0.04s"><div class="feature-card__icon">📋</div><h3 class="feature-card__title">Receipt System</h3><p class="feature-card__desc">Every decision logged. Every assumption documented. Every file has provenance. Trust through transparency, not blind faith.</p></div>
+        <div class="feature-card animate-on-scroll" style="transition-delay:0.1s"><div class="feature-card__icon">🔄</div><h3 class="feature-card__title">Self-Learning</h3><p class="feature-card__desc">ALIN tracks its own performance, learns from failures, and rewrites its operational knowledge. Session 10 is measurably better than session 1.</p></div>
+        <div class="feature-card animate-on-scroll" style="transition-delay:0.16s"><div class="feature-card__icon">💻</div><h3 class="feature-card__title">Hardware-Aware</h3><p class="feature-card__desc">Pods schedule around your actual hardware — GPU for rendering, CPU for code, network for research. Never pegs your system at 100%.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATIONS -->
+  <section class="section section--alt" id="stations">
+    <div class="container">
+      <div class="section__header animate-on-scroll">
+        <span class="section__overline">The Six Stations</span>
+        <h2 class="section__title">One Network, Six Powerhouses</h2>
+        <p class="section__desc">Each station is purpose-built for a specific workflow — together they form a comprehensive AI command center.</p>
+      </div>
+      <div class="stations__grid">
+        <div class="station-card animate-on-scroll"><div class="station-card__emoji">💬</div><h3 class="station-card__title">Chat</h3><p class="station-card__desc">Natural conversation with persistent context. Multi-model streaming with Claude and OpenAI side by side.</p></div>
+        <div class="station-card animate-on-scroll" style="transition-delay:0.06s"><div class="station-card__emoji">🖥️</div><h3 class="station-card__title">Code Lab</h3><p class="station-card__desc">Full development environment with execution sandbox, file operations, and AI-powered code generation.</p></div>
+        <div class="station-card animate-on-scroll" style="transition-delay:0.12s"><div class="station-card__emoji">📋</div><h3 class="station-card__title">TBWO Command</h3><p class="station-card__desc">Orchestrate complex workflows with time-budgeted work orders. Pod-based execution with real-time monitoring.</p></div>
+        <div class="station-card animate-on-scroll" style="transition-delay:0.04s"><div class="station-card__emoji">🔬</div><h3 class="station-card__title">Research</h3><p class="station-card__desc">Deep web research with synthesis and citation. Turn queries into structured, sourced intelligence reports.</p></div>
+        <div class="station-card animate-on-scroll" style="transition-delay:0.1s"><div class="station-card__emoji">🎨</div><h3 class="station-card__title">Image Studio</h3><p class="station-card__desc">Create and iterate on visuals with DALL-E 3, style direction, and creative asset management.</p></div>
+        <div class="station-card animate-on-scroll" style="transition-delay:0.16s"><div class="station-card__emoji">🎙️</div><h3 class="station-card__title">Voice Room</h3><p class="station-card__desc">Hands-free interaction via Whisper STT and ElevenLabs TTS. Emotion-aware voice with adaptive modulation.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" id="how-it-works">
+    <div class="container">
+      <div class="section__header animate-on-scroll">
+        <span class="section__overline">How It Works</span>
+        <h2 class="section__title">Just Tell ALIN What You Want</h2>
+        <p class="section__desc">No template picking. No mode switching. Describe the outcome and ALIN handles the rest.</p>
+      </div>
+      <div class="steps">
+        <div class="step animate-on-scroll"><div class="step__number">1</div><h3 class="step__title">Describe Your Goal</h3><p class="step__desc">Type naturally in chat. ALIN detects whether you need a quick answer or a full autonomous sprint.</p></div>
+        <div class="step animate-on-scroll" style="transition-delay:0.1s"><div class="step__number">2</div><h3 class="step__title">ALIN Plans & Confirms</h3><p class="step__desc">A professional execution plan appears in seconds. Review it, approve it, or let auto-accept handle everything.</p></div>
+        <div class="step animate-on-scroll" style="transition-delay:0.2s"><div class="step__number">3</div><h3 class="step__title">Pods Execute & Deliver</h3><p class="step__desc">Specialized pods work in parallel. Files appear in chat. Receipts document every decision. You stay in control.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="section section--alt">
+    <div class="container">
+      <div class="section__header animate-on-scroll">
+        <span class="section__overline">Early Adopters</span>
+        <h2 class="section__title">Trusted by Builders</h2>
+        <p class="section__desc">Developers and creators are already transforming their workflows with ALIN's unified intelligence.</p>
+      </div>
+      <div class="testimonials__grid">
+        <div class="testimonial animate-on-scroll"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"The receipt system changed everything. I can actually see why ALIN made each decision. It's trust through transparency, not a black box."</p><div class="testimonial__author"><div class="testimonial__avatar">MR</div><div><div class="testimonial__name">Marcus Rivera</div><div class="testimonial__role">Full-Stack Developer</div></div></div></div>
+        <div class="testimonial animate-on-scroll" style="transition-delay:0.08s"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"TBWO is what AI agents should have been from the start. Bounded autonomy with real accountability. I set up a sprint and ALIN just delivers."</p><div class="testimonial__author"><div class="testimonial__avatar">SK</div><div><div class="testimonial__name">Sarah Kim</div><div class="testimonial__role">Product Manager</div></div></div></div>
+        <div class="testimonial animate-on-scroll" style="transition-delay:0.16s"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"The 8-layer memory is unreal. By session 5, ALIN knew my preferences better than most human collaborators. It genuinely gets smarter."</p><div class="testimonial__author"><div class="testimonial__avatar">JT</div><div><div class="testimonial__name">James Tanaka</div><div class="testimonial__role">AI Researcher</div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOWNLOAD -->
+  <section class="section" id="download">
+    <div class="container">
+      <div class="section__header animate-on-scroll">
+        <span class="section__overline">Download</span>
+        <h2 class="section__title">Get the Desktop App</h2>
+        <p class="section__desc">Full power: file system access, code execution, hardware monitoring, Blender integration, and offline mode. Everything the web app does, plus everything it can't.</p>
+      </div>
+      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;" class="animate-on-scroll">
+        <a href="/download?platform=windows" class="btn btn--primary btn--large" style="min-width:200px;">⊞ Download for Windows</a>
+        <a href="/download?platform=mac" class="btn btn--secondary btn--large" style="min-width:200px;"> Download for Mac</a>
+        <a href="/download?platform=linux" class="btn btn--secondary btn--large" style="min-width:200px;">⊕ Download for Linux</a>
+      </div>
+      <p style="text-align:center;margin-top:1.5rem;font-size:0.8125rem;color:var(--color-text-muted);" class="animate-on-scroll">v1.1 · ~85MB · Requires 64-bit OS · <a href="changelog.html" style="color:var(--color-primary-400);">Release notes</a></p>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container">
+      <div class="cta__content animate-on-scroll">
+        <h2 class="cta__title">Ready to Orchestrate<br>Your AI Workflow?</h2>
+        <p class="cta__desc">Join the beta and experience bounded autonomy. Six stations. One intelligence. Receipts for everything.</p>
+        <div class="cta__actions">
+          <a href="signup.html" class="btn btn--primary btn--large">Get Started Free</a>
+          <a href="docs.html" class="btn btn--secondary btn--large">View Documentation</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__grid">
+        <div>
+          <div class="footer__brand-name">ALIN</div>
+          <p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p>
+          <div class="footer__social">
+            <a href="#" class="footer__social-link" aria-label="GitHub">GH</a>
+            <a href="#" class="footer__social-link" aria-label="Twitter">X</a>
+            <a href="#" class="footer__social-link" aria-label="Discord">DC</a>
+          </div>
+        </div>
+        <div>
+          <h4 class="footer__col-title">Product</h4>
+          <a href="features.html" class="footer__link">Features</a>
+          <a href="stations.html" class="footer__link">Stations</a>
+          <a href="pricing.html" class="footer__link">Pricing</a>
+          <a href="changelog.html" class="footer__link">Changelog</a>
+        </div>
+        <div>
+          <h4 class="footer__col-title">Resources</h4>
+          <a href="docs.html" class="footer__link">Documentation</a>
+          <a href="api.html" class="footer__link">API Reference</a>
+          <a href="guides.html" class="footer__link">Guides</a>
+          <a href="blog.html" class="footer__link">Blog</a>
+        </div>
+        <div>
+          <h4 class="footer__col-title">Company</h4>
+          <a href="about.html" class="footer__link">About</a>
+          <a href="careers.html" class="footer__link">Careers</a>
+          <a href="contact.html" class="footer__link">Contact</a>
+          <a href="support.html" class="footer__link">Support</a>
+        </div>
+      </div>
+      <div class="footer__bottom">
+        <span>&copy; 2026 ALIN. All rights reserved.</span>
+        <div class="footer__bottom-links">
+          <a href="privacy.html" class="footer__bottom-link">Privacy</a>
+          <a href="terms.html" class="footer__bottom-link">Terms</a>
+          <a href="cookies.html" class="footer__bottom-link">Cookies</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 16));
+    const toggle = document.getElementById('navToggle'), mobileMenu = document.getElementById('mobileMenu');
+    toggle.addEventListener('click', () => { toggle.classList.toggle('active'); mobileMenu.classList.toggle('open'); });
+    mobileMenu.querySelectorAll('.nav__mobile-link').forEach(l => l.addEventListener('click', () => { toggle.classList.remove('active'); mobileMenu.classList.remove('open'); }));
+    const obs = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }), { threshold: 0.08, rootMargin: '0px 0px -32px 0px' });
+    document.querySelectorAll('.animate-on-scroll').forEach(el => obs.observe(el));
+    document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => { const t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }));
+  </script>
+</body>
+</html>

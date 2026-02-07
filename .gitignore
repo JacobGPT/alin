@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dev-dist/
+output/
+.env
+.env.local
+alin.db
+alin.db-wal
+alin.db-shm
+UsersjacobDownloadsALINalin.db
+.claude/
+nul
+tsconfig.tsbuildinfo
