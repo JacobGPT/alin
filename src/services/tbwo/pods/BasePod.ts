@@ -460,7 +460,7 @@ export abstract class BasePod {
     name: string,
     input: Record<string, unknown>
   ): Promise<string> {
-    const BASE_URL = 'http://localhost:3002';
+    const BASE_URL = '';
 
     try {
       let url: string;

@@ -58,7 +58,7 @@ export interface BraveSearchResponse {
 export class BraveSearchClient {
   private config: Required<Omit<BraveSearchConfig, 'proxyUrl'>> & { proxyUrl?: string };
   private baseUrl = 'https://api.search.brave.com/res/v1';
-  private proxyUrl = 'http://localhost:3002/api/search/brave'; // Default proxy
+  private proxyUrl = '/api/search/brave'; // Default proxy
 
   constructor(config: BraveSearchConfig) {
     this.config = {

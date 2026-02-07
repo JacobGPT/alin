@@ -17,7 +17,7 @@
  *
  * Design principles:
  * - All Zustand store reads use useTBWOStore.getState() fresh each time (never cached)
- * - Tool execution makes fetch() calls to the backend at http://localhost:3002
+ * - Tool execution makes fetch() calls to the backend via relative URLs
  * - Error handling: individual task failures do not kill the phase unless ALL tasks fail
  * - Contract validation happens before each tool call
  */
@@ -56,7 +56,7 @@ import { usePodPoolStore, getPooledPodContext } from '../../store/podPoolStore';
 // CONSTANTS
 // ============================================================================
 
-const BACKEND_URL = 'http://localhost:3002';
+const BACKEND_URL = '';
 const MAX_TOOL_ITERATIONS = 10;
 const TIME_TRACKING_INTERVAL_MS = 10_000;
 

@@ -16,7 +16,7 @@
 
 import * as db from '../api/dbService';
 
-const API = 'http://localhost:3002';
+const API = '';
 
 // ============================================================================
 // TYPES

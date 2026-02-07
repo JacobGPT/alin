@@ -29,7 +29,7 @@ export function FileBrowserPanel() {
 
   const loadRootDirectory = async () => {
     try {
-      const response = await fetch('http://localhost:3002/api/files/list', {
+      const response = await fetch('/api/files/list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: '.' }),

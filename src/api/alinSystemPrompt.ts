@@ -1637,7 +1637,7 @@ async function executeCode(input: Record<string, unknown>): Promise<ToolExecutio
   console.log(`[ALIN] Executing ${language} code via backend...`);
 
   try {
-    const response = await fetch('http://localhost:3002/api/code/execute', {
+    const response = await fetch('/api/code/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ language, code, timeout }),
@@ -1704,7 +1704,7 @@ async function executeFileRead(input: Record<string, unknown>): Promise<ToolExec
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/files/read', {
+    const response = await fetch('/api/files/read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: filePath }),
@@ -1767,7 +1767,7 @@ async function executeFileWrite(input: Record<string, unknown>): Promise<ToolExe
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/files/write', {
+    const response = await fetch('/api/files/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: filePath, content }),
@@ -1827,7 +1827,7 @@ async function executeFileList(input: Record<string, unknown>): Promise<ToolExec
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/files/list', {
+    const response = await fetch('/api/files/list', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: dirPath }),
@@ -1962,7 +1962,7 @@ async function executeComputerUse(input: Record<string, unknown>): Promise<ToolE
   const action = input['action'] as string;
 
   try {
-    const response = await fetch('http://localhost:3002/api/computer/action', {
+    const response = await fetch('/api/computer/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2006,7 +2006,7 @@ async function executeTextEditor(input: Record<string, unknown>): Promise<ToolEx
   const path = input['path'] as string;
 
   try {
-    const response = await fetch('http://localhost:3002/api/editor/execute', {
+    const response = await fetch('/api/editor/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2128,7 +2128,7 @@ async function executeScanDirectory(input: Record<string, unknown>): Promise<Too
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/files/scan', {
+    const response = await fetch('/api/files/scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2202,7 +2202,7 @@ async function executeCodeSearch(input: Record<string, unknown>): Promise<ToolEx
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/files/search', {
+    const response = await fetch('/api/files/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2263,7 +2263,7 @@ async function executeRunCommand(input: Record<string, unknown>): Promise<ToolEx
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/command/execute', {
+    const response = await fetch('/api/command/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2312,7 +2312,7 @@ async function executeGit(input: Record<string, unknown>): Promise<ToolExecution
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/git/execute', {
+    const response = await fetch('/api/git/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -2372,7 +2372,7 @@ async function executeEditFile(input: Record<string, unknown>): Promise<ToolExec
   }
 
   try {
-    const response = await fetch('http://localhost:3002/api/editor/execute', {
+    const response = await fetch('/api/editor/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2411,7 +2411,7 @@ async function executeGpuCompute(input: Record<string, unknown>): Promise<ToolEx
   if (!script) return { success: false, error: 'Script is required for gpu_compute.' };
 
   try {
-    const response = await fetch('http://localhost:3002/api/hardware/gpu-compute', {
+    const response = await fetch('/api/hardware/gpu-compute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2430,7 +2430,7 @@ async function executeGpuCompute(input: Record<string, unknown>): Promise<ToolEx
 
 async function executeWebcamCapture(input: Record<string, unknown>): Promise<ToolExecutionResult> {
   try {
-    const response = await fetch('http://localhost:3002/api/hardware/webcam', {
+    const response = await fetch('/api/hardware/webcam', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device: input.device || 0 }),
@@ -2448,7 +2448,7 @@ async function executeBlenderScript(input: Record<string, unknown>): Promise<Too
   if (!script) return { success: false, error: 'Script is required for blender_execute.' };
 
   try {
-    const response = await fetch('http://localhost:3002/api/blender/execute', {
+    const response = await fetch('/api/blender/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2508,7 +2508,7 @@ async function executeBlenderRender(input: Record<string, unknown>): Promise<Too
   if (!outputPath) return { success: false, error: 'outputPath is required.' };
 
   try {
-    const response = await fetch('http://localhost:3002/api/blender/render', {
+    const response = await fetch('/api/blender/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

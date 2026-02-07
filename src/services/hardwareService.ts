@@ -40,7 +40,7 @@ class HardwareService {
   private backendUrl: string;
 
   constructor() {
-    this.backendUrl = import.meta.env['VITE_BACKEND_URL'] || 'http://localhost:3002';
+    this.backendUrl = import.meta.env['VITE_BACKEND_URL'] || '';
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { Artifact } from '../../types/tbwo';
 
-const BACKEND_URL = 'http://localhost:3002';
+const BACKEND_URL = '';
 
 interface FileGenerationResult {
   success: boolean;
