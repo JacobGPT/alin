@@ -237,9 +237,11 @@ function checkPlanLimits(req, res, next) {
 // SQLITE DATABASE INITIALIZATION
 // ============================================================================
 
-const DB_DIR = process.env.DB_DIR || __dirname;
-const DB_PATH = path.join(DB_DIR, 'alin.db');
-const db = new Database(DB_PATH);
+const DB_DIR = process.env.DB_DIR || '/data';
+// Ensure DB directory exists (Railway volumes may need this)
+try { fsSync.mkdirSync(DB_DIR, { recursive: true }); } catch {}
+const dbPath = process.env.DATABASE_PATH || '/data/alin.db';
+const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -480,72 +482,90 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_memlayer_salience ON memory_layers(salience DESC);
 `);
 
-// Add user_id columns to existing tables (safe — SQLite ignores if already exists)
-const userIdTables = ['conversations', 'messages', 'tbwo_orders', 'artifacts', 'memory_entries', 'audit_entries', 'images'];
+// Add user_id columns to ALL user-scoped tables (safe — SQLite ignores if already exists)
+const userIdTables = ['conversations', 'messages', 'tbwo_orders', 'artifacts', 'memory_entries', 'audit_entries', 'images', 'tbwo_receipts', 'execution_outcomes', 'user_corrections', 'decision_log', 'thinking_traces', 'memory_layers'];
 for (const table of userIdTables) {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`); } catch { /* column already exists */ }
 }
 
+// Per-user settings table (composite PK so each user has their own settings)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_settings (
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    updated_at INTEGER,
+    PRIMARY KEY (user_id, key)
+  );
+`);
+
 console.log('[DB] SQLite database initialized at', DB_PATH);
 
-// Prepared statements for performance
+// Prepared statements for performance — ALL user-scoped queries filter by user_id
 const stmts = {
-  insertConversation: db.prepare(`INSERT INTO conversations (id,title,mode,model,provider,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`),
-  getConversation: db.prepare('SELECT * FROM conversations WHERE id = ?'),
-  listConversations: db.prepare(`SELECT id,title,mode,model,provider,is_favorite,is_archived,is_pinned,created_at,updated_at,(SELECT COUNT(*) FROM messages WHERE conversation_id=c.id) as message_count,(SELECT content FROM messages WHERE conversation_id=c.id ORDER BY timestamp DESC LIMIT 1) as last_message FROM conversations c WHERE is_archived=? ORDER BY updated_at DESC LIMIT ? OFFSET ?`),
-  updateConversation: db.prepare(`UPDATE conversations SET title=?,mode=?,model=?,provider=?,is_favorite=?,is_archived=?,is_pinned=?,metadata=?,updated_at=? WHERE id=?`),
-  deleteConversation: db.prepare('DELETE FROM conversations WHERE id = ?'),
-  searchConversations: db.prepare(`SELECT DISTINCT c.id,c.title,c.updated_at,c.mode FROM conversations c JOIN messages m ON m.conversation_id=c.id WHERE m.content LIKE ? OR c.title LIKE ? ORDER BY c.updated_at DESC LIMIT ?`),
-  insertMessage: db.prepare(`INSERT INTO messages (id,conversation_id,role,content,tokens_input,tokens_output,cost,model,is_edited,parent_id,metadata,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
-  getMessages: db.prepare(`SELECT * FROM messages WHERE conversation_id=? ORDER BY timestamp ASC`),
-  updateMessage: db.prepare(`UPDATE messages SET content=?,is_edited=1,metadata=? WHERE id=?`),
-  deleteMessage: db.prepare('DELETE FROM messages WHERE id = ?'),
-  insertReceipt: db.prepare(`INSERT INTO tbwo_receipts (id,tbwo_id,receipt_type,data,created_at) VALUES (?,?,?,?,?)`),
-  getReceipts: db.prepare('SELECT * FROM tbwo_receipts WHERE tbwo_id=? ORDER BY created_at DESC'),
-  upsertSetting: db.prepare(`INSERT INTO settings (key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`),
-  getAllSettings: db.prepare('SELECT * FROM settings'),
+  // Conversations
+  insertConversation: db.prepare(`INSERT INTO conversations (id,title,mode,model,provider,metadata,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?)`),
+  getConversation: db.prepare('SELECT * FROM conversations WHERE id = ? AND user_id = ?'),
+  listConversations: db.prepare(`SELECT id,title,mode,model,provider,is_favorite,is_archived,is_pinned,created_at,updated_at,(SELECT COUNT(*) FROM messages WHERE conversation_id=c.id) as message_count,(SELECT content FROM messages WHERE conversation_id=c.id ORDER BY timestamp DESC LIMIT 1) as last_message FROM conversations c WHERE is_archived=? AND user_id=? ORDER BY updated_at DESC LIMIT ? OFFSET ?`),
+  updateConversation: db.prepare(`UPDATE conversations SET title=?,mode=?,model=?,provider=?,is_favorite=?,is_archived=?,is_pinned=?,metadata=?,updated_at=? WHERE id=? AND user_id=?`),
+  deleteConversation: db.prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?'),
+  searchConversations: db.prepare(`SELECT DISTINCT c.id,c.title,c.updated_at,c.mode FROM conversations c JOIN messages m ON m.conversation_id=c.id WHERE c.user_id=? AND (m.content LIKE ? OR c.title LIKE ?) ORDER BY c.updated_at DESC LIMIT ?`),
+
+  // Messages
+  insertMessage: db.prepare(`INSERT INTO messages (id,conversation_id,role,content,tokens_input,tokens_output,cost,model,is_edited,parent_id,metadata,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  getMessages: db.prepare(`SELECT * FROM messages WHERE conversation_id=? AND user_id=? ORDER BY timestamp ASC`),
+  updateMessage: db.prepare(`UPDATE messages SET content=?,is_edited=1,metadata=? WHERE id=? AND user_id=?`),
+  deleteMessage: db.prepare('DELETE FROM messages WHERE id = ? AND user_id = ?'),
+
+  // TBWO Receipts
+  insertReceipt: db.prepare(`INSERT INTO tbwo_receipts (id,tbwo_id,receipt_type,data,created_at,user_id) VALUES (?,?,?,?,?,?)`),
+  getReceipts: db.prepare('SELECT * FROM tbwo_receipts WHERE tbwo_id=? AND user_id=? ORDER BY created_at DESC'),
+
+  // Settings (per-user via user_settings table)
+  upsertSetting: db.prepare(`INSERT INTO user_settings (user_id,key,value,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`),
+  getAllSettings: db.prepare('SELECT * FROM user_settings WHERE user_id=?'),
 
   // TBWO Orders
-  insertTBWO: db.prepare(`INSERT INTO tbwo_orders (id,type,status,objective,time_budget_total,quality_target,scope,plan,pods,active_pods,artifacts,checkpoints,authority_level,progress,receipts,chat_conversation_id,started_at,completed_at,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
-  getTBWO: db.prepare('SELECT * FROM tbwo_orders WHERE id = ?'),
-  listTBWOs: db.prepare('SELECT * FROM tbwo_orders ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
-  updateTBWO: db.prepare(`UPDATE tbwo_orders SET type=?,status=?,objective=?,time_budget_total=?,quality_target=?,scope=?,plan=?,pods=?,active_pods=?,artifacts=?,checkpoints=?,authority_level=?,progress=?,receipts=?,chat_conversation_id=?,started_at=?,completed_at=?,metadata=?,updated_at=? WHERE id=?`),
-  deleteTBWO: db.prepare('DELETE FROM tbwo_orders WHERE id = ?'),
+  insertTBWO: db.prepare(`INSERT INTO tbwo_orders (id,type,status,objective,time_budget_total,quality_target,scope,plan,pods,active_pods,artifacts,checkpoints,authority_level,progress,receipts,chat_conversation_id,started_at,completed_at,metadata,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  getTBWO: db.prepare('SELECT * FROM tbwo_orders WHERE id = ? AND user_id = ?'),
+  listTBWOs: db.prepare('SELECT * FROM tbwo_orders WHERE user_id=? ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
+  updateTBWO: db.prepare(`UPDATE tbwo_orders SET type=?,status=?,objective=?,time_budget_total=?,quality_target=?,scope=?,plan=?,pods=?,active_pods=?,artifacts=?,checkpoints=?,authority_level=?,progress=?,receipts=?,chat_conversation_id=?,started_at=?,completed_at=?,metadata=?,updated_at=? WHERE id=? AND user_id=?`),
+  deleteTBWO: db.prepare('DELETE FROM tbwo_orders WHERE id = ? AND user_id = ?'),
 
   // Artifacts
-  insertArtifact: db.prepare(`INSERT INTO artifacts (id,title,type,language,content,editable,conversation_id,tbwo_id,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
-  getArtifact: db.prepare('SELECT * FROM artifacts WHERE id = ?'),
-  listArtifacts: db.prepare('SELECT * FROM artifacts ORDER BY updated_at DESC LIMIT ?'),
-  listArtifactsByConversation: db.prepare('SELECT * FROM artifacts WHERE conversation_id=? ORDER BY updated_at DESC LIMIT ?'),
-  listArtifactsByTBWO: db.prepare('SELECT * FROM artifacts WHERE tbwo_id=? ORDER BY updated_at DESC LIMIT ?'),
-  updateArtifact: db.prepare(`UPDATE artifacts SET title=?,type=?,language=?,content=?,editable=?,metadata=?,updated_at=? WHERE id=?`),
-  deleteArtifact: db.prepare('DELETE FROM artifacts WHERE id = ?'),
+  insertArtifact: db.prepare(`INSERT INTO artifacts (id,title,type,language,content,editable,conversation_id,tbwo_id,metadata,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+  getArtifact: db.prepare('SELECT * FROM artifacts WHERE id = ? AND user_id = ?'),
+  listArtifacts: db.prepare('SELECT * FROM artifacts WHERE user_id=? ORDER BY updated_at DESC LIMIT ?'),
+  listArtifactsByConversation: db.prepare('SELECT * FROM artifacts WHERE conversation_id=? AND user_id=? ORDER BY updated_at DESC LIMIT ?'),
+  listArtifactsByTBWO: db.prepare('SELECT * FROM artifacts WHERE tbwo_id=? AND user_id=? ORDER BY updated_at DESC LIMIT ?'),
+  updateArtifact: db.prepare(`UPDATE artifacts SET title=?,type=?,language=?,content=?,editable=?,metadata=?,updated_at=? WHERE id=? AND user_id=?`),
+  deleteArtifact: db.prepare('DELETE FROM artifacts WHERE id = ? AND user_id = ?'),
 
   // Memory Entries
-  insertMemory: db.prepare(`INSERT INTO memory_entries (id,layer,content,salience,decay_rate,access_count,is_consolidated,is_archived,is_pinned,user_modified,tags,related_memories,edit_history,metadata,last_accessed_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
-  getMemory: db.prepare('SELECT * FROM memory_entries WHERE id = ?'),
-  listMemories: db.prepare('SELECT * FROM memory_entries ORDER BY salience DESC'),
-  listMemoriesByLayer: db.prepare('SELECT * FROM memory_entries WHERE layer=? ORDER BY salience DESC'),
-  updateMemory: db.prepare(`UPDATE memory_entries SET layer=?,content=?,salience=?,decay_rate=?,access_count=?,is_consolidated=?,is_archived=?,is_pinned=?,user_modified=?,tags=?,related_memories=?,edit_history=?,metadata=?,last_accessed_at=?,updated_at=? WHERE id=?`),
-  deleteMemory: db.prepare('DELETE FROM memory_entries WHERE id = ?'),
+  insertMemory: db.prepare(`INSERT INTO memory_entries (id,layer,content,salience,decay_rate,access_count,is_consolidated,is_archived,is_pinned,user_modified,tags,related_memories,edit_history,metadata,last_accessed_at,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  getMemory: db.prepare('SELECT * FROM memory_entries WHERE id = ? AND user_id = ?'),
+  listMemories: db.prepare('SELECT * FROM memory_entries WHERE user_id=? ORDER BY salience DESC'),
+  listMemoriesByLayer: db.prepare('SELECT * FROM memory_entries WHERE layer=? AND user_id=? ORDER BY salience DESC'),
+  updateMemory: db.prepare(`UPDATE memory_entries SET layer=?,content=?,salience=?,decay_rate=?,access_count=?,is_consolidated=?,is_archived=?,is_pinned=?,user_modified=?,tags=?,related_memories=?,edit_history=?,metadata=?,last_accessed_at=?,updated_at=? WHERE id=? AND user_id=?`),
+  deleteMemory: db.prepare('DELETE FROM memory_entries WHERE id = ? AND user_id = ?'),
 
   // Audit Entries
-  insertAudit: db.prepare(`INSERT INTO audit_entries (id,conversation_id,message_id,model,tokens_prompt,tokens_completion,tokens_total,cost,tools_used,duration_ms,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
-  listAudit: db.prepare('SELECT * FROM audit_entries ORDER BY timestamp DESC LIMIT ?'),
-  listAuditSince: db.prepare('SELECT * FROM audit_entries WHERE timestamp>=? ORDER BY timestamp DESC'),
-  pruneAudit: db.prepare('DELETE FROM audit_entries WHERE timestamp < ?'),
+  insertAudit: db.prepare(`INSERT INTO audit_entries (id,conversation_id,message_id,model,tokens_prompt,tokens_completion,tokens_total,cost,tools_used,duration_ms,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+  listAudit: db.prepare('SELECT * FROM audit_entries WHERE user_id=? ORDER BY timestamp DESC LIMIT ?'),
+  listAuditSince: db.prepare('SELECT * FROM audit_entries WHERE user_id=? AND timestamp>=? ORDER BY timestamp DESC'),
+  pruneAudit: db.prepare('DELETE FROM audit_entries WHERE user_id=? AND timestamp < ?'),
 
   // Images
-  insertImage: db.prepare(`INSERT INTO images (id,url,prompt,revised_prompt,model,size,quality,style,conversation_id,message_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
-  listImages: db.prepare('SELECT * FROM images ORDER BY created_at DESC LIMIT ?'),
-  deleteImage: db.prepare('DELETE FROM images WHERE id = ?'),
+  insertImage: db.prepare(`INSERT INTO images (id,url,prompt,revised_prompt,model,size,quality,style,conversation_id,message_id,created_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+  listImages: db.prepare('SELECT * FROM images WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+  deleteImage: db.prepare('DELETE FROM images WHERE id = ? AND user_id = ?'),
 
   // Self-Model: Execution Outcomes
-  insertOutcome: db.prepare(`INSERT INTO execution_outcomes (id,tbwo_id,objective,type,time_budget,plan_confidence,phases_completed,phases_failed,artifacts_count,user_edits_after,quality_score,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
-  listOutcomes: db.prepare('SELECT * FROM execution_outcomes ORDER BY timestamp DESC LIMIT ?'),
-  listOutcomesByType: db.prepare('SELECT * FROM execution_outcomes WHERE type=? ORDER BY timestamp DESC LIMIT ?'),
+  insertOutcome: db.prepare(`INSERT INTO execution_outcomes (id,tbwo_id,objective,type,time_budget,plan_confidence,phases_completed,phases_failed,artifacts_count,user_edits_after,quality_score,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  listOutcomes: db.prepare('SELECT * FROM execution_outcomes WHERE user_id=? ORDER BY timestamp DESC LIMIT ?'),
+  listOutcomesByType: db.prepare('SELECT * FROM execution_outcomes WHERE user_id=? AND type=? ORDER BY timestamp DESC LIMIT ?'),
 
-  // Self-Model: Tool Reliability
+  // Self-Model: Tool Reliability (shared — measures backend tool behavior, not user data)
   getToolReliability: db.prepare('SELECT * FROM tool_reliability ORDER BY (success_count + failure_count) DESC'),
   upsertToolReliability: db.prepare(`INSERT INTO tool_reliability (tool_name, success_count, failure_count, avg_duration, common_errors, last_failure_reason)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -557,29 +577,29 @@ const stmts = {
       last_failure_reason = CASE WHEN excluded.last_failure_reason != '' THEN excluded.last_failure_reason ELSE tool_reliability.last_failure_reason END`),
 
   // Self-Model: User Corrections
-  insertCorrection: db.prepare(`INSERT INTO user_corrections (id, original_value, corrected_value, category, correction_count, last_corrected) VALUES (?,?,?,?,1,?)`),
-  findCorrection: db.prepare('SELECT * FROM user_corrections WHERE category=? AND corrected_value=? LIMIT 1'),
-  incrementCorrection: db.prepare('UPDATE user_corrections SET correction_count = correction_count + 1, last_corrected = ? WHERE id = ?'),
-  listCorrections: db.prepare('SELECT * FROM user_corrections WHERE correction_count >= ? ORDER BY correction_count DESC'),
+  insertCorrection: db.prepare(`INSERT INTO user_corrections (id, original_value, corrected_value, category, correction_count, last_corrected, user_id) VALUES (?,?,?,?,1,?,?)`),
+  findCorrection: db.prepare('SELECT * FROM user_corrections WHERE category=? AND corrected_value=? AND user_id=? LIMIT 1'),
+  incrementCorrection: db.prepare('UPDATE user_corrections SET correction_count = correction_count + 1, last_corrected = ? WHERE id = ? AND user_id = ?'),
+  listCorrections: db.prepare('SELECT * FROM user_corrections WHERE user_id=? AND correction_count >= ? ORDER BY correction_count DESC'),
 
   // Self-Model: Decision Log
-  insertDecision: db.prepare(`INSERT INTO decision_log (id,tbwo_id,decision_type,options_considered,chosen_option,reasoning,outcome,confidence,timestamp) VALUES (?,?,?,?,?,?,?,?,?)`),
-  listDecisions: db.prepare('SELECT * FROM decision_log ORDER BY timestamp DESC LIMIT ?'),
-  listDecisionsByTBWO: db.prepare('SELECT * FROM decision_log WHERE tbwo_id=? ORDER BY timestamp DESC LIMIT ?'),
+  insertDecision: db.prepare(`INSERT INTO decision_log (id,tbwo_id,decision_type,options_considered,chosen_option,reasoning,outcome,confidence,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+  listDecisions: db.prepare('SELECT * FROM decision_log WHERE user_id=? ORDER BY timestamp DESC LIMIT ?'),
+  listDecisionsByTBWO: db.prepare('SELECT * FROM decision_log WHERE user_id=? AND tbwo_id=? ORDER BY timestamp DESC LIMIT ?'),
 
   // Self-Model: Thinking Traces
-  insertThinkingTrace: db.prepare(`INSERT INTO thinking_traces (id,conversation_id,message_id,tbwo_id,thinking_content,timestamp) VALUES (?,?,?,?,?,?)`),
-  listThinkingByConv: db.prepare('SELECT * FROM thinking_traces WHERE conversation_id=? ORDER BY timestamp ASC'),
-  listThinkingByTBWO: db.prepare('SELECT * FROM thinking_traces WHERE tbwo_id=? ORDER BY timestamp ASC'),
-  searchThinking: db.prepare('SELECT * FROM thinking_traces WHERE thinking_content LIKE ? ORDER BY timestamp DESC LIMIT ?'),
+  insertThinkingTrace: db.prepare(`INSERT INTO thinking_traces (id,conversation_id,message_id,tbwo_id,thinking_content,timestamp,user_id) VALUES (?,?,?,?,?,?,?)`),
+  listThinkingByConv: db.prepare('SELECT * FROM thinking_traces WHERE conversation_id=? AND user_id=? ORDER BY timestamp ASC'),
+  listThinkingByTBWO: db.prepare('SELECT * FROM thinking_traces WHERE tbwo_id=? AND user_id=? ORDER BY timestamp ASC'),
+  searchThinking: db.prepare('SELECT * FROM thinking_traces WHERE user_id=? AND thinking_content LIKE ? ORDER BY timestamp DESC LIMIT ?'),
 
   // Self-Model: Layer Memory
-  insertLayerMemory: db.prepare(`INSERT INTO memory_layers (id,layer,content,category,salience,expires_at,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`),
-  listLayerMemories: db.prepare('SELECT * FROM memory_layers WHERE layer=? AND (expires_at IS NULL OR expires_at > ?) ORDER BY salience DESC LIMIT ?'),
-  pruneExpiredLayers: db.prepare('DELETE FROM memory_layers WHERE expires_at IS NOT NULL AND expires_at < ?'),
-  deleteLayerMemory: db.prepare('DELETE FROM memory_layers WHERE id = ?'),
+  insertLayerMemory: db.prepare(`INSERT INTO memory_layers (id,layer,content,category,salience,expires_at,metadata,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+  listLayerMemories: db.prepare('SELECT * FROM memory_layers WHERE layer=? AND user_id=? AND (expires_at IS NULL OR expires_at > ?) ORDER BY salience DESC LIMIT ?'),
+  pruneExpiredLayers: db.prepare('DELETE FROM memory_layers WHERE user_id=? AND expires_at IS NOT NULL AND expires_at < ?'),
+  deleteLayerMemory: db.prepare('DELETE FROM memory_layers WHERE id = ? AND user_id = ?'),
 
-  // Users
+  // Users (no user_id filtering — these ARE the user table)
   insertUser: db.prepare(`INSERT INTO users (id,email,password_hash,display_name,plan,is_admin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
   getUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
@@ -875,12 +895,13 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
 // CONVERSATION ENDPOINTS
 // ============================================================================
 
-app.get('/api/conversations', (req, res) => {
+app.get('/api/conversations', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const archived = parseInt(req.query.archived) || 0;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
-    const conversations = stmts.listConversations.all(archived, limit, offset).map(c => {
+    const conversations = stmts.listConversations.all(archived, userId, limit, offset).map(c => {
       let preview = '';
       try { const content = JSON.parse(c.last_message || '[]'); preview = content.find(b => b.type === 'text')?.text?.slice(0, 100) || ''; } catch {}
       return { id: c.id, title: c.title, mode: c.mode, model: c.model, provider: c.provider, isFavorite: !!c.is_favorite, isArchived: !!c.is_archived, isPinned: !!c.is_pinned, messageCount: c.message_count, preview, createdAt: c.created_at, updatedAt: c.updated_at };
@@ -889,51 +910,55 @@ app.get('/api/conversations', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/conversations', (req, res) => {
+app.post('/api/conversations', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { id: clientId, title, mode, model, provider } = req.body;
     const id = clientId || randomUUID();
     const now = Date.now();
-    stmts.insertConversation.run(id, title || 'New Chat', mode || 'regular', model || 'claude-sonnet-4-20250514', provider || 'anthropic', '{}', now, now);
-    console.log(`[DB] Created conversation: ${id}`);
+    stmts.insertConversation.run(id, title || 'New Chat', mode || 'regular', model || 'claude-sonnet-4-20250514', provider || 'anthropic', '{}', now, now, userId);
+    console.log(`[DB] Created conversation: ${id} for user: ${userId}`);
     res.json({ success: true, id, createdAt: now });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/conversations/:id', (req, res) => {
+app.get('/api/conversations/:id', requireAuth, (req, res) => {
   try {
-    const conversation = stmts.getConversation.get(req.params.id);
+    const userId = req.user.id;
+    const conversation = stmts.getConversation.get(req.params.id, userId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-    const messages = stmts.getMessages.all(req.params.id).map(m => ({ ...m, content: JSON.parse(m.content), metadata: JSON.parse(m.metadata || '{}'), isEdited: !!m.is_edited }));
+    const messages = stmts.getMessages.all(req.params.id, userId).map(m => ({ ...m, content: JSON.parse(m.content), metadata: JSON.parse(m.metadata || '{}'), isEdited: !!m.is_edited }));
     res.json({ success: true, conversation: { ...conversation, metadata: JSON.parse(conversation.metadata || '{}'), isFavorite: !!conversation.is_favorite, isArchived: !!conversation.is_archived, isPinned: !!conversation.is_pinned }, messages });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/conversations/:id', (req, res) => {
+app.patch('/api/conversations/:id', requireAuth, (req, res) => {
   try {
-    const e = stmts.getConversation.get(req.params.id);
+    const userId = req.user.id;
+    const e = stmts.getConversation.get(req.params.id, userId);
     if (!e) return res.status(404).json({ error: 'Not found' });
     stmts.updateConversation.run(
       req.body.title ?? e.title, req.body.mode ?? e.mode, req.body.model ?? e.model, req.body.provider ?? e.provider,
       req.body.isFavorite !== undefined ? (req.body.isFavorite ? 1 : 0) : e.is_favorite,
       req.body.isArchived !== undefined ? (req.body.isArchived ? 1 : 0) : e.is_archived,
       req.body.isPinned !== undefined ? (req.body.isPinned ? 1 : 0) : e.is_pinned,
-      req.body.metadata ? JSON.stringify(req.body.metadata) : e.metadata, Date.now(), req.params.id
+      req.body.metadata ? JSON.stringify(req.body.metadata) : e.metadata, Date.now(), req.params.id, userId
     );
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/conversations/:id', (req, res) => {
-  try { stmts.deleteConversation.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/conversations/:id', requireAuth, (req, res) => {
+  try { stmts.deleteConversation.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/conversations/search', (req, res) => {
+app.get('/api/conversations/search', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { q, limit } = req.query;
     if (!q) return res.status(400).json({ error: 'Query required' });
-    const results = stmts.searchConversations.all(`%${q}%`, `%${q}%`, parseInt(limit) || 20);
+    const results = stmts.searchConversations.all(userId, `%${q}%`, `%${q}%`, parseInt(limit) || 20);
     res.json({ success: true, results });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -942,24 +967,25 @@ app.get('/api/conversations/search', (req, res) => {
 // MESSAGE ENDPOINTS
 // ============================================================================
 
-app.post('/api/conversations/:id/messages', (req, res) => {
+app.post('/api/conversations/:id/messages', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { id: clientId, role, content, model, tokensInput, tokensOutput, cost, parentId, metadata } = req.body;
     const id = clientId || randomUUID();
     const now = Date.now();
-    stmts.insertMessage.run(id, req.params.id, role, JSON.stringify(content), tokensInput || 0, tokensOutput || 0, cost || 0, model || null, 0, parentId || null, JSON.stringify(metadata || {}), now);
-    db.prepare('UPDATE conversations SET updated_at=? WHERE id=?').run(now, req.params.id);
+    stmts.insertMessage.run(id, req.params.id, role, JSON.stringify(content), tokensInput || 0, tokensOutput || 0, cost || 0, model || null, 0, parentId || null, JSON.stringify(metadata || {}), now, userId);
+    db.prepare('UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?').run(now, req.params.id, userId);
     res.json({ success: true, id, timestamp: now });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/messages/:id', (req, res) => {
-  try { stmts.updateMessage.run(JSON.stringify(req.body.content), JSON.stringify(req.body.metadata || {}), req.params.id); res.json({ success: true }); }
+app.patch('/api/messages/:id', requireAuth, (req, res) => {
+  try { stmts.updateMessage.run(JSON.stringify(req.body.content), JSON.stringify(req.body.metadata || {}), req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/messages/:id', (req, res) => {
-  try { stmts.deleteMessage.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/messages/:id', requireAuth, (req, res) => {
+  try { stmts.deleteMessage.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1219,19 +1245,20 @@ app.post('/api/chat/continue', requireAuth, checkPlanLimits, async (req, res) =>
 // TBWO RECEIPT ENDPOINTS
 // ============================================================================
 
-app.post('/api/tbwo/:tbwoId/receipts', (req, res) => {
+app.post('/api/tbwo/:tbwoId/receipts', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { type, data } = req.body;
     const id = randomUUID();
-    stmts.insertReceipt.run(id, req.params.tbwoId, type || 'full', JSON.stringify(data), Date.now());
+    stmts.insertReceipt.run(id, req.params.tbwoId, type || 'full', JSON.stringify(data), Date.now(), userId);
     console.log(`[DB] Saved receipt for TBWO: ${req.params.tbwoId}`);
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/tbwo/:tbwoId/receipts', (req, res) => {
+app.get('/api/tbwo/:tbwoId/receipts', requireAuth, (req, res) => {
   try {
-    const receipts = stmts.getReceipts.all(req.params.tbwoId).map(r => ({ ...r, data: JSON.parse(r.data) }));
+    const receipts = stmts.getReceipts.all(req.params.tbwoId, req.user.id).map(r => ({ ...r, data: JSON.parse(r.data) }));
     res.json({ success: true, receipts });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1240,16 +1267,17 @@ app.get('/api/tbwo/:tbwoId/receipts', (req, res) => {
 // SETTINGS ENDPOINTS
 // ============================================================================
 
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const settings = {};
-    stmts.getAllSettings.all().forEach(s => { try { settings[s.key] = JSON.parse(s.value); } catch { settings[s.key] = s.value; } });
+    stmts.getAllSettings.all(userId).forEach(s => { try { settings[s.key] = JSON.parse(s.value); } catch { settings[s.key] = s.value; } });
     res.json({ success: true, settings });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/settings/:key', (req, res) => {
-  try { stmts.upsertSetting.run(req.params.key, JSON.stringify(req.body.value), Date.now()); res.json({ success: true }); }
+app.put('/api/settings/:key', requireAuth, (req, res) => {
+  try { stmts.upsertSetting.run(req.user.id, req.params.key, JSON.stringify(req.body.value), Date.now()); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1257,11 +1285,12 @@ app.put('/api/settings/:key', (req, res) => {
 // TBWO ORDER ENDPOINTS
 // ============================================================================
 
-app.get('/api/tbwo', (req, res) => {
+app.get('/api/tbwo', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
-    const rows = stmts.listTBWOs.all(limit, offset);
+    const rows = stmts.listTBWOs.all(userId, limit, offset);
     const tbwos = rows.map(r => {
       const t = { ...r };
       try { t.quality_target = JSON.parse(t.quality_target || '{}'); } catch { t.quality_target = {}; }
@@ -1290,8 +1319,9 @@ app.get('/api/tbwo', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/tbwo', (req, res) => {
+app.post('/api/tbwo', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = b.id || randomUUID();
     const now = Date.now();
@@ -1304,15 +1334,15 @@ app.post('/api/tbwo', (req, res) => {
       JSON.stringify(b.checkpoints || []), b.authorityLevel || 'guided',
       b.progress || 0, JSON.stringify(b.receipts || null),
       b.chatConversationId || null, b.startedAt || null, b.completedAt || null,
-      JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now
+      JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/tbwo/:id', (req, res) => {
+app.get('/api/tbwo/:id', requireAuth, (req, res) => {
   try {
-    const row = stmts.getTBWO.get(req.params.id);
+    const row = stmts.getTBWO.get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: 'TBWO not found' });
     const t = { ...row };
     try { t.quality_target = JSON.parse(t.quality_target || '{}'); } catch { t.quality_target = {}; }
@@ -1341,9 +1371,10 @@ app.get('/api/tbwo/:id', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/tbwo/:id', (req, res) => {
+app.patch('/api/tbwo/:id', requireAuth, (req, res) => {
   try {
-    const e = stmts.getTBWO.get(req.params.id);
+    const userId = req.user.id;
+    const e = stmts.getTBWO.get(req.params.id, userId);
     if (!e) return res.status(404).json({ error: 'Not found' });
     const b = req.body;
     const now = Date.now();
@@ -1363,14 +1394,14 @@ app.patch('/api/tbwo/:id', (req, res) => {
       b.chatConversationId ?? e.chat_conversation_id,
       b.startedAt ?? e.started_at, b.completedAt ?? e.completed_at,
       b.metadata ? JSON.stringify(b.metadata) : e.metadata,
-      now, req.params.id
+      now, req.params.id, userId
     );
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/tbwo/:id', (req, res) => {
-  try { stmts.deleteTBWO.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/tbwo/:id', requireAuth, (req, res) => {
+  try { stmts.deleteTBWO.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1378,16 +1409,17 @@ app.delete('/api/tbwo/:id', (req, res) => {
 // ARTIFACT ENDPOINTS
 // ============================================================================
 
-app.get('/api/artifacts', (req, res) => {
+app.get('/api/artifacts', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     let rows;
     if (req.query.conversationId) {
-      rows = stmts.listArtifactsByConversation.all(req.query.conversationId, limit);
+      rows = stmts.listArtifactsByConversation.all(req.query.conversationId, userId, limit);
     } else if (req.query.tbwoId) {
-      rows = stmts.listArtifactsByTBWO.all(req.query.tbwoId, limit);
+      rows = stmts.listArtifactsByTBWO.all(req.query.tbwoId, userId, limit);
     } else {
-      rows = stmts.listArtifacts.all(limit);
+      rows = stmts.listArtifacts.all(userId, limit);
     }
     const artifacts = rows.map(r => ({
       ...r,
@@ -1398,8 +1430,9 @@ app.get('/api/artifacts', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/artifacts', (req, res) => {
+app.post('/api/artifacts', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = b.id || randomUUID();
     const now = Date.now();
@@ -1407,15 +1440,16 @@ app.post('/api/artifacts', (req, res) => {
       id, b.title || 'Untitled', b.type || 'code', b.language || null,
       b.content || '', b.editable !== false ? 1 : 0,
       b.conversationId || null, b.tbwoId || null,
-      JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now
+      JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/artifacts/:id', (req, res) => {
+app.patch('/api/artifacts/:id', requireAuth, (req, res) => {
   try {
-    const e = stmts.getArtifact.get(req.params.id);
+    const userId = req.user.id;
+    const e = stmts.getArtifact.get(req.params.id, userId);
     if (!e) return res.status(404).json({ error: 'Not found' });
     const b = req.body;
     const now = Date.now();
@@ -1424,14 +1458,14 @@ app.patch('/api/artifacts/:id', (req, res) => {
       b.content ?? e.content,
       b.editable !== undefined ? (b.editable ? 1 : 0) : e.editable,
       b.metadata ? JSON.stringify(b.metadata) : e.metadata,
-      now, req.params.id
+      now, req.params.id, userId
     );
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/artifacts/:id', (req, res) => {
-  try { stmts.deleteArtifact.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/artifacts/:id', requireAuth, (req, res) => {
+  try { stmts.deleteArtifact.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1439,13 +1473,14 @@ app.delete('/api/artifacts/:id', (req, res) => {
 // MEMORY ENDPOINTS
 // ============================================================================
 
-app.get('/api/memories', (req, res) => {
+app.get('/api/memories', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     let rows;
     if (req.query.layer) {
-      rows = stmts.listMemoriesByLayer.all(req.query.layer);
+      rows = stmts.listMemoriesByLayer.all(req.query.layer, userId);
     } else {
-      rows = stmts.listMemories.all();
+      rows = stmts.listMemories.all(userId);
     }
     const memories = rows.map(r => ({
       ...r,
@@ -1462,8 +1497,9 @@ app.get('/api/memories', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/memories', (req, res) => {
+app.post('/api/memories', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = b.id || randomUUID();
     const now = Date.now();
@@ -1474,15 +1510,16 @@ app.post('/api/memories', (req, res) => {
       b.isPinned ? 1 : 0, b.userModified ? 1 : 0,
       JSON.stringify(b.tags || []), JSON.stringify(b.relatedMemories || []),
       JSON.stringify(b.editHistory || []), JSON.stringify(b.metadata || {}),
-      b.lastAccessedAt || null, b.createdAt || now, b.updatedAt || now
+      b.lastAccessedAt || null, b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/memories/:id', (req, res) => {
+app.patch('/api/memories/:id', requireAuth, (req, res) => {
   try {
-    const e = stmts.getMemory.get(req.params.id);
+    const userId = req.user.id;
+    const e = stmts.getMemory.get(req.params.id, userId);
     if (!e) return res.status(404).json({ error: 'Not found' });
     const b = req.body;
     const now = Date.now();
@@ -1498,14 +1535,14 @@ app.patch('/api/memories/:id', (req, res) => {
       b.relatedMemories ? JSON.stringify(b.relatedMemories) : e.related_memories,
       b.editHistory ? JSON.stringify(b.editHistory) : e.edit_history,
       b.metadata ? JSON.stringify(b.metadata) : e.metadata,
-      b.lastAccessedAt ?? e.last_accessed_at, now, req.params.id
+      b.lastAccessedAt ?? e.last_accessed_at, now, req.params.id, userId
     );
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/memories/:id', (req, res) => {
-  try { stmts.deleteMemory.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/memories/:id', requireAuth, (req, res) => {
+  try { stmts.deleteMemory.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1513,13 +1550,14 @@ app.delete('/api/memories/:id', (req, res) => {
 // AUDIT ENDPOINTS
 // ============================================================================
 
-app.get('/api/audit', (req, res) => {
+app.get('/api/audit', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     let rows;
     if (req.query.since) {
-      rows = stmts.listAuditSince.all(parseInt(req.query.since));
+      rows = stmts.listAuditSince.all(userId, parseInt(req.query.since));
     } else {
-      rows = stmts.listAudit.all(parseInt(req.query.limit) || 1000);
+      rows = stmts.listAudit.all(userId, parseInt(req.query.limit) || 1000);
     }
     const entries = rows.map(r => ({
       ...r,
@@ -1529,8 +1567,9 @@ app.get('/api/audit', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/audit', (req, res) => {
+app.post('/api/audit', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = b.id || randomUUID();
     stmts.insertAudit.run(
@@ -1542,16 +1581,16 @@ app.post('/api/audit', (req, res) => {
       b.cost ?? 0,
       JSON.stringify(b.toolsUsed || []),
       b.durationMs ?? 0,
-      b.timestamp || Date.now()
+      b.timestamp || Date.now(), userId
     );
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/audit/prune', (req, res) => {
+app.delete('/api/audit/prune', requireAuth, (req, res) => {
   try {
     const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    const result = stmts.pruneAudit.run(ninetyDaysAgo);
+    const result = stmts.pruneAudit.run(req.user.id, ninetyDaysAgo);
     res.json({ success: true, deleted: result.changes });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -1560,16 +1599,17 @@ app.delete('/api/audit/prune', (req, res) => {
 // IMAGE METADATA ENDPOINTS
 // ============================================================================
 
-app.get('/api/images/list', (req, res) => {
+app.get('/api/images/list', requireAuth, (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
-    const images = stmts.listImages.all(limit);
+    const images = stmts.listImages.all(req.user.id, limit);
     res.json({ success: true, images });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/images/metadata', (req, res) => {
+app.post('/api/images/metadata', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = b.id || randomUUID();
     stmts.insertImage.run(
@@ -1577,14 +1617,14 @@ app.post('/api/images/metadata', (req, res) => {
       b.model || 'dall-e-3', b.size || '1024x1024',
       b.quality || 'standard', b.style || 'vivid',
       b.conversationId || null, b.messageId || null,
-      b.createdAt || Date.now()
+      b.createdAt || Date.now(), userId
     );
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/images/:id', (req, res) => {
-  try { stmts.deleteImage.run(req.params.id); res.json({ success: true }); }
+app.delete('/api/images/:id', requireAuth, (req, res) => {
+  try { stmts.deleteImage.run(req.params.id, req.user.id); res.json({ success: true }); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1615,7 +1655,7 @@ app.get('/api/health', (req, res) => {
  * POST /api/search/brave
  * Body: { query: string, count?: number, apiKey: string }
  */
-app.post('/api/search/brave', async (req, res) => {
+app.post('/api/search/brave', requireAuth, async (req, res) => {
   try {
     const { query, count = 5, apiKey } = req.body;
 
@@ -1666,7 +1706,7 @@ app.post('/api/search/brave', async (req, res) => {
  * DuckDuckGo Search Proxy (fallback)
  * GET /api/search/ddg?q=query
  */
-app.get('/api/search/ddg', async (req, res) => {
+app.get('/api/search/ddg', requireAuth, async (req, res) => {
   try {
     const { q } = req.query;
 
@@ -1725,7 +1765,7 @@ function isPathAllowed(filePath) {
  * POST /api/files/read
  * Body: { path: string }
  */
-app.post('/api/files/read', async (req, res) => {
+app.post('/api/files/read', requireAuth, async (req, res) => {
   try {
     const { path: filePath } = req.body;
 
@@ -1754,7 +1794,7 @@ app.post('/api/files/read', async (req, res) => {
  * POST /api/files/write
  * Body: { path: string, content: string }
  */
-app.post('/api/files/write', async (req, res) => {
+app.post('/api/files/write', requireAuth, async (req, res) => {
   try {
     const { path: filePath, content } = req.body;
 
@@ -1786,7 +1826,7 @@ app.post('/api/files/write', async (req, res) => {
  * POST /api/files/list
  * Body: { path: string }
  */
-app.post('/api/files/list', async (req, res) => {
+app.post('/api/files/list', requireAuth, async (req, res) => {
   try {
     const { path: dirPath } = req.body;
 
@@ -1863,7 +1903,7 @@ const GIT_BLOCKED_PATTERNS = ['push --force', 'push -f', 'reset --hard', 'clean 
  * Recursively scan a directory, returning tree structure + file contents
  * POST /api/files/scan
  */
-app.post('/api/files/scan', async (req, res) => {
+app.post('/api/files/scan', requireAuth, async (req, res) => {
   try {
     const {
       path: scanPath,
@@ -2005,7 +2045,7 @@ app.post('/api/files/scan', async (req, res) => {
  * Search for text/regex patterns across files in a directory
  * POST /api/files/search
  */
-app.post('/api/files/search', async (req, res) => {
+app.post('/api/files/search', requireAuth, async (req, res) => {
   try {
     const {
       query,
@@ -2137,7 +2177,7 @@ app.post('/api/files/search', async (req, res) => {
  * Execute shell commands (npm test, npm run build, etc.)
  * POST /api/command/execute
  */
-app.post('/api/command/execute', async (req, res) => {
+app.post('/api/command/execute', requireAuth, async (req, res) => {
   try {
     const {
       command,
@@ -2226,7 +2266,7 @@ app.post('/api/command/execute', async (req, res) => {
  * Execute git operations
  * POST /api/git/execute
  */
-app.post('/api/git/execute', async (req, res) => {
+app.post('/api/git/execute', requireAuth, async (req, res) => {
   try {
     const {
       operation,
@@ -2309,7 +2349,7 @@ import { tmpdir } from 'os';
  * POST /api/code/execute
  * Body: { language: string, code: string, timeout?: number }
  */
-app.post('/api/code/execute', async (req, res) => {
+app.post('/api/code/execute', requireAuth, async (req, res) => {
   try {
     const { language, code, timeout = 30000 } = req.body;
 
@@ -2433,7 +2473,7 @@ function executeWithTimeout(command, args, timeout) {
 // COMPUTER USE ENDPOINTS
 // ============================================================================
 
-app.post('/api/computer/action', async (req, res) => {
+app.post('/api/computer/action', requireAuth, async (req, res) => {
   try {
     const { action, coordinate, text } = req.body;
 
@@ -2499,7 +2539,7 @@ app.post('/api/computer/action', async (req, res) => {
 // Edit history for undo support (per-file, in-memory)
 const editHistory = new Map();
 
-app.post('/api/editor/execute', async (req, res) => {
+app.post('/api/editor/execute', requireAuth, async (req, res) => {
   try {
     const { command, path: filePath, file_text, old_str, new_str, insert_line, view_range } = req.body;
 
@@ -2599,7 +2639,7 @@ app.post('/api/editor/execute', async (req, res) => {
 // IMAGE GENERATION (DALL-E 3) - Backend proxy
 // ============================================================================
 
-app.post('/api/images/generate', async (req, res) => {
+app.post('/api/images/generate', requireAuth, async (req, res) => {
   try {
     const { prompt, size = '1024x1024', quality = 'standard', style = 'vivid', apiKey } = req.body;
 
@@ -2667,7 +2707,7 @@ app.post('/api/images/generate', async (req, res) => {
  * Get real-time system metrics (CPU, memory, GPU, uptime)
  * GET /api/system/metrics
  */
-app.get('/api/system/metrics', (req, res) => {
+app.get('/api/system/metrics', requireAuth, (req, res) => {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -2730,7 +2770,7 @@ app.get('/api/system/metrics', (req, res) => {
  * POST /api/hardware/gpu-compute — Run a CUDA/compute task
  * Supports Python scripts that use GPU (PyTorch, TensorFlow, CUDA)
  */
-app.post('/api/hardware/gpu-compute', async (req, res) => {
+app.post('/api/hardware/gpu-compute', requireAuth, async (req, res) => {
   try {
     const { script, framework, timeout: timeoutMs } = req.body;
     if (!script) return res.status(400).json({ success: false, error: 'Script required' });
@@ -2779,7 +2819,7 @@ app.post('/api/hardware/gpu-compute', async (req, res) => {
 /**
  * GET /api/hardware/gpu-info — Detailed GPU information
  */
-app.get('/api/hardware/gpu-info', (req, res) => {
+app.get('/api/hardware/gpu-info', requireAuth, (req, res) => {
   try {
     const nvResult = execSync(
       'nvidia-smi --query-gpu=name,driver_version,pci.bus_id,utilization.gpu,utilization.memory,memory.used,memory.total,memory.free,temperature.gpu,temperature.memory,power.draw,power.limit,clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory --format=csv,noheader,nounits',
@@ -2816,7 +2856,7 @@ app.get('/api/hardware/gpu-info', (req, res) => {
 /**
  * GET /api/hardware/processes — GPU processes
  */
-app.get('/api/hardware/processes', (req, res) => {
+app.get('/api/hardware/processes', requireAuth, (req, res) => {
   try {
     const result = execSync(
       'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits',
@@ -2841,7 +2881,7 @@ app.get('/api/hardware/processes', (req, res) => {
 /**
  * POST /api/hardware/webcam — Capture frame from webcam
  */
-app.post('/api/hardware/webcam', async (req, res) => {
+app.post('/api/hardware/webcam', requireAuth, async (req, res) => {
   try {
     const { device, width, height } = req.body;
     const deviceIdx = device || 0;
@@ -2974,7 +3014,7 @@ function getBlenderPath() {
  *  - frame (number) [optional]
  *  - timeout (ms) [optional]
  */
-app.post('/api/blender/execute', async (req, res) => {
+app.post('/api/blender/execute', requireAuth, async (req, res) => {
   try {
     const {
       script,
@@ -3203,7 +3243,7 @@ print("ALIN_OUTPUT:" + json.dumps(output_info))
  *  - engine (string) [optional]
  *  - outputPath (string) [optional] : base output path
  */
-app.post('/api/blender/render', async (req, res) => {
+app.post('/api/blender/render', requireAuth, async (req, res) => {
   try {
     const { blendFile, frame, outputFormat, format, engine, outputPath } = req.body;
     if (!blendFile) return res.status(400).json({ success: false, error: 'blendFile required' });
@@ -3301,7 +3341,7 @@ app.post('/api/blender/render', async (req, res) => {
  * POST /api/claude — Proxy to Anthropic Messages API
  * Body: { model, max_tokens, messages, system? }
  */
-app.post('/api/claude', async (req, res) => {
+app.post('/api/claude', requireAuth, async (req, res) => {
   try {
     const { model, max_tokens, messages, system } = req.body;
     const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
@@ -3350,8 +3390,9 @@ app.post('/api/claude', async (req, res) => {
  * POST /api/memory/store — Store a memory entry (used by TBWO execution engine)
  * Body: { key, value, category, content, importance, tags }
  */
-app.post('/api/memory/store', (req, res) => {
+app.post('/api/memory/store', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { key, value, category, content, importance, tags } = req.body;
     const memContent = content || value || '';
     if (!memContent) return res.status(400).json({ error: 'Content or value required' });
@@ -3373,7 +3414,7 @@ app.post('/api/memory/store', (req, res) => {
       0, 0, 0, 0,
       JSON.stringify(tags || []), JSON.stringify([]),
       JSON.stringify([]), JSON.stringify({ key: key || '', category: category || '' }),
-      null, now, now
+      null, now, now, userId
     );
 
     console.log(`[Memory] Stored: "${memContent.slice(0, 50)}..." (${layer}, salience=${salience})`);
@@ -3388,12 +3429,13 @@ app.post('/api/memory/store', (req, res) => {
  * POST /api/memory/recall — Search memories (used by TBWO execution engine)
  * Body: { query, category, limit }
  */
-app.post('/api/memory/recall', (req, res) => {
+app.post('/api/memory/recall', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { query, category, limit: maxResults } = req.body;
     if (!query) return res.status(400).json({ error: 'Query required' });
 
-    // Fetch all memories, then do simple text matching
+    // Fetch user's memories, then do simple text matching
     let rows;
     if (category) {
       const layerMap = {
@@ -3402,9 +3444,9 @@ app.post('/api/memory/recall', (req, res) => {
         episode: 'episodic',
       };
       const layer = layerMap[category] || category;
-      rows = db.prepare('SELECT * FROM memory_entries WHERE layer = ? ORDER BY salience DESC, updated_at DESC').all(layer);
+      rows = db.prepare('SELECT * FROM memory_entries WHERE layer = ? AND user_id = ? ORDER BY salience DESC, updated_at DESC').all(layer, userId);
     } else {
-      rows = db.prepare('SELECT * FROM memory_entries ORDER BY salience DESC, updated_at DESC').all();
+      rows = db.prepare('SELECT * FROM memory_entries WHERE user_id = ? ORDER BY salience DESC, updated_at DESC').all(userId);
     }
 
     // Simple keyword matching
@@ -3449,7 +3491,7 @@ const activeWatchers = new Map(); // path → { watcher, changes[] }
 /**
  * POST /api/files/watch — Start watching a directory for changes
  */
-app.post('/api/files/watch', (req, res) => {
+app.post('/api/files/watch', requireAuth, (req, res) => {
   try {
     const { path: watchPath, extensions } = req.body;
     if (!watchPath) return res.status(400).json({ success: false, error: 'Path required' });
@@ -3496,7 +3538,7 @@ app.post('/api/files/watch', (req, res) => {
 /**
  * GET /api/files/changes — Poll for recent file changes
  */
-app.get('/api/files/changes', (req, res) => {
+app.get('/api/files/changes', requireAuth, (req, res) => {
   const watchPath = req.query.path;
   if (!watchPath) {
     // Return changes from all watchers
@@ -3523,7 +3565,7 @@ app.get('/api/files/changes', (req, res) => {
 /**
  * DELETE /api/files/watch — Stop watching a directory
  */
-app.delete('/api/files/watch', (req, res) => {
+app.delete('/api/files/watch', requireAuth, (req, res) => {
   const watchPath = req.body?.path || req.query.path;
   if (!watchPath) return res.status(400).json({ success: false, error: 'Path required' });
 
@@ -3541,26 +3583,28 @@ app.delete('/api/files/watch', (req, res) => {
 // ============================================================================
 
 // --- Execution Outcomes ---
-app.post('/api/self-model/outcomes', (req, res) => {
+app.post('/api/self-model/outcomes', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = randomUUID();
-    stmts.insertOutcome.run(id, b.tbwoId, b.objective || '', b.type || '', b.timeBudget || 0, b.planConfidence || 0, b.phasesCompleted || 0, b.phasesFailed || 0, b.artifactsCount || 0, b.userEditsAfter || 0, b.qualityScore || 0, b.timestamp || Date.now());
+    stmts.insertOutcome.run(id, b.tbwoId, b.objective || '', b.type || '', b.timeBudget || 0, b.planConfidence || 0, b.phasesCompleted || 0, b.phasesFailed || 0, b.artifactsCount || 0, b.userEditsAfter || 0, b.qualityScore || 0, b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/outcomes', (req, res) => {
+app.get('/api/self-model/outcomes', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const type = req.query.type;
-    const rows = type ? stmts.listOutcomesByType.all(type, limit) : stmts.listOutcomes.all(limit);
+    const rows = type ? stmts.listOutcomesByType.all(userId, type, limit) : stmts.listOutcomes.all(userId, limit);
     res.json({ success: true, outcomes: rows });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// --- Tool Reliability ---
-app.post('/api/self-model/tool-reliability', (req, res) => {
+// --- Tool Reliability (shared across users — measures backend tool behavior) ---
+app.post('/api/self-model/tool-reliability', requireAuth, (req, res) => {
   try {
     const { toolName, success, duration, errorReason } = req.body;
     // Build common_errors — append new error to existing array (max 10)
@@ -3588,7 +3632,7 @@ app.post('/api/self-model/tool-reliability', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/tool-reliability', (req, res) => {
+app.get('/api/self-model/tool-reliability', requireAuth, (req, res) => {
   try {
     const rows = stmts.getToolReliability.all().map(r => ({
       toolName: r.tool_name,
@@ -3603,26 +3647,28 @@ app.get('/api/self-model/tool-reliability', (req, res) => {
 });
 
 // --- User Corrections ---
-app.post('/api/self-model/corrections', (req, res) => {
+app.post('/api/self-model/corrections', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const { originalValue, correctedValue, category } = req.body;
-    // Check if a similar correction already exists
-    const existing = stmts.findCorrection.get(category, correctedValue);
+    // Check if a similar correction already exists for this user
+    const existing = stmts.findCorrection.get(category, correctedValue, userId);
     if (existing) {
-      stmts.incrementCorrection.run(Date.now(), existing.id);
+      stmts.incrementCorrection.run(Date.now(), existing.id, userId);
       res.json({ success: true, id: existing.id, correctionCount: existing.correction_count + 1 });
     } else {
       const id = randomUUID();
-      stmts.insertCorrection.run(id, originalValue || '', correctedValue || '', category || 'general', Date.now());
+      stmts.insertCorrection.run(id, originalValue || '', correctedValue || '', category || 'general', Date.now(), userId);
       res.json({ success: true, id, correctionCount: 1 });
     }
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/corrections', (req, res) => {
+app.get('/api/self-model/corrections', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const minCount = parseInt(req.query.minCount) || 1;
-    const rows = stmts.listCorrections.all(minCount).map(r => ({
+    const rows = stmts.listCorrections.all(userId, minCount).map(r => ({
       id: r.id,
       originalValue: r.original_value,
       correctedValue: r.corrected_value,
@@ -3635,20 +3681,22 @@ app.get('/api/self-model/corrections', (req, res) => {
 });
 
 // --- Decision Log ---
-app.post('/api/self-model/decisions', (req, res) => {
+app.post('/api/self-model/decisions', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = randomUUID();
-    stmts.insertDecision.run(id, b.tbwoId || '', b.decisionType || '', JSON.stringify(b.optionsConsidered || []), b.chosenOption || '', b.reasoning || '', b.outcome || '', b.confidence || 0, b.timestamp || Date.now());
+    stmts.insertDecision.run(id, b.tbwoId || '', b.decisionType || '', JSON.stringify(b.optionsConsidered || []), b.chosenOption || '', b.reasoning || '', b.outcome || '', b.confidence || 0, b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/decisions', (req, res) => {
+app.get('/api/self-model/decisions', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const tbwoId = req.query.tbwoId;
-    const rows = (tbwoId ? stmts.listDecisionsByTBWO.all(tbwoId, limit) : stmts.listDecisions.all(limit)).map(r => ({
+    const rows = (tbwoId ? stmts.listDecisionsByTBWO.all(userId, tbwoId, limit) : stmts.listDecisions.all(userId, limit)).map(r => ({
       id: r.id,
       tbwoId: r.tbwo_id,
       decisionType: r.decision_type,
@@ -3664,27 +3712,29 @@ app.get('/api/self-model/decisions', (req, res) => {
 });
 
 // --- Thinking Traces ---
-app.post('/api/self-model/thinking-traces', (req, res) => {
+app.post('/api/self-model/thinking-traces', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = randomUUID();
-    stmts.insertThinkingTrace.run(id, b.conversationId || '', b.messageId || '', b.tbwoId || null, b.thinkingContent || '', b.timestamp || Date.now());
+    stmts.insertThinkingTrace.run(id, b.conversationId || '', b.messageId || '', b.tbwoId || null, b.thinkingContent || '', b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/thinking-traces', (req, res) => {
+app.get('/api/self-model/thinking-traces', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     let rows;
     if (req.query.q) {
-      rows = stmts.searchThinking.all(`%${req.query.q}%`, limit);
+      rows = stmts.searchThinking.all(userId, `%${req.query.q}%`, limit);
     } else if (req.query.conversationId) {
-      rows = stmts.listThinkingByConv.all(req.query.conversationId);
+      rows = stmts.listThinkingByConv.all(req.query.conversationId, userId);
     } else if (req.query.tbwoId) {
-      rows = stmts.listThinkingByTBWO.all(req.query.tbwoId);
+      rows = stmts.listThinkingByTBWO.all(req.query.tbwoId, userId);
     } else {
-      rows = stmts.searchThinking.all('%', limit);
+      rows = stmts.searchThinking.all(userId, '%', limit);
     }
     const traces = rows.map(r => ({
       id: r.id,
@@ -3699,22 +3749,24 @@ app.get('/api/self-model/thinking-traces', (req, res) => {
 });
 
 // --- Layer Memory ---
-app.post('/api/self-model/layer-memory', (req, res) => {
+app.post('/api/self-model/layer-memory', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const b = req.body;
     const id = randomUUID();
     const now = Date.now();
-    stmts.insertLayerMemory.run(id, b.layer || 'short_term', b.content || '', b.category || '', b.salience ?? 0.5, b.expiresAt || null, JSON.stringify(b.metadata || {}), now, now);
+    stmts.insertLayerMemory.run(id, b.layer || 'short_term', b.content || '', b.category || '', b.salience ?? 0.5, b.expiresAt || null, JSON.stringify(b.metadata || {}), now, now, userId);
     res.json({ success: true, id });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/self-model/layer-memory', (req, res) => {
+app.get('/api/self-model/layer-memory', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const layer = req.query.layer || 'short_term';
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const now = Date.now();
-    const rows = stmts.listLayerMemories.all(layer, now, limit).map(r => ({
+    const rows = stmts.listLayerMemories.all(layer, userId, now, limit).map(r => ({
       id: r.id,
       layer: r.layer,
       content: r.content,
@@ -3729,9 +3781,9 @@ app.get('/api/self-model/layer-memory', (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/self-model/layer-memory/prune', (req, res) => {
+app.post('/api/self-model/layer-memory/prune', requireAuth, (req, res) => {
   try {
-    const result = stmts.pruneExpiredLayers.run(Date.now());
+    const result = stmts.pruneExpiredLayers.run(req.user.id, Date.now());
     res.json({ success: true, pruned: result.changes });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
