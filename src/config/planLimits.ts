@@ -21,14 +21,18 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
-    messagesPerHour: 10,
-    allowedModels: ['claude-3-5-sonnet-20241022'],
-    maxConversations: 10,
+    messagesPerHour: 25,
+    allowedModels: [
+      'claude-sonnet-4-5-20250929',
+      'gpt-4o',
+      'gpt-4o-mini',
+    ],
+    maxConversations: 50,
     tbwoEnabled: false,
     directModeEnabled: true,
-    codeLabEnabled: false,
+    codeLabEnabled: true,
     imageStudioEnabled: false,
-    memoryLayers: 2,
+    memoryLayers: 3,
     selfLearning: false,
     maxTokens: 4096,
     computerUse: false,

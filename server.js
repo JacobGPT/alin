@@ -844,6 +844,30 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
   const users = db.prepare('SELECT id, email, display_name, plan, is_admin, created_at FROM users').all();
   res.json({ success: true, users });
 });
+
+// One-time bootstrap: promote first user to admin+pro (no auth required, only works if no admins exist)
+app.post('/api/admin/bootstrap', (req, res) => {
+  try {
+    const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
+    if (adminExists) return res.status(403).json({ error: 'Admin already exists' });
+    const firstUser = db.prepare('SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1').get();
+    if (!firstUser) return res.status(404).json({ error: 'No users found' });
+    db.prepare('UPDATE users SET plan = ?, is_admin = 1, email_verified = 1 WHERE id = ?').run('pro', firstUser.id);
+    console.log(`[Admin] Bootstrapped admin: ${firstUser.email}`);
+    res.json({ success: true, promoted: firstUser.email, plan: 'pro', isAdmin: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+    console.log(`[Admin] Deleted user: ${user.email}`);
+    res.json({ success: true, deleted: user.email });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // ============================================================================
 // CONVERSATION ENDPOINTS
 // ============================================================================
