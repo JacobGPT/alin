@@ -56,9 +56,9 @@ export function ModeSelector() {
 
   // Determine which modes are locked based on capabilities
   const isModeLocked = (modeId: string): boolean => {
-    if (modeId === 'coding') return !caps.planAllowsCodeLab;
-    if (modeId === 'image') return !caps.planAllowsImageStudio;
-    if (modeId === 'tbwo') return !caps.planAllowsTBWO;
+    if (modeId === 'coding') return !caps.canExecuteCode;
+    if (modeId === 'image') return !caps.canImageGen;
+    if (modeId === 'tbwo') return !caps.canTBWO;
     return false;
   };
 

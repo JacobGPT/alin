@@ -36,6 +36,7 @@ import { ModelSelector } from './ModelSelector';
 import { ModeSelector } from './ModeSelector';
 import { Button } from '@components/ui/Button';
 import { BackgroundJobIndicator } from './BackgroundJobIndicator';
+import { useCapabilities } from '../../hooks/useCapabilities';
 
 // ============================================================================
 // CHATCONTAINER COMPONENT
@@ -55,6 +56,7 @@ export default function ChatContainer() {
   const openModal = useUIStore((state) => state.openModal);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const sidebarCollapsed = useUIStore((state) => state.layout.sidebarCollapsed);
+  const caps = useCapabilities();
   
   // ========================================================================
   // EFFECTS
@@ -186,15 +188,17 @@ export default function ChatContainer() {
           {/* Model Selector */}
           <ModelSelector />
 
-          {/* Vision / Screenshot */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleVision}
-            leftIcon={<CameraIcon className="h-4 w-4" />}
-          >
-            Vision
-          </Button>
+          {/* Vision / Screenshot — desktop only */}
+          {caps.isApp && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleVision}
+              leftIcon={<CameraIcon className="h-4 w-4" />}
+            >
+              Vision
+            </Button>
+          )}
 
           {/* Timeline / Time Travel */}
           <Button

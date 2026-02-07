@@ -392,7 +392,7 @@ export const MessageComponent = memo(function MessageComponent({
   // ========================================================================
   
   return (
-    <motion.div
+    <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={cn(
@@ -457,29 +457,6 @@ export const MessageComponent = memo(function MessageComponent({
               {message.cost && (
                 <span>
                   ${message.cost.toFixed(4)}
-                </span>
-              )}
-              {/* Confidence indicator */}
-              {!isUser && message.confidence != null && (
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium',
-                    message.confidence >= 0.85 ? 'bg-green-500/15 text-green-400' :
-                    message.confidence >= 0.65 ? 'bg-yellow-500/15 text-yellow-400' :
-                    'bg-orange-500/15 text-orange-400'
-                  )}
-                  title={`Confidence: ${(message.confidence * 100).toFixed(0)}%${
-                    message.confidenceSignals?.hasHedging ? ' | Hedging detected' : ''
-                  }${message.confidenceSignals?.hasToolUse ? ' | Tool-verified' : ''}`}
-                >
-                  <span className={cn(
-                    'w-1.5 h-1.5 rounded-full',
-                    message.confidence >= 0.85 ? 'bg-green-400' :
-                    message.confidence >= 0.65 ? 'bg-yellow-400' :
-                    'bg-orange-400'
-                  )} />
-                  {message.confidence >= 0.85 ? 'High' :
-                   message.confidence >= 0.65 ? 'Med' : 'Low'}
                 </span>
               )}
             </div>
@@ -610,7 +587,7 @@ export const MessageComponent = memo(function MessageComponent({
           <span className="text-xs">Generating...</span>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 });
 

@@ -2,14 +2,16 @@
  * useCapabilities - Capability detection layer
  *
  * Determines what features are available based on:
- * - Backend availability (app vs web)
+ * - Environment (local desktop vs hosted web)
  * - User's plan tier
  * - Browser capabilities
+ *
+ * Desktop (localhost): Full features — file system, code execution, hardware, etc.
+ * Web (alinai.dev): Limited — chat, search, image gen, memory, settings only.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { isBackendAvailable } from '../api/dbService';
 import { getPlanLimits, type PlanLimits } from '../config/planLimits';
 
 export interface Capabilities {
@@ -18,18 +20,18 @@ export interface Capabilities {
   isWeb: boolean;
   isPWA: boolean;
 
-  // Backend-dependent
+  // Desktop-only (needs local file system / hardware)
   canFileExplore: boolean;
   canExecuteCode: boolean;
   canGitOps: boolean;
   canHardwareMonitor: boolean;
   canComputerUse: boolean;
   canBlender: boolean;
+  canTBWO: boolean;
 
   // Always available (browser-only)
   canChat: boolean;
   canMemory: boolean;
-  canTBWO: boolean;
   canImageGen: boolean;
   canWebSearch: boolean;
   canVoiceInput: boolean;
@@ -45,33 +47,19 @@ export interface Capabilities {
   planLimits: PlanLimits;
 }
 
-function useBackendStatus(): boolean {
-  const [available, setAvailable] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    const check = async () => {
-      const ok = await isBackendAvailable();
-      if (mounted) setAvailable(ok);
-    };
-    check();
-    const interval = setInterval(check, 30_000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  return available;
+/** Returns true when running on localhost (desktop app) */
+function isLocalEnvironment(): boolean {
+  if (typeof window === 'undefined') return true;
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
 }
 
 export function useCapabilities(): Capabilities {
   const user = useAuthStore((s) => s.user);
-  const backendAvailable = useBackendStatus();
 
   return useMemo(() => {
-    const isApp = backendAvailable;
-    const isWeb = !backendAvailable;
+    const isApp = isLocalEnvironment();
+    const isWeb = !isApp;
     const plan = user?.plan || 'free';
     const limits = getPlanLimits(plan);
 
@@ -80,16 +68,18 @@ export function useCapabilities(): Capabilities {
       isWeb,
       isPWA: typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
 
+      // Desktop-only: require local environment
       canFileExplore: isApp,
       canExecuteCode: isApp && limits.codeLabEnabled,
       canGitOps: isApp,
       canHardwareMonitor: isApp,
       canComputerUse: isApp && limits.computerUse,
       canBlender: isApp,
+      canTBWO: isApp && limits.tbwoEnabled,
 
+      // Always available
       canChat: !!user,
       canMemory: true,
-      canTBWO: limits.tbwoEnabled,
       canImageGen: !!user && limits.imageStudioEnabled,
       canWebSearch: !!user,
       canVoiceInput:
@@ -105,24 +95,21 @@ export function useCapabilities(): Capabilities {
       messagesPerHour: limits.messagesPerHour,
       planLimits: limits,
     };
-  }, [user, backendAvailable]);
+  }, [user]);
 }
 
 /**
  * Non-hook version for use in non-React code (apiService, etc.)
- * Reads directly from stores — not reactive.
  */
 export function getCapabilitiesSnapshot(): Capabilities {
   const user = useAuthStore.getState().user;
   const plan = user?.plan || 'free';
   const limits = getPlanLimits(plan);
-
-  // Assume backend is available if we've used it recently (optimistic for non-hook contexts)
-  const isApp = true; // Non-hook context is always server-side code paths
+  const isApp = isLocalEnvironment();
 
   return {
     isApp,
-    isWeb: false,
+    isWeb: !isApp,
     isPWA: false,
     canFileExplore: isApp,
     canExecuteCode: isApp && limits.codeLabEnabled,
@@ -130,9 +117,9 @@ export function getCapabilitiesSnapshot(): Capabilities {
     canHardwareMonitor: isApp,
     canComputerUse: isApp && limits.computerUse,
     canBlender: isApp,
+    canTBWO: isApp && limits.tbwoEnabled,
     canChat: !!user,
     canMemory: true,
-    canTBWO: limits.tbwoEnabled,
     canImageGen: !!user && limits.imageStudioEnabled,
     canWebSearch: !!user,
     canVoiceInput: false,

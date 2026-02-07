@@ -6,6 +6,14 @@
  */
 
 import type { ClaudeTool } from './claudeClient';
+import { getAPIService } from './apiService';
+import { useMemoryStore } from '../store/memoryStore';
+import { MemoryLayer } from '../types/memory';
+import { memoryService } from '../services/memoryService';
+import { useTBWOStore } from '../store/tbwoStore';
+import { TBWOType, QualityTarget } from '../types/tbwo';
+import { useAuthStore } from '../store/authStore';
+import { useImageStore } from '../store/imageStore';
 
 // ============================================================================
 // SYSTEM PROMPT
@@ -1360,26 +1368,38 @@ async function executeWebSearch(input: Record<string, unknown>): Promise<ToolExe
   console.log(`[ALIN] Web search for: "${query}"`);
 
   try {
-    const { getAPIService } = await import('./apiService');
-    const api = getAPIService();
-    const braveClient = api.braveClient;
+    // Always use server proxy — API key is server-side only
+    const response = await fetch('/api/search/brave', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${useAuthStore.getState().token || ''}`,
+      },
+      body: JSON.stringify({ query, count }),
+    });
 
-    if (!braveClient) {
-      // No Brave API key configured - use DuckDuckGo instant answer as fallback
-      console.log('[ALIN] No Brave API key, trying fallback search...');
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('[ALIN] Brave search proxy error:', response.status, errText);
       return await fallbackWebSearch(query, count);
     }
 
-    const results = await braveClient.searchWeb(query, count);
-    console.log(`[ALIN] Brave search returned ${results.results.length} results`);
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      let resultText = `Search Results for "${query}":\n\n`;
+      data.results.forEach((r: any, i: number) => {
+        resultText += `${i + 1}. **${r.title || 'Untitled'}**\n`;
+        if (r.url) resultText += `   URL: ${r.url}\n`;
+        if (r.description) resultText += `   ${r.description}\n`;
+        resultText += '\n';
+      });
+      console.log(`[ALIN] Brave search returned ${data.results.length} results`);
+      return { success: true, result: resultText };
+    }
 
-    return {
-      success: true,
-      result: braveClient.formatForAI(results),
-    };
+    return { success: true, result: `Search for "${query}" returned no results.` };
   } catch (error: any) {
     console.error('[ALIN] Brave search failed:', error);
-    // Try fallback on error
     return await fallbackWebSearch(query, count);
   }
 }
@@ -1460,8 +1480,6 @@ async function executeMemoryStore(input: Record<string, unknown>): Promise<ToolE
   console.log('[ALIN] executeMemoryStore called with:', input);
 
   try {
-    const { useMemoryStore } = await import('../store/memoryStore');
-    const { MemoryLayer } = await import('../types/memory');
 
     console.log('[ALIN] Imports successful, getting store state...');
     const store = useMemoryStore.getState();
@@ -1502,7 +1520,6 @@ async function executeMemoryStore(input: Record<string, unknown>): Promise<ToolE
     });
 
     // Index in memory service so semantic search can find it
-    const { memoryService } = await import('../services/memoryService');
     memoryService.indexMemory(memoryId, content);
 
     console.log('[ALIN] Memory stored and indexed with ID:', memoryId);
@@ -1524,8 +1541,6 @@ async function executeMemoryRecall(input: Record<string, unknown>): Promise<Tool
   console.log('[ALIN] executeMemoryRecall called with:', input);
 
   try {
-    const { memoryService } = await import('../services/memoryService');
-    const { useMemoryStore } = await import('../store/memoryStore');
 
     const query = input.query as string;
     const limit = (input.limit as number) || 5;
@@ -1884,8 +1899,6 @@ async function executeFileList(input: Record<string, unknown>): Promise<ToolExec
 
 async function executeTbwoCreate(input: Record<string, unknown>): Promise<ToolExecutionResult> {
   try {
-    const { useTBWOStore } = await import('../store/tbwoStore');
-    const { TBWOType, QualityTarget } = await import('../types/tbwo');
 
     const name = (input['name'] as string) || 'Untitled TBWO';
     const description = (input['description'] as string) || '';
@@ -2067,7 +2080,6 @@ async function executeGenerateImageViaBackend(
   style: string
 ): Promise<ToolExecutionResult> {
   try {
-    const { useAuthStore } = await import('../store/authStore');
     const response = await fetch('/api/images/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...useAuthStore.getState().getAuthHeader() },
@@ -2082,7 +2094,6 @@ async function executeGenerateImageViaBackend(
     const data = await response.json();
 
     // Store in image gallery
-    const { useImageStore } = await import('../store/imageStore');
     useImageStore.getState().addImage({
       url: data.url,
       prompt,

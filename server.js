@@ -599,7 +599,7 @@ function generateVerificationCode() {
 async function sendVerificationEmail(email, code) {
   try {
     await resend.emails.send({
-      from: 'ALIN <onboarding@resend.dev>',
+      from: 'ALIN <noreply@alinai.dev>',
       to: email,
       subject: 'Your ALIN Verification Code',
       html: `
@@ -1623,12 +1623,11 @@ app.post('/api/search/brave', async (req, res) => {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    if (!apiKey) {
-      return res.status(400).json({ error: 'Brave API key is required' });
-    }
-
-    // Prefer server-side key, fall back to client-provided
+    // Server-side key takes priority, client key is optional fallback
     const braveKey = process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY || apiKey;
+    if (!braveKey) {
+      return res.status(400).json({ error: 'Brave API key not configured' });
+    }
 
     const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
 
@@ -1649,9 +1648,14 @@ app.post('/api/search/brave', async (req, res) => {
     }
 
     const data = await response.json();
-    console.log(`[Brave Proxy] Search for "${query}" returned ${data.web?.results?.length || 0} results`);
+    const webResults = (data.web?.results || []).map(r => ({
+      title: r.title,
+      url: r.url,
+      description: r.description,
+    }));
+    console.log(`[Brave Proxy] Search for "${query}" returned ${webResults.length} results`);
 
-    res.json(data);
+    res.json({ results: webResults, query });
   } catch (error) {
     console.error('[Brave Proxy] Error:', error.message);
     res.status(500).json({ error: error.message });

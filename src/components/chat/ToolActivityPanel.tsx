@@ -418,7 +418,7 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
         <div className="space-y-1">
           {activity.query && (
             <div className="text-xs text-text-quaternary">
-              Query: "{activity.query}"
+              Query: <span className="text-text-tertiary">"{activity.query}"</span>
             </div>
           )}
           {activity.results && (activity.results as any[]).length > 0 ? (
@@ -444,11 +444,9 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
                 </div>
               )}
             </div>
-          ) : output ? (
-            <pre className="text-xs font-mono text-text-tertiary bg-background-elevated rounded-md px-3 py-2 overflow-x-auto max-h-32 overflow-y-auto border border-border-primary leading-relaxed">
-              {truncate(output, 1000)}
-            </pre>
-          ) : null}
+          ) : (
+            <div className="text-xs text-text-quaternary">No results found</div>
+          )}
         </div>
       );
     }
@@ -468,11 +466,11 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
                 {result.content?.length > 100 && '...'}
               </div>
             ))
-          ) : output ? (
-            <pre className="text-xs font-mono text-text-tertiary bg-background-elevated rounded-md px-3 py-2 overflow-x-auto max-h-32 overflow-y-auto border border-border-primary leading-relaxed">
-              {truncate(output, 1000)}
-            </pre>
-          ) : null}
+          ) : (
+            <div className="text-xs text-text-quaternary">
+              {activity.type === 'memory_store' ? 'Memory stored' : 'No memories found'}
+            </div>
+          )}
         </div>
       );
     }

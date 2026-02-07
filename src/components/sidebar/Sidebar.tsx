@@ -331,7 +331,7 @@ export function Sidebar() {
 
       {/* Bottom navigation links */}
       <div className="border-t border-border-primary/50 px-2 py-2 space-y-0.5">
-        {caps.planAllowsTBWO && (
+        {caps.canTBWO && (
           <SidebarNavLink
             icon={CommandLineIcon}
             label="TBWO Command"
