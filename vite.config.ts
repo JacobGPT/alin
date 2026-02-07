@@ -13,8 +13,8 @@ export default defineConfig(({ command }) => ({
     // React with SWC for ultra-fast refresh
     react(),
     
-    // PWA support - Installable, Offline-first
-    VitePWA({
+    // PWA support - Only in dev (disabled in prod until icons are added)
+    ...(command === 'serve' ? [VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.svg', 'icons/*.png'],
       manifest: {
@@ -118,7 +118,7 @@ export default defineConfig(({ command }) => ({
         enabled: true,
         type: 'module'
       }
-    }),
+    })] : []),
     
     // Brotli + Gzip compression for production
     compression({

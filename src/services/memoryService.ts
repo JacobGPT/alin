@@ -142,6 +142,7 @@ class AdvancedEmbedding {
    * Tokenize text with advanced processing
    */
   private tokenize(text: string): string[] {
+    if (!text) return [];
     // Lowercase and split
     let tokens = text
       .toLowerCase()

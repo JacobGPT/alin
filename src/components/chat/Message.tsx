@@ -415,8 +415,8 @@ export const MessageComponent = memo(function MessageComponent({
 
         {/* Content */}
         <div className={cn(
-          'flex-1 min-w-0 space-y-2',
-          isUser && 'rounded-xl bg-background-tertiary px-4 py-3'
+          'min-w-0 space-y-2',
+          isUser ? 'rounded-xl bg-background-tertiary px-4 py-3 w-fit max-w-full' : 'flex-1'
         )}>
           {/* Role Badge - assistant/system only */}
           {showAvatar && !isUser && (

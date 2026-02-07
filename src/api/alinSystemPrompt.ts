@@ -6,7 +6,7 @@
  */
 
 import type { ClaudeTool } from './claudeClient';
-import { getAPIService } from './apiService';
+// NOTE: getAPIService is imported dynamically to avoid circular dep (apiService ↔ alinSystemPrompt)
 import { useMemoryStore } from '../store/memoryStore';
 import { MemoryLayer } from '../types/memory';
 import { memoryService } from '../services/memoryService';
