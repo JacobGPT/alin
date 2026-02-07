@@ -106,12 +106,12 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
         try {
           const data = JSON.parse(raw);
 
-          if (data.type === 'text' || (data.text !== undefined && data.type !== 'done')) {
+          if (data.type === 'text_delta' || data.type === 'text' || (data.text !== undefined && data.type !== 'done' && data.type !== 'thinking_delta')) {
             if (data.text) {
               currentText += data.text;
               callbacks.onText?.(data.text);
             }
-          } else if (data.type === 'thinking' || data.thinking !== undefined) {
+          } else if (data.type === 'thinking_delta' || data.type === 'thinking' || data.thinking !== undefined) {
             if (data.thinking) callbacks.onThinking?.(data.thinking);
           } else if (data.type === 'tool_use') {
             const toolCall = {

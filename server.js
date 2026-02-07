@@ -237,7 +237,8 @@ function checkPlanLimits(req, res, next) {
 // SQLITE DATABASE INITIALIZATION
 // ============================================================================
 
-const DB_PATH = path.join(__dirname, 'alin.db');
+const DB_DIR = process.env.DB_DIR || __dirname;
+const DB_PATH = path.join(DB_DIR, 'alin.db');
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -970,7 +971,7 @@ function setupSSE(res) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
 }
 function sendSSE(res, event, data) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  res.write(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`);
 }
 
 /**
@@ -1052,7 +1053,7 @@ async function streamAnthropicToSSE(res, { model, messages, system, tools, think
           }
         } else if (ev.type === 'content_block_delta') {
           if (ev.delta?.type === 'thinking_delta') {
-            sendSSE(res, 'thinking_delta', { text: ev.delta.thinking });
+            sendSSE(res, 'thinking_delta', { thinking: ev.delta.thinking });
           } else if (ev.delta?.type === 'text_delta') {
             sendSSE(res, 'text_delta', { text: ev.delta.text });
           } else if (ev.delta?.type === 'input_json_delta') {
