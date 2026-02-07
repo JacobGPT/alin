@@ -61,9 +61,9 @@ app.use(express.json({ limit: '10mb' }));
 // ============================================================================
 
 // Serve marketing site at /m/ (always public, no auth)
-app.use('/m', express.static(path.join(import.meta.dirname, 'marketing')));
+// Static files FIRST
 app.use(express.static(path.join(import.meta.dirname, 'marketing')));
-// Serve the built React app (for authenticated users)
+app.use('/m', express.static(path.join(import.meta.dirname, 'marketing')));
 app.use('/app', express.static(path.join(import.meta.dirname, 'dist')));
 
 // Download redirect (points to GitHub Releases — update URL when Electron build exists)
