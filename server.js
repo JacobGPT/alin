@@ -62,7 +62,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Serve marketing site at /m/ (always public, no auth)
 app.use('/m', express.static(path.join(import.meta.dirname, 'marketing')));
-
+app.use(express.static(path.join(import.meta.dirname, 'marketing')));
 // Serve the built React app (for authenticated users)
 app.use('/app', express.static(path.join(import.meta.dirname, 'dist')));
 
