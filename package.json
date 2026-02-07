@@ -5,6 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "start": "node server.js",
     "dev": "concurrently -n backend,vite -c blue,green \"node server.js\" \"vite --port 3000 --host\"",
     "dev:vite": "vite --port 3000 --host",
     "dev:server": "node server.js",
