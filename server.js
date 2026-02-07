@@ -62,9 +62,9 @@ app.use(express.json({ limit: '10mb' }));
 
 // Serve marketing site at /m/ (always public, no auth)
 // Static files FIRST
-app.use(express.static(path.join(import.meta.dirname, 'marketing')));
-app.use('/m', express.static(path.join(import.meta.dirname, 'marketing')));
-app.use('/app', express.static(path.join(import.meta.dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'marketing')));
+app.use('/m', express.static(path.join(__dirname, 'marketing')));
+app.use('/app', express.static(path.join(__dirname, 'dist')));
 
 // Download redirect (points to GitHub Releases — update URL when Electron build exists)
 app.get('/download', (req, res) => {
@@ -87,12 +87,12 @@ app.get('/', (req, res) => {
       return res.redirect('/app');
     } catch { /* invalid token, show marketing */ }
   }
-  res.sendFile(path.join(import.meta.dirname, 'marketing', 'index.html'));
+  res.sendFile(path.join(__dirname, 'marketing', 'index.html'));
 });
 
 // SPA fallback for React app routes (catch /app/* routes)
 app.get('/app/*', (req, res) => {
-  res.sendFile(path.join(import.meta.dirname, 'dist', 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // ============================================================================
