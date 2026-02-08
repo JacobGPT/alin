@@ -14,7 +14,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (token) {
-      fetchProfile().finally(() => setChecked(true));
+      // Race fetchProfile against a 5s timeout to prevent infinite loading on slow/down backend
+      const timeout = setTimeout(() => setChecked(true), 5000);
+      fetchProfile().finally(() => {
+        clearTimeout(timeout);
+        setChecked(true);
+      });
     } else {
       setChecked(true);
     }
