@@ -46,6 +46,8 @@ const LAYER_CONFIG: Record<MemoryLayer, { color: string; bgColor: string; label:
   [MemoryLayer.META]: { color: 'text-violet-400', bgColor: 'bg-violet-500/10', label: 'Meta' },
 };
 
+const DEFAULT_LAYER_CONFIG = { color: 'text-gray-400', bgColor: 'bg-gray-500/10', label: 'Unknown' };
+
 // ============================================================================
 // MEMORY DETAIL COMPONENT
 // ============================================================================
@@ -66,7 +68,7 @@ export function MemoryDetail({ memory, onClose }: MemoryDetailProps) {
   const findRelated = useMemoryStore((state) => state.findRelated);
   const getMemory = useMemoryStore((state) => state.getMemory);
 
-  const layerConfig = LAYER_CONFIG[memory.layer];
+  const layerConfig = LAYER_CONFIG[memory.layer] || DEFAULT_LAYER_CONFIG;
   const relatedMemories = findRelated(memory.id, 5);
 
   // Handle save
@@ -247,7 +249,7 @@ export function MemoryDetail({ memory, onClose }: MemoryDetailProps) {
               </div>
               <div className="space-y-2">
                 {relatedMemories.map((related) => {
-                  const relatedConfig = LAYER_CONFIG[related.layer];
+                  const relatedConfig = LAYER_CONFIG[related.layer] || DEFAULT_LAYER_CONFIG;
                   return (
                     <button
                       key={related.id}

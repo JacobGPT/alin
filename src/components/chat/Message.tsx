@@ -45,6 +45,7 @@ import type { Message, ContentBlock } from '../../types/chat';
 import { useChatStore } from '@store/chatStore';
 import { useSettingsStore } from '@store/settingsStore';
 import { useMemoryStore } from '@store/memoryStore';
+import { telemetry } from '../../services/telemetryService';
 // Components
 import { CodeBlock } from './CodeBlock';
 import { ToolActivityPanel } from './ToolActivityPanel';
@@ -168,6 +169,11 @@ export const MessageComponent = memo(function MessageComponent({
     const current = message.feedback;
     const newFeedback = current === type ? undefined : type; // toggle off if same
     updateMessage(message.id, { feedback: newFeedback } as any);
+
+    // Track feedback via telemetry
+    if (newFeedback) {
+      telemetry.feedback(conversationId, message.id, newFeedback === 'positive' ? 'thumbs_up' : 'thumbs_down');
+    }
 
     // Store feedback as a high-salience memory for adaptive learning
     if (newFeedback) {

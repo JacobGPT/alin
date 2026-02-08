@@ -148,7 +148,7 @@ interface TimelineItemProps {
 }
 
 function TimelineItem({ memory, onClick, delay }: TimelineItemProps) {
-  const colors = LAYER_COLORS[memory.layer];
+  const colors = LAYER_COLORS[memory.layer] || { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500' };
 
   return (
     <motion.div

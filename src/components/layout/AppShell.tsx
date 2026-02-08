@@ -26,6 +26,7 @@ import { Sidebar } from '@components/sidebar/Sidebar';
 import { RightPanel } from './RightPanel';
 import { proactiveService } from '../../services/proactiveService';
 import { hardwareService } from '../../services/hardwareService';
+import { telemetry } from '../../services/telemetryService';
 
 interface AppShellProps {
   children: ReactNode;
@@ -49,10 +50,11 @@ export function AppShell({ children }: AppShellProps) {
     }
   }, [currentMode, setRightPanel]);
 
-  // Start background services
+  // Start background services + telemetry session
   useEffect(() => {
     proactiveService.start();
     hardwareService.start();
+    telemetry.sessionStarted();
     return () => {
       proactiveService.stop();
       hardwareService.stop();

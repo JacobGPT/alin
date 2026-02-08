@@ -25,6 +25,7 @@ import { useModeStore } from '@store/modeStore';
 import { type ALINMode, getAllModes, type ModeConfig } from '../../config/modes';
 import { useCapabilities } from '../../hooks/useCapabilities';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
+import { telemetry } from '../../services/telemetryService';
 
 // ============================================================================
 // ICON MAPPING
@@ -63,7 +64,7 @@ export function ModeSelector() {
   };
 
   return (
-    <Listbox value={currentMode} onChange={(mode: ALINMode) => setMode(mode)}>
+    <Listbox value={currentMode} onChange={(mode: ALINMode) => { telemetry.modeChanged(currentMode, mode); setMode(mode); }}>
       <div className="relative">
         <Listbox.Button className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-text-secondary hover:bg-background-hover hover:text-text-primary transition-colors">
           <CurrentIcon className={`h-4 w-4 ${currentConfig.color}`} />

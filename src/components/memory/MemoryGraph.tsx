@@ -353,7 +353,7 @@ export function MemoryGraph({ onSelectMemory }: MemoryGraphProps) {
                 <div className="mb-2 flex items-center gap-2">
                   <div
                     className="h-4 w-4 rounded-full"
-                    style={{ backgroundColor: LAYER_COLORS[node.layer] }}
+                    style={{ backgroundColor: LAYER_COLORS[node.layer] || '#6b7280' }}
                   />
                   <span className="text-sm font-medium text-text-primary">
                     {node.layer.replace('_', ' ')}

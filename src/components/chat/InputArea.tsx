@@ -48,7 +48,11 @@ import { useArtifactStore, type ArtifactType } from '../../store/artifactStore';
 import { RightPanelContent } from '../../types/ui';
 import { nanoid } from 'nanoid';
 import { proactiveService } from '../../services/proactiveService';
+import { telemetry } from '../../services/telemetryService';
 import { useCapabilities } from '../../hooks/useCapabilities';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import { getModeConfig } from '../../config/modes';
+import { ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 
 
 
@@ -132,6 +136,32 @@ function getTitleFromContent(type: ArtifactType, content: string, lang: string):
     case 'chart': return 'Chart';
     default: return `${lang.toUpperCase()} Artifact`;
   }
+}
+
+// ============================================================================
+// ERROR CATEGORIZATION
+// ============================================================================
+
+function categorizeError(error: any): string {
+  const msg = error?.message || String(error);
+  const status = error?.status || error?.response?.status;
+
+  if (status === 401 || msg.includes('401') || msg.includes('Unauthorized') || msg.includes('Invalid or expired token'))
+    return 'Session expired. Please log in again.';
+  if (status === 429 || msg.includes('429') || msg.includes('rate limit') || msg.includes('Rate limit'))
+    return 'Rate limit reached. Please wait a moment before sending another message.';
+  if (status === 403 || msg.includes('403') || msg.includes('Forbidden'))
+    return 'Access denied. This feature may not be available on your plan.';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION'))
+    return "Can't reach the server. Check your connection and make sure the backend is running.";
+  if (msg.includes('API key') || msg.includes('api_key') || msg.includes('invalid_api_key'))
+    return 'API key error. Please check your API key configuration in Settings.';
+  if (status === 413 || msg.includes('too large') || msg.includes('payload'))
+    return 'Message too large. Try shortening your message or reducing attachments.';
+  if (msg.includes('timeout') || msg.includes('Timeout'))
+    return 'Request timed out. The server may be busy — try again.';
+
+  return `Error: ${msg}`;
 }
 
 // ============================================================================
@@ -594,8 +624,32 @@ export function InputArea({ conversationId }: InputAreaProps) {
           } else if (segment.type === 'image' && segment.imageUrl) {
             blocks.push({ type: 'image', url: segment.imageUrl, alt: segment.imageAlt || 'Generated image', caption: segment.imageCaption } as any);
           } else if (segment.type === 'file' && segment.fileContent) {
-            blocks.push({ type: 'text', text: `**File created:** \`${segment.fileName}\`` });
-            blocks.push({ type: 'code', language: segment.fileLanguage || 'text', code: segment.fileContent.slice(0, 5000), filename: segment.fileName } as any);
+            // Compute file metadata for downloadable pill
+            const ext = (segment.fileName || '').split('.').pop()?.toLowerCase() || '';
+            const mimeMap: Record<string, string> = {
+              html: 'text/html', css: 'text/css', js: 'application/javascript',
+              ts: 'application/typescript', tsx: 'application/typescript',
+              json: 'application/json', md: 'text/markdown', py: 'text/x-python',
+              svg: 'image/svg+xml', txt: 'text/plain',
+            };
+            const mimeType = mimeMap[ext] || 'text/plain';
+            const sizeBytes = new Blob([segment.fileContent]).size;
+            const dataUrl = `data:${mimeType};base64,${btoa(unescape(encodeURIComponent(segment.fileContent)))}`;
+
+            // FileBlock pill — clickable, downloadable (matches Claude/ChatGPT UX)
+            blocks.push({
+              type: 'file', fileId: `file-${Date.now()}`, filename: segment.fileName || 'file',
+              mimeType, size: sizeBytes, url: dataUrl,
+            } as any);
+
+            // Code preview underneath (truncated for large files)
+            blocks.push({
+              type: 'code', language: segment.fileLanguage || 'text',
+              code: segment.fileContent.length > 5000
+                ? segment.fileContent.slice(0, 5000) + `\n\n/* ... ${segment.fileContent.length} chars total */`
+                : segment.fileContent,
+              filename: segment.fileName,
+            } as any);
           }
         }
         // Ensure at least one text block
@@ -605,10 +659,15 @@ export function InputArea({ conversationId }: InputAreaProps) {
         return blocks;
       }
 
-      await api.sendMessageStream(
-        messages,
-        provider,
-        {
+      // Track message send via telemetry
+      telemetry.messageSent(conversationId, selectedModel || 'unknown', useModeStore.getState().currentMode);
+
+      // Route: coding mode with server-side tool loop → sendCodingStream
+      const currentMode = useModeStore.getState().currentMode;
+      const currentModeConfig = getModeConfig(currentMode);
+      const useCodingLoop = currentModeConfig.features.useServerSideToolLoop;
+
+      const streamCallbacks: import('@api/apiService').StreamCallback = {
           onStart: () => {
             console.log('[ALIN] Starting stream...');
             statusStore.setPhase('responding', 'Generating response...');
@@ -746,6 +805,14 @@ export function InputArea({ conversationId }: InputAreaProps) {
                 durationMs: completedAt - (useStatusStore.getState().steps[0]?.timestamp || completedAt),
               });
             }
+            // Track response via telemetry
+            if (response?.usage) {
+              telemetry.responseReceived(conversationId, selectedModel || 'unknown', {
+                input: response.usage.inputTokens || response.usage.promptTokens || 0,
+                output: response.usage.outputTokens || response.usage.completionTokens || 0,
+              });
+            }
+
             statusStore.completeProcessing();
 
             // Generate smart title after first exchange
@@ -794,13 +861,15 @@ export function InputArea({ conversationId }: InputAreaProps) {
               clearTimeout(safetyTimeout);
               return;
             }
-            // Real error — existing behavior
+            // Real error — categorize for user-friendly messages
             console.error('[ALIN] Stream error:', error);
+            telemetry.error('stream', error.message || 'Unknown stream error');
+            const errorMsg = categorizeError(error);
             chatStore.updateMessage(assistantMessageId, {
               content: [
                 {
                   type: 'text',
-                  text: `Error: ${error.message}. Please check your API key in the settings.`,
+                  text: errorMsg,
                 },
               ],
               isStreaming: false,
@@ -812,8 +881,18 @@ export function InputArea({ conversationId }: InputAreaProps) {
             }
             clearTimeout(safetyTimeout);
           },
-        }
-      );
+        };
+
+      // Route to server-side coding loop or client-side tool loop
+      if (useCodingLoop) {
+        const wsStore = useWorkspaceStore.getState();
+        if (!wsStore.isInitialized) await wsStore.initWorkspace();
+        await api.sendCodingStream(messages, wsStore.workspaceId || '', streamCallbacks);
+        // Refresh workspace tree after coding loop completes
+        wsStore.refreshTree();
+      } else {
+        await api.sendMessageStream(messages, provider, streamCallbacks);
+      }
     } catch (error: any) {
       const isCancellation = error.message === 'Request cancelled' || error.message?.includes('aborted');
       if (isCancellation) {
@@ -821,7 +900,9 @@ export function InputArea({ conversationId }: InputAreaProps) {
         return;
       }
       console.error('[ALIN] Failed to send message:', error);
-      statusStore.setPhase('error', error.message || 'Failed to connect to API');
+      telemetry.error('message_send', error.message || 'Failed to send message');
+      const errorMsg = categorizeError(error);
+      statusStore.setPhase('error', errorMsg);
       statusStore.completeProcessing();
       useChatStore.getState().completeStreaming();
       clearTimeout(safetyTimeout);
@@ -831,7 +912,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
         content: [
           {
             type: 'text',
-            text: `Error: ${error.message || 'Failed to connect to API. Please check your API key configuration.'}`,
+            text: errorMsg,
           },
         ],
       });
@@ -860,11 +941,25 @@ export function InputArea({ conversationId }: InputAreaProps) {
     }
   };
   
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
+    const currentMode = useModeStore.getState().currentMode;
+    const modeConfig = getModeConfig(currentMode);
+
+    // In coding mode with server-side tool loop, upload to workspace
+    if (modeConfig.features.useServerSideToolLoop && files.length > 0) {
+      const wsStore = useWorkspaceStore.getState();
+      if (!wsStore.isInitialized) await wsStore.initWorkspace();
+      const count = await wsStore.uploadFiles(files);
+      if (count > 0) {
+        console.log(`[ALIN] Uploaded ${count} files to workspace`);
+      }
+      return;
+    }
+
     files.forEach((file) => attachFile(file));
   };
   
@@ -1013,10 +1108,21 @@ export function InputArea({ conversationId }: InputAreaProps) {
           {isDragging && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-brand-primary/10 backdrop-blur-sm">
               <div className="text-center">
-                <PhotoIcon className="mx-auto mb-2 h-12 w-12 text-brand-primary" />
-                <p className="text-sm font-medium text-brand-primary">
-                  Drop files to attach
-                </p>
+                {getModeConfig(useModeStore.getState().currentMode).features.useServerSideToolLoop ? (
+                  <>
+                    <ArrowUpTrayIcon className="mx-auto mb-2 h-12 w-12 text-green-400" />
+                    <p className="text-sm font-medium text-green-400">
+                      Drop files to upload to workspace
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <PhotoIcon className="mx-auto mb-2 h-12 w-12 text-brand-primary" />
+                    <p className="text-sm font-medium text-brand-primary">
+                      Drop files to attach
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           )}

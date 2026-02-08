@@ -719,6 +719,184 @@ export class APIService {
   }
 
   // ==========================================================================
+  // CODING MODE — Server-Side Tool Loop
+  // ==========================================================================
+
+  /**
+   * Send a message through the server-side coding tool loop.
+   * The server executes tools autonomously and streams events back.
+   * SSE protocol: text_delta, tool_start, tool_result, done, error.
+   */
+  async sendCodingStream(
+    messages: Message[],
+    workspaceId: string,
+    callbacks: StreamCallback = {}
+  ): Promise<void> {
+    try {
+      callbacks.onStart?.();
+
+      const settings = useSettingsStore.getState();
+      const modeConfig = getModeConfig(useModeStore.getState().currentMode);
+
+      // Build system prompt
+      const memoryContext = getMemoryContext();
+      const projectContext = getProjectContextForPrompt();
+      let systemPrompt = (modeConfig.systemPromptAddition
+        ? modeConfig.systemPromptAddition
+        : '') + projectContext + memoryContext;
+
+      // Inject self-model addendum
+      try {
+        const selfModelAddendum = await buildSelfModelAddendum();
+        if (selfModelAddendum) systemPrompt += '\n' + selfModelAddendum;
+      } catch {}
+
+      // Model selection
+      const selectedVersions = settings.selectedModelVersions;
+      const model = selectedVersions.claude || 'claude-sonnet-4-5-20250929';
+
+      // Compress context
+      const contextMessages = prepareMessages(messages);
+      const serverMessages = convertMessagesForServer(contextMessages);
+
+      const statusStore = useStatusStore.getState();
+      let fullText = '';
+
+      // SSE streaming from /api/coding/stream
+      const { useAuthStore } = await import('../store/authStore');
+
+      const response = await fetch('/api/coding/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...useAuthStore.getState().getAuthHeader(),
+        },
+        body: JSON.stringify({
+          messages: serverMessages,
+          workspaceId,
+          model,
+          system: systemPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        let errorMsg = `Server error ${response.status}`;
+        try { errorMsg = JSON.parse(errorText).error || errorMsg; } catch {}
+        throw new Error(errorMsg);
+      }
+
+      if (!response.body) throw new Error('No response body for streaming');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let stopReason = 'end_turn';
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let usedTools = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          try {
+            const ev = JSON.parse(raw);
+
+            switch (ev.type) {
+              case 'text_delta':
+                if (ev.text) {
+                  fullText += ev.text;
+                  callbacks.onChunk?.(ev.text);
+                }
+                break;
+
+              case 'tool_start':
+                usedTools = true;
+                statusStore.startToolActivity(
+                  getToolActivityType(ev.toolName),
+                  getToolLabel(ev.toolName, ev.toolInput),
+                  ev.toolInput
+                );
+                callbacks.onToolStart?.(ev.activityId, ev.toolName);
+                break;
+
+              case 'tool_result': {
+                // Find and update the running activity
+                const activity = useStatusStore.getState().toolActivities.find(
+                  (a) => a.status === 'running'
+                );
+                if (activity) {
+                  if (ev.success) {
+                    statusStore.completeToolActivity(activity.id);
+                  } else {
+                    statusStore.failToolActivity(activity.id, ev.result || 'Error');
+                  }
+                }
+
+                // Detect file writes for callback
+                if (ev.toolName === 'file_write' && ev.success) {
+                  const toolPath = ev.toolInput?.path || 'file';
+                  const ext = toolPath.split('.').pop() || 'text';
+                  callbacks.onFileGenerated?.(toolPath, '', ext);
+                }
+                break;
+              }
+
+              case 'done':
+                stopReason = ev.stopReason || 'end_turn';
+                inputTokens = ev.inputTokens || 0;
+                outputTokens = ev.outputTokens || 0;
+                break;
+
+              case 'error':
+                callbacks.onError?.(new Error(ev.error || 'Unknown server error'));
+                break;
+            }
+          } catch {}
+        }
+      }
+
+      // Build response for onComplete
+      const hasCode = /```[\s\S]{10,}```/.test(fullText);
+      const { score: confidenceScore, signals: confidenceSignals } = computeConfidence(
+        fullText, stopReason, usedTools, hasCode
+      );
+
+      const pricing = CLAUDE_PRICING[model] || CLAUDE_PRICING['claude-sonnet-4-5-20250929'];
+      const cost = pricing
+        ? (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
+        : 0;
+
+      const serverResponse: ServerResponse = {
+        id: `msg_${Date.now()}`,
+        content: [{ type: 'text', text: fullText }],
+        model,
+        stopReason,
+        finishReason: stopReason,
+        usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+        cost,
+        confidence: confidenceScore,
+        confidenceSignals,
+      };
+
+      callbacks.onComplete?.(serverResponse);
+    } catch (error: any) {
+      console.error('[APIService] Coding stream error:', error);
+      callbacks.onError?.(error);
+    }
+  }
+
+  // ==========================================================================
   // FILE HANDLING
   // ==========================================================================
 

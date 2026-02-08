@@ -152,6 +152,16 @@
       });
     </script>
     
-    <!-- Service Worker Registration (handled by Vite PWA plugin in dev) -->
+    <!-- Unregister any stale service workers from previous deployments -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          registrations.forEach(function(reg) { reg.unregister(); });
+        });
+        caches.keys().then(function(names) {
+          names.forEach(function(name) { caches.delete(name); });
+        });
+      }
+    </script>
   </body>
 </html>

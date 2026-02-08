@@ -34,6 +34,8 @@ import { randomUUID, createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Resend } from 'resend';
+import JSZip from 'jszip';
+import rateLimit from 'express-rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -57,6 +59,46 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+// ============================================================================
+// RATE LIMITING
+// ============================================================================
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { error: 'Too many authentication attempts. Try again in 15 minutes.', code: 'RATE_LIMIT_EXCEEDED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+});
+
+const verifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many verification attempts. Try again in 15 minutes.', code: 'RATE_LIMIT_EXCEEDED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+});
+
+const executionLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: { error: 'Too many execution requests. Try again in 1 minute.', code: 'RATE_LIMIT_EXCEEDED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+});
+
+const scanLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { error: 'Too many scan requests. Try again in 1 minute.', code: 'RATE_LIMIT_EXCEEDED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+});
 
 // ============================================================================
 // MARKETING SITE + STATIC SERVING
@@ -101,8 +143,19 @@ app.get('/app/*', (req, res) => {
 // JWT AUTH CONFIGURATION
 // ============================================================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'alin-dev-secret-change-in-production';
+const DEFAULT_JWT_SECRET = 'alin-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
+
+// Security: fail-fast in production if JWT_SECRET is unset or default
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEFAULT_JWT_SECRET)) {
+  console.error('\n[FATAL] JWT_SECRET is not set or is using the default value.');
+  console.error('[FATAL] Set a strong, unique JWT_SECRET environment variable for production.');
+  console.error('[FATAL] Example: JWT_SECRET=$(openssl rand -hex 32)\n');
+  process.exit(1);
+} else if (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEFAULT_JWT_SECRET) {
+  console.warn('\n⚠️  [Security] WARNING: Using default JWT_SECRET. Set JWT_SECRET env var for production.\n');
+}
 
 function requireAdmin(req, res, next) {
   if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin access required' });
@@ -128,6 +181,20 @@ function optionalAuth(req, res, next) {
     req.user = null;
   }
   next();
+}
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+/**
+ * Standardized error response helper.
+ * In production, strips internal details from 500 errors.
+ */
+function sendError(res, status, error, code, suggestion) {
+  const body = { error, code: code || 'INTERNAL_ERROR' };
+  if (suggestion) body.suggestion = suggestion;
+  if (!IS_PRODUCTION && status >= 500) body.details = error;
+  if (IS_PRODUCTION && status >= 500) body.error = 'An internal error occurred. Please try again.';
+  return res.status(status).json(body);
 }
 
 // ============================================================================
@@ -244,6 +311,7 @@ const dbPath = process.env.DATABASE_PATH || '/data/alin.db';
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS conversations (
@@ -399,6 +467,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_images_created ON images(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
+  -- Performance indexes for user-scoped queries
+  CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp ON messages(user_id, timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_artifacts_user ON artifacts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_entries(user_id, timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_memory_user_layer ON memory_entries(user_id, layer);
+
   -- Self-Model: Execution Outcomes
   CREATE TABLE IF NOT EXISTS execution_outcomes (
     id TEXT PRIMARY KEY,
@@ -497,9 +572,108 @@ db.exec(`
     updated_at INTEGER,
     PRIMARY KEY (user_id, key)
   );
+
+  CREATE TABLE IF NOT EXISTS telemetry_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    session_id TEXT,
+    event_type TEXT NOT NULL,
+    event_data TEXT DEFAULT '{}',
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS telemetry_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    conversation_id TEXT,
+    model_used TEXT,
+    mode TEXT DEFAULT 'regular',
+    message_count INTEGER DEFAULT 0,
+    tool_calls_count INTEGER DEFAULT 0,
+    thumbs_up INTEGER DEFAULT 0,
+    thumbs_down INTEGER DEFAULT 0,
+    regenerations INTEGER DEFAULT 0,
+    total_input_tokens INTEGER DEFAULT 0,
+    total_output_tokens INTEGER DEFAULT 0,
+    duration_seconds INTEGER DEFAULT 0,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS telemetry_tool_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    conversation_id TEXT,
+    tool_name TEXT NOT NULL,
+    success INTEGER DEFAULT 1,
+    duration_ms INTEGER DEFAULT 0,
+    error_message TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS telemetry_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    conversation_id TEXT,
+    message_id TEXT,
+    feedback_type TEXT NOT NULL,
+    original_response TEXT,
+    corrected_response TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS telemetry_daily_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,
+    total_users INTEGER DEFAULT 0,
+    active_users INTEGER DEFAULT 0,
+    new_signups INTEGER DEFAULT 0,
+    total_messages INTEGER DEFAULT 0,
+    total_conversations INTEGER DEFAULT 0,
+    total_tokens_used INTEGER DEFAULT 0,
+    avg_messages_per_user REAL DEFAULT 0,
+    top_model TEXT,
+    top_mode TEXT
+  );
 `);
 
 console.log('[DB] SQLite database initialized at', dbPath);
+
+// ============================================================================
+// STARTUP VALIDATION
+// ============================================================================
+
+// Validate DB is writable
+try {
+  db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('__healthcheck', 'ok', ?) ON CONFLICT(key) DO UPDATE SET value='ok'").run(Date.now());
+  db.prepare("DELETE FROM settings WHERE key = '__healthcheck'").run();
+  console.log('[DB] Write health check passed');
+} catch (dbErr) {
+  console.error('[FATAL] Database is not writable:', dbErr.message);
+  process.exit(1);
+}
+
+// Warn about missing API keys (fail on first use, not startup)
+const envWarnings = [];
+if (!process.env.ANTHROPIC_API_KEY) envWarnings.push('ANTHROPIC_API_KEY (Claude will not work)');
+if (!process.env.OPENAI_API_KEY) envWarnings.push('OPENAI_API_KEY (GPT/DALL-E will not work)');
+if (!process.env.RESEND_API_KEY) envWarnings.push('RESEND_API_KEY (email verification will not work)');
+if (!process.env.BRAVE_API_KEY && !process.env.VITE_BRAVE_API_KEY) envWarnings.push('BRAVE_API_KEY (web search will not work)');
+if (envWarnings.length > 0) {
+  console.warn('\n⚠️  [Config] Missing optional environment variables:');
+  envWarnings.forEach(w => console.warn(`   - ${w}`));
+  console.warn('');
+}
+
+// Production CORS validation
+if (IS_PRODUCTION && !process.env.CORS_ORIGIN) {
+  console.error('[FATAL] CORS_ORIGIN must be set in production (e.g., CORS_ORIGIN=https://yourdomain.com)');
+  process.exit(1);
+}
 
 // Prepared statements for performance — ALL user-scoped queries filter by user_id
 const stmts = {
@@ -647,7 +821,7 @@ async function sendVerificationEmail(email, code) {
 // AUTH ENDPOINTS
 // ============================================================================
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   try {
     const { email, password, displayName } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -687,15 +861,12 @@ app.post('/api/auth/signup', async (req, res) => {
     if (isFirstUser) {
       db.prepare('UPDATE users SET email_verified = 1, is_admin = 1 WHERE id = ?').run(id);
 
-      // Migrate existing data
+      // Migrate existing data (use prepared statements to prevent SQL injection)
       try {
-        db.exec(`UPDATE conversations SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE messages SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE memory_entries SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE artifacts SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE audit_entries SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE images SET user_id='${id}' WHERE user_id IS NULL`);
-        db.exec(`UPDATE tbwo_orders SET user_id='${id}' WHERE user_id IS NULL`);
+        const migrateTables = ['conversations', 'messages', 'memory_entries', 'artifacts', 'audit_entries', 'images', 'tbwo_orders'];
+        for (const table of migrateTables) {
+          db.prepare(`UPDATE ${table} SET user_id = ? WHERE user_id IS NULL`).run(id);
+        }
         console.log(`[Auth] Migrated existing data to first user: ${email}`);
       } catch (migErr) {
         console.warn('[Auth] Data migration partial:', migErr.message);
@@ -721,12 +892,12 @@ app.post('/api/auth/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('[Auth] Signup error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
 // Verify email with 6-digit code
-app.post('/api/auth/verify', async (req, res) => {
+app.post('/api/auth/verify', verifyLimiter, async (req, res) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
@@ -758,7 +929,7 @@ app.post('/api/auth/verify', async (req, res) => {
     });
   } catch (error) {
     console.error('[Auth] Verify error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -784,11 +955,11 @@ app.post('/api/auth/resend-code', async (req, res) => {
     res.json({ success: true, message: 'New code sent.' });
   } catch (error) {
     console.error('[Auth] Resend error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -816,7 +987,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ success: true, token, user: { id: user.id, email: user.email, displayName: user.display_name, plan: user.plan, isAdmin: !!user.is_admin, emailVerified: true } });
   } catch (error) {
     console.error('[Auth] Login error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -826,7 +997,7 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ success: true, user: { id: user.id, email: user.email, displayName: user.display_name, plan: user.plan, isAdmin: !!user.is_admin } });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -839,7 +1010,7 @@ app.patch('/api/auth/profile', requireAuth, (req, res) => {
     stmts.updateUser.run(email, displayName, user.plan, Date.now(), req.user.id);
     res.json({ success: true, user: { id: user.id, email, displayName, plan: user.plan, isAdmin: !!user.is_admin } });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -859,7 +1030,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
     stmts.updateUserPassword.run(newHash, Date.now(), req.user.id);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -868,9 +1039,14 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true, users });
 });
 
-// One-time bootstrap: promote first user to admin+pro (no auth required, only works if no admins exist)
+// One-time bootstrap: promote first user to admin+pro (localhost-only, only works if no admins exist)
 app.post('/api/admin/bootstrap', (req, res) => {
   try {
+    // Security: restrict to localhost requests only
+    const clientIp = req.ip || req.connection?.remoteAddress;
+    if (clientIp !== '127.0.0.1' && clientIp !== '::1' && clientIp !== '::ffff:127.0.0.1') {
+      return res.status(403).json({ error: 'Bootstrap only allowed from localhost', code: 'LOCALHOST_ONLY' });
+    }
     const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
     if (adminExists) return res.status(403).json({ error: 'Admin already exists' });
     const firstUser = db.prepare('SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1').get();
@@ -878,7 +1054,7 @@ app.post('/api/admin/bootstrap', (req, res) => {
     db.prepare('UPDATE users SET plan = ?, is_admin = 1, email_verified = 1 WHERE id = ?').run('pro', firstUser.id);
     console.log(`[Admin] Bootstrapped admin: ${firstUser.email}`);
     res.json({ success: true, promoted: firstUser.email, plan: 'pro', isAdmin: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
@@ -888,7 +1064,242 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
     db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
     console.log(`[Admin] Deleted user: ${user.email}`);
     res.json({ success: true, deleted: user.email });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// Per-user cost aggregation
+app.get('/api/admin/users/:id/costs', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const period = req.query.period || 'month';
+    const periodMs = { day: 86400000, week: 604800000, month: 2592000000, all: 0 }[period] || 2592000000;
+    const since = periodMs > 0 ? Date.now() - periodMs : 0;
+    const row = db.prepare(
+      'SELECT COALESCE(SUM(cost), 0) as totalCost, COUNT(*) as messageCount, COALESCE(SUM(tokens_total), 0) as totalTokens FROM audit_entries WHERE user_id = ? AND timestamp > ?'
+    ).get(req.params.id, since);
+    res.json({ success: true, userId: req.params.id, period, ...row });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// All users' costs ranked
+app.get('/api/admin/costs/summary', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const period = req.query.period || 'month';
+    const periodMs = { day: 86400000, week: 604800000, month: 2592000000, all: 0 }[period] || 2592000000;
+    const since = periodMs > 0 ? Date.now() - periodMs : 0;
+    const rows = db.prepare(
+      `SELECT a.user_id, u.email, u.display_name, u.plan,
+              COALESCE(SUM(a.cost), 0) as totalCost, COUNT(*) as messageCount, COALESCE(SUM(a.tokens_total), 0) as totalTokens
+       FROM audit_entries a LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.timestamp > ? GROUP BY a.user_id ORDER BY totalCost DESC`
+    ).all(since);
+    res.json({ success: true, period, users: rows });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// ADMIN DASHBOARD ENDPOINTS
+// ============================================================================
+
+// Overview stats
+app.get('/api/admin/stats', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const proUsers = db.prepare("SELECT COUNT(*) as count FROM users WHERE plan = 'pro'").get().count;
+    const totalConversations = db.prepare('SELECT COUNT(*) as count FROM conversations').get().count;
+    const totalMessages = db.prepare('SELECT COUNT(*) as count FROM messages').get().count;
+    const todaySignups = db.prepare(
+      "SELECT COUNT(*) as count FROM users WHERE created_at > datetime('now', '-1 day')"
+    ).get().count;
+    const activeToday = db.prepare(
+      "SELECT COUNT(DISTINCT user_id) as count FROM telemetry_events WHERE timestamp > datetime('now', '-1 day')"
+    ).get().count;
+
+    const tokenUsage = db.prepare(
+      "SELECT COALESCE(SUM(total_input_tokens), 0) as input, COALESCE(SUM(total_output_tokens), 0) as output FROM telemetry_conversations"
+    ).get();
+
+    const topModels = db.prepare(
+      "SELECT model_used, COUNT(*) as count FROM telemetry_conversations GROUP BY model_used ORDER BY count DESC LIMIT 5"
+    ).all();
+
+    const recentUsers = db.prepare(
+      "SELECT id, email, display_name, plan, created_at FROM users ORDER BY created_at DESC LIMIT 20"
+    ).all();
+
+    const recentEvents = db.prepare(
+      "SELECT event_type, COUNT(*) as count FROM telemetry_events WHERE timestamp > datetime('now', '-1 day') GROUP BY event_type ORDER BY count DESC"
+    ).all();
+
+    res.json({
+      overview: {
+        totalUsers,
+        proUsers,
+        freeUsers: totalUsers - proUsers,
+        totalConversations,
+        totalMessages,
+        todaySignups,
+        activeToday,
+        totalInputTokens: tokenUsage.input,
+        totalOutputTokens: tokenUsage.output,
+      },
+      topModels,
+      recentUsers,
+      recentEvents,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// User list with search (enhanced version)
+app.get('/api/admin/users/search', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const search = req.query.q || '';
+    const page = parseInt(req.query.page) || 1;
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    let users;
+    if (search) {
+      users = db.prepare(
+        "SELECT id, email, display_name, plan, is_admin, created_at FROM users WHERE email LIKE ? OR display_name LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
+      ).all(`%${search}%`, `%${search}%`, limit, offset);
+    } else {
+      users = db.prepare(
+        "SELECT id, email, display_name, plan, is_admin, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?"
+      ).all(limit, offset);
+    }
+
+    const total = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    res.json({ users, total, page, pages: Math.ceil(total / limit) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update user plan
+app.patch('/api/admin/users/:id/plan', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { plan } = req.body;
+    if (!['free', 'pro', 'enterprise'].includes(plan)) {
+      return res.status(400).json({ error: 'Invalid plan' });
+    }
+    db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Telemetry data export (for training)
+app.get('/api/admin/telemetry/export', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const events = db.prepare(
+      "SELECT * FROM telemetry_events WHERE timestamp > datetime('now', ? || ' days') ORDER BY timestamp DESC"
+    ).all(`-${days}`);
+    const conversations = db.prepare(
+      "SELECT * FROM telemetry_conversations WHERE started_at > datetime('now', ? || ' days') ORDER BY started_at DESC"
+    ).all(`-${days}`);
+    const feedback = db.prepare(
+      "SELECT * FROM telemetry_feedback WHERE timestamp > datetime('now', ? || ' days') ORDER BY timestamp DESC"
+    ).all(`-${days}`);
+    const tools = db.prepare(
+      "SELECT * FROM telemetry_tool_usage WHERE timestamp > datetime('now', ? || ' days') ORDER BY timestamp DESC"
+    ).all(`-${days}`);
+
+    res.json({ events, conversations, feedback, tools });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Live activity feed
+app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const events = db.prepare(`
+      SELECT te.*, u.email, u.display_name
+      FROM telemetry_events te
+      LEFT JOIN users u ON te.user_id = u.id
+      ORDER BY te.timestamp DESC
+      LIMIT ?
+    `).all(limit);
+    res.json({ events });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================================
+// TELEMETRY ENDPOINTS
+// ============================================================================
+
+// Log a telemetry event
+app.post('/api/telemetry/event', requireAuth, (req, res) => {
+  try {
+    const { eventType, eventData, sessionId } = req.body;
+    db.prepare(`
+      INSERT INTO telemetry_events (user_id, session_id, event_type, event_data)
+      VALUES (?, ?, ?, ?)
+    `).run(req.user.id, sessionId || null, eventType, JSON.stringify(eventData || {}));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Log conversation stats
+app.post('/api/telemetry/conversation', requireAuth, (req, res) => {
+  try {
+    const { conversationId, model, mode, messageCount, toolCalls,
+            inputTokens, outputTokens, duration } = req.body;
+    db.prepare(`
+      INSERT INTO telemetry_conversations
+        (user_id, conversation_id, model_used, mode, message_count,
+         tool_calls_count, total_input_tokens, total_output_tokens, duration_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, conversationId, model, mode || 'regular',
+           messageCount || 0, toolCalls || 0, inputTokens || 0,
+           outputTokens || 0, duration || 0);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Log feedback (thumbs up/down, corrections)
+app.post('/api/telemetry/feedback', requireAuth, (req, res) => {
+  try {
+    const { conversationId, messageId, feedbackType,
+            originalResponse, correctedResponse } = req.body;
+    db.prepare(`
+      INSERT INTO telemetry_feedback
+        (user_id, conversation_id, message_id, feedback_type,
+         original_response, corrected_response)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, conversationId, messageId, feedbackType,
+           originalResponse || null, correctedResponse || null);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Log tool usage
+app.post('/api/telemetry/tool', requireAuth, (req, res) => {
+  try {
+    const { conversationId, toolName, success, durationMs, errorMessage } = req.body;
+    db.prepare(`
+      INSERT INTO telemetry_tool_usage
+        (user_id, conversation_id, tool_name, success, duration_ms, error_message)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, conversationId, toolName, success ? 1 : 0,
+           durationMs || 0, errorMessage || null);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ============================================================================
@@ -907,7 +1318,7 @@ app.get('/api/conversations', requireAuth, (req, res) => {
       return { id: c.id, title: c.title, mode: c.mode, model: c.model, provider: c.provider, isFavorite: !!c.is_favorite, isArchived: !!c.is_archived, isPinned: !!c.is_pinned, messageCount: c.message_count, preview, createdAt: c.created_at, updatedAt: c.updated_at };
     });
     res.json({ success: true, conversations });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/conversations', requireAuth, (req, res) => {
@@ -919,7 +1330,7 @@ app.post('/api/conversations', requireAuth, (req, res) => {
     stmts.insertConversation.run(id, title || 'New Chat', mode || 'regular', model || 'claude-sonnet-4-20250514', provider || 'anthropic', '{}', now, now, userId);
     console.log(`[DB] Created conversation: ${id} for user: ${userId}`);
     res.json({ success: true, id, createdAt: now });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/conversations/:id', requireAuth, (req, res) => {
@@ -929,7 +1340,7 @@ app.get('/api/conversations/:id', requireAuth, (req, res) => {
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
     const messages = stmts.getMessages.all(req.params.id, userId).map(m => ({ ...m, content: JSON.parse(m.content), metadata: JSON.parse(m.metadata || '{}'), isEdited: !!m.is_edited }));
     res.json({ success: true, conversation: { ...conversation, metadata: JSON.parse(conversation.metadata || '{}'), isFavorite: !!conversation.is_favorite, isArchived: !!conversation.is_archived, isPinned: !!conversation.is_pinned }, messages });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.patch('/api/conversations/:id', requireAuth, (req, res) => {
@@ -945,12 +1356,12 @@ app.patch('/api/conversations/:id', requireAuth, (req, res) => {
       req.body.metadata ? JSON.stringify(req.body.metadata) : e.metadata, Date.now(), req.params.id, userId
     );
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/conversations/:id', requireAuth, (req, res) => {
   try { stmts.deleteConversation.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/conversations/search', requireAuth, (req, res) => {
@@ -960,7 +1371,7 @@ app.get('/api/conversations/search', requireAuth, (req, res) => {
     if (!q) return res.status(400).json({ error: 'Query required' });
     const results = stmts.searchConversations.all(userId, `%${q}%`, `%${q}%`, parseInt(limit) || 20);
     res.json({ success: true, results });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -976,17 +1387,17 @@ app.post('/api/conversations/:id/messages', requireAuth, (req, res) => {
     stmts.insertMessage.run(id, req.params.id, role, JSON.stringify(content), tokensInput || 0, tokensOutput || 0, cost || 0, model || null, 0, parentId || null, JSON.stringify(metadata || {}), now, userId);
     db.prepare('UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?').run(now, req.params.id, userId);
     res.json({ success: true, id, timestamp: now });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.patch('/api/messages/:id', requireAuth, (req, res) => {
   try { stmts.updateMessage.run(JSON.stringify(req.body.content), JSON.stringify(req.body.metadata || {}), req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/messages/:id', requireAuth, (req, res) => {
   try { stmts.deleteMessage.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1253,14 +1664,14 @@ app.post('/api/tbwo/:tbwoId/receipts', requireAuth, (req, res) => {
     stmts.insertReceipt.run(id, req.params.tbwoId, type || 'full', JSON.stringify(data), Date.now(), userId);
     console.log(`[DB] Saved receipt for TBWO: ${req.params.tbwoId}`);
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/tbwo/:tbwoId/receipts', requireAuth, (req, res) => {
   try {
     const receipts = stmts.getReceipts.all(req.params.tbwoId, req.user.id).map(r => ({ ...r, data: JSON.parse(r.data) }));
     res.json({ success: true, receipts });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1273,12 +1684,12 @@ app.get('/api/settings', requireAuth, (req, res) => {
     const settings = {};
     stmts.getAllSettings.all(userId).forEach(s => { try { settings[s.key] = JSON.parse(s.value); } catch { settings[s.key] = s.value; } });
     res.json({ success: true, settings });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.put('/api/settings/:key', requireAuth, (req, res) => {
   try { stmts.upsertSetting.run(req.user.id, req.params.key, JSON.stringify(req.body.value), Date.now()); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1316,7 +1727,7 @@ app.get('/api/tbwo', requireAuth, (req, res) => {
       };
     });
     res.json({ success: true, tbwos });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/tbwo', requireAuth, (req, res) => {
@@ -1337,7 +1748,7 @@ app.post('/api/tbwo', requireAuth, (req, res) => {
       JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/tbwo/:id', requireAuth, (req, res) => {
@@ -1368,7 +1779,7 @@ app.get('/api/tbwo/:id', requireAuth, (req, res) => {
         metadata: t.metadata, createdAt: t.created_at, updatedAt: t.updated_at,
       },
     });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.patch('/api/tbwo/:id', requireAuth, (req, res) => {
@@ -1397,12 +1808,243 @@ app.patch('/api/tbwo/:id', requireAuth, (req, res) => {
       now, req.params.id, userId
     );
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/tbwo/:id', requireAuth, (req, res) => {
   try { stmts.deleteTBWO.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// TBWO WORKSPACE MANAGEMENT
+// ============================================================================
+
+/**
+ * In-memory registry of active TBWO workspaces.
+ * Maps tbwoId -> { path, userId, createdAt, fileCount }
+ * Cleaned up on explicit DELETE or via 2-hour TTL sweep.
+ */
+const tbwoWorkspaces = new Map();
+const WORKSPACE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+// Sweep stale workspaces every 15 minutes
+setInterval(async () => {
+  const now = Date.now();
+  for (const [tbwoId, ws] of tbwoWorkspaces.entries()) {
+    if (now - ws.createdAt > WORKSPACE_TTL_MS) {
+      try {
+        await fs.rm(ws.path, { recursive: true, force: true });
+        tbwoWorkspaces.delete(tbwoId);
+        console.log(`[Workspace] Cleaned up stale workspace: ${tbwoId}`);
+      } catch {}
+    }
+  }
+}, 15 * 60 * 1000);
+
+/**
+ * Accept auth from header OR query param (for direct download links like <a href download>)
+ */
+function requireAuthOrToken(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// POST /api/tbwo/:id/workspace/init — Create temp dir for TBWO workspace
+app.post('/api/tbwo/:id/workspace/init', requireAuth, async (req, res) => {
+  try {
+    const tbwoId = req.params.id;
+    const workspacePath = path.join(os.tmpdir(), `alin-tbwo-${tbwoId}`);
+
+    // Clean up any previous workspace for this TBWO
+    try { await fs.rm(workspacePath, { recursive: true, force: true }); } catch {}
+
+    await fs.mkdir(workspacePath, { recursive: true });
+
+    tbwoWorkspaces.set(tbwoId, {
+      path: workspacePath,
+      userId: req.user.id,
+      createdAt: Date.now(),
+      fileCount: 0,
+    });
+
+    console.log(`[Workspace] Initialized: ${workspacePath}`);
+    res.json({ success: true, workspaceId: tbwoId, workspacePath });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/tbwo/:id/workspace/write — Write file to workspace
+app.post('/api/tbwo/:id/workspace/write', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found. Call /init first.' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const { path: filePath, content } = req.body;
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: 'path and content required' });
+    }
+
+    // Normalize to prevent path traversal
+    const relativePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+    const fullPath = path.join(ws.path, relativePath);
+
+    // Verify resolved path is inside workspace
+    if (!path.resolve(fullPath).startsWith(path.resolve(ws.path))) {
+      return res.status(403).json({ error: 'Path traversal detected' });
+    }
+
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, content);
+    ws.fileCount++;
+
+    const size = Buffer.byteLength(content, 'utf-8');
+    const downloadUrl = `/api/tbwo/${req.params.id}/workspace/file?path=${encodeURIComponent(relativePath)}`;
+
+    console.log(`[Workspace] File written: ${relativePath} (${size} bytes)`);
+    res.json({ success: true, path: relativePath, size, downloadUrl });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/tbwo/:id/workspace/read — Read file from workspace
+app.post('/api/tbwo/:id/workspace/read', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const { path: filePath } = req.body;
+    if (!filePath) return res.status(400).json({ error: 'path required' });
+
+    const relativePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+    const fullPath = path.join(ws.path, relativePath);
+
+    if (!path.resolve(fullPath).startsWith(path.resolve(ws.path))) {
+      return res.status(403).json({ error: 'Path traversal detected' });
+    }
+
+    const content = await fs.readFile(fullPath, 'utf-8');
+    res.json({ success: true, content, path: relativePath });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/tbwo/:id/workspace/list — List workspace directory
+app.post('/api/tbwo/:id/workspace/list', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const subPath = req.body.path || '.';
+    const relativePath = path.normalize(subPath).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+    const fullPath = path.join(ws.path, relativePath);
+
+    if (!path.resolve(fullPath).startsWith(path.resolve(ws.path))) {
+      return res.status(403).json({ error: 'Path traversal detected' });
+    }
+
+    const entries = await fs.readdir(fullPath, { withFileTypes: true });
+    const files = entries.map(e => ({
+      name: e.name,
+      isDirectory: e.isDirectory(),
+      path: path.join(relativePath, e.name).replace(/\\/g, '/'),
+    }));
+
+    res.json({ success: true, files });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/tbwo/:id/workspace/file — Download single file (supports token query param for <a href> download)
+app.get('/api/tbwo/:id/workspace/file', requireAuthOrToken, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ error: 'path query param required' });
+
+    const relativePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+    const fullPath = path.join(ws.path, relativePath);
+
+    if (!path.resolve(fullPath).startsWith(path.resolve(ws.path))) {
+      return res.status(403).json({ error: 'Path traversal detected' });
+    }
+
+    const filename = path.basename(relativePath);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.sendFile(path.resolve(fullPath));
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/tbwo/:id/workspace/zip — Download all workspace files as zip
+app.get('/api/tbwo/:id/workspace/zip', requireAuthOrToken, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const zip = new JSZip();
+
+    // Recursively add all files
+    async function addDir(dirPath, zipFolder) {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          await addDir(entryPath, zipFolder.folder(entry.name));
+        } else {
+          const content = await fs.readFile(entryPath);
+          zipFolder.file(entry.name, content);
+        }
+      }
+    }
+
+    await addDir(ws.path, zip);
+
+    const tbwoId = req.params.id;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="tbwo-${tbwoId.slice(0, 8)}.zip"`);
+
+    // Stream the zip to avoid loading entire buffer into memory
+    zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' })
+      .pipe(res);
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// DELETE /api/tbwo/:id/workspace — Remove workspace and deregister
+app.delete('/api/tbwo/:id/workspace', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.json({ success: true, message: 'No workspace to clean up' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    try { await fs.rm(ws.path, { recursive: true, force: true }); } catch {}
+    tbwoWorkspaces.delete(req.params.id);
+
+    console.log(`[Workspace] Deleted: ${req.params.id}`);
+    res.json({ success: true });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
 });
 
 // ============================================================================
@@ -1427,7 +2069,7 @@ app.get('/api/artifacts', requireAuth, (req, res) => {
       metadata: JSON.parse(r.metadata || '{}'),
     }));
     res.json({ success: true, artifacts });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/artifacts', requireAuth, (req, res) => {
@@ -1443,7 +2085,7 @@ app.post('/api/artifacts', requireAuth, (req, res) => {
       JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.patch('/api/artifacts/:id', requireAuth, (req, res) => {
@@ -1461,12 +2103,12 @@ app.patch('/api/artifacts/:id', requireAuth, (req, res) => {
       now, req.params.id, userId
     );
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/artifacts/:id', requireAuth, (req, res) => {
   try { stmts.deleteArtifact.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1494,7 +2136,7 @@ app.get('/api/memories', requireAuth, (req, res) => {
       metadata: JSON.parse(r.metadata || '{}'),
     }));
     res.json({ success: true, memories });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/memories', requireAuth, (req, res) => {
@@ -1513,7 +2155,7 @@ app.post('/api/memories', requireAuth, (req, res) => {
       b.lastAccessedAt || null, b.createdAt || now, b.updatedAt || now, userId
     );
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.patch('/api/memories/:id', requireAuth, (req, res) => {
@@ -1538,12 +2180,12 @@ app.patch('/api/memories/:id', requireAuth, (req, res) => {
       b.lastAccessedAt ?? e.last_accessed_at, now, req.params.id, userId
     );
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/memories/:id', requireAuth, (req, res) => {
   try { stmts.deleteMemory.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1564,7 +2206,7 @@ app.get('/api/audit', requireAuth, (req, res) => {
       tools_used: JSON.parse(r.tools_used || '[]'),
     }));
     res.json({ success: true, entries });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/audit', requireAuth, (req, res) => {
@@ -1584,7 +2226,7 @@ app.post('/api/audit', requireAuth, (req, res) => {
       b.timestamp || Date.now(), userId
     );
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/audit/prune', requireAuth, (req, res) => {
@@ -1592,7 +2234,7 @@ app.delete('/api/audit/prune', requireAuth, (req, res) => {
     const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
     const result = stmts.pruneAudit.run(req.user.id, ninetyDaysAgo);
     res.json({ success: true, deleted: result.changes });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
@@ -1604,7 +2246,7 @@ app.get('/api/images/list', requireAuth, (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500);
     const images = stmts.listImages.all(req.user.id, limit);
     res.json({ success: true, images });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/images/metadata', requireAuth, (req, res) => {
@@ -1620,19 +2262,19 @@ app.post('/api/images/metadata', requireAuth, (req, res) => {
       b.createdAt || Date.now(), userId
     );
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.delete('/api/images/:id', requireAuth, (req, res) => {
   try { stmts.deleteImage.run(req.params.id, req.user.id); res.json({ success: true }); }
-  catch (error) { res.status(500).json({ error: error.message }); }
+  catch (error) { sendError(res, 500, error.message); }
 });
 
 // ============================================================================
 // API KEY STATUS (never exposes actual keys)
 // ============================================================================
 
-app.get('/api/keys/status', (req, res) => {
+app.get('/api/keys/status', requireAuth, (req, res) => {
   res.json({
     anthropic: !!process.env.ANTHROPIC_API_KEY,
     openai: !!process.env.OPENAI_API_KEY,
@@ -1698,7 +2340,7 @@ app.post('/api/search/brave', requireAuth, async (req, res) => {
     res.json({ results: webResults, query });
   } catch (error) {
     console.error('[Brave Proxy] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -1723,7 +2365,7 @@ app.get('/api/search/ddg', requireAuth, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('[DDG Proxy] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -1749,15 +2391,21 @@ for (const dir of OUTPUT_DIRS) {
 }
 
 function isPathAllowed(filePath) {
-  const normalizedPath = path.normalize(path.resolve(filePath));
+  // Resolve to absolute path first, then normalize (handles .. AFTER resolution)
+  const resolvedPath = path.resolve(filePath);
+  const normalizedPath = path.normalize(resolvedPath);
 
-  // Block path traversal attempts
-  if (filePath.includes('..')) {
+  // Block Windows UNC paths (\\server\share)
+  if (normalizedPath.startsWith('\\\\')) {
     return false;
   }
 
-  // Check if path is within allowed directories
-  return ALLOWED_DIRS.some(dir => normalizedPath.startsWith(path.normalize(dir)));
+  // Check if resolved path is within allowed directories
+  // Use path.sep to prevent prefix-matching bypasses (e.g., /home/userEvil matching /home/user)
+  return ALLOWED_DIRS.some(dir => {
+    const normalizedDir = path.normalize(dir);
+    return normalizedPath === normalizedDir || normalizedPath.startsWith(normalizedDir + path.sep);
+  });
 }
 
 /**
@@ -1785,7 +2433,7 @@ app.post('/api/files/read', requireAuth, async (req, res) => {
     res.json({ success: true, content, path: filePath });
   } catch (error) {
     console.error('[File] Read error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -1817,7 +2465,7 @@ app.post('/api/files/write', requireAuth, async (req, res) => {
     res.json({ success: true, path: filePath, bytesWritten: content.length });
   } catch (error) {
     console.error('[File] Write error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -1852,7 +2500,7 @@ app.post('/api/files/list', requireAuth, async (req, res) => {
     res.json({ success: true, path: dirPath, files });
   } catch (error) {
     console.error('[File] List error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -1903,7 +2551,7 @@ const GIT_BLOCKED_PATTERNS = ['push --force', 'push -f', 'reset --hard', 'clean 
  * Recursively scan a directory, returning tree structure + file contents
  * POST /api/files/scan
  */
-app.post('/api/files/scan', requireAuth, async (req, res) => {
+app.post('/api/files/scan', requireAuth, scanLimiter, async (req, res) => {
   try {
     const {
       path: scanPath,
@@ -2033,7 +2681,7 @@ app.post('/api/files/scan', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Scan] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -2165,7 +2813,7 @@ app.post('/api/files/search', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Search] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -2177,7 +2825,7 @@ app.post('/api/files/search', requireAuth, async (req, res) => {
  * Execute shell commands (npm test, npm run build, etc.)
  * POST /api/command/execute
  */
-app.post('/api/command/execute', requireAuth, async (req, res) => {
+app.post('/api/command/execute', requireAuth, executionLimiter, async (req, res) => {
   try {
     const {
       command,
@@ -2245,16 +2893,26 @@ app.post('/api/command/execute', requireAuth, async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`[Command] Completed in ${duration}ms, exit code: ${result.exitCode}`);
 
+    const MAX_STDOUT = 500000;
+    const MAX_STDERR = 50000;
+    const stdoutTruncated = result.stdout.length > MAX_STDOUT;
+    const stderrTruncated = result.stderr.length > MAX_STDERR;
+
     res.json({
       success: true,
-      stdout: result.stdout.slice(0, 100000),
-      stderr: result.stderr.slice(0, 20000),
+      stdout: stdoutTruncated
+        ? result.stdout.slice(0, MAX_STDOUT) + `\n\n[Output truncated. ${(result.stdout.length - MAX_STDOUT).toLocaleString()} bytes omitted.]`
+        : result.stdout,
+      stderr: stderrTruncated
+        ? result.stderr.slice(0, MAX_STDERR) + `\n\n[Stderr truncated. ${(result.stderr.length - MAX_STDERR).toLocaleString()} bytes omitted.]`
+        : result.stderr,
       exitCode: result.exitCode,
       duration,
+      truncated: stdoutTruncated || stderrTruncated,
     });
   } catch (error) {
     console.error('[Command] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -2333,7 +2991,7 @@ app.post('/api/git/execute', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Git] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -2349,7 +3007,7 @@ import { tmpdir } from 'os';
  * POST /api/code/execute
  * Body: { language: string, code: string, timeout?: number }
  */
-app.post('/api/code/execute', requireAuth, async (req, res) => {
+app.post('/api/code/execute', requireAuth, executionLimiter, async (req, res) => {
   try {
     const { language, code, timeout = 30000 } = req.body;
 
@@ -2538,6 +3196,18 @@ app.post('/api/computer/action', requireAuth, async (req, res) => {
 
 // Edit history for undo support (per-file, in-memory)
 const editHistory = new Map();
+const EDIT_HISTORY_MAX_FILES = 1000;
+
+// LRU eviction: when edit history exceeds max, remove oldest entries
+function editHistorySet(filePath, content) {
+  if (!editHistory.has(filePath)) editHistory.set(filePath, []);
+  editHistory.get(filePath).push(content);
+  // Evict oldest files if over limit
+  if (editHistory.size > EDIT_HISTORY_MAX_FILES) {
+    const oldestKey = editHistory.keys().next().value;
+    editHistory.delete(oldestKey);
+  }
+}
 
 app.post('/api/editor/execute', requireAuth, async (req, res) => {
   try {
@@ -2549,6 +3219,15 @@ app.post('/api/editor/execute', requireAuth, async (req, res) => {
 
     // Resolve and validate path
     const resolvedPath = filePath ? path.resolve(filePath) : '';
+
+    // Security: validate path is within allowed directories
+    if (resolvedPath && !isPathAllowed(resolvedPath)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Editor operations are restricted to allowed directories.',
+        code: 'PATH_DENIED',
+      });
+    }
 
     switch (command) {
       case 'view': {
@@ -2585,9 +3264,8 @@ app.post('/api/editor/execute', requireAuth, async (req, res) => {
         }
         const content = await fs.readFile(resolvedPath, 'utf-8');
 
-        // Save to edit history for undo
-        if (!editHistory.has(resolvedPath)) editHistory.set(resolvedPath, []);
-        editHistory.get(resolvedPath).push(content);
+        // Save to edit history for undo (with LRU eviction)
+        editHistorySet(resolvedPath, content);
 
         const occurrences = content.split(old_str).length - 1;
         if (occurrences === 0) {
@@ -2608,8 +3286,7 @@ app.post('/api/editor/execute', requireAuth, async (req, res) => {
         }
         const content = await fs.readFile(resolvedPath, 'utf-8');
 
-        if (!editHistory.has(resolvedPath)) editHistory.set(resolvedPath, []);
-        editHistory.get(resolvedPath).push(content);
+        editHistorySet(resolvedPath, content);
 
         const lines = content.split('\n');
         lines.splice(insert_line, 0, new_str || '');
@@ -3378,7 +4055,7 @@ app.post('/api/claude', requireAuth, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('[Claude Proxy] Error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -3421,7 +4098,7 @@ app.post('/api/memory/store', requireAuth, (req, res) => {
     res.json({ success: true, id, message: `Memory stored in ${layer} layer` });
   } catch (error) {
     console.error('[Memory] Store error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -3478,7 +4155,7 @@ app.post('/api/memory/recall', requireAuth, (req, res) => {
     res.json({ success: true, memories, count: memories.length });
   } catch (error) {
     console.error('[Memory] Recall error:', error.message);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error.message);
   }
 });
 
@@ -3590,7 +4267,7 @@ app.post('/api/self-model/outcomes', requireAuth, (req, res) => {
     const id = randomUUID();
     stmts.insertOutcome.run(id, b.tbwoId, b.objective || '', b.type || '', b.timeBudget || 0, b.planConfidence || 0, b.phasesCompleted || 0, b.phasesFailed || 0, b.artifactsCount || 0, b.userEditsAfter || 0, b.qualityScore || 0, b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/outcomes', requireAuth, (req, res) => {
@@ -3600,7 +4277,7 @@ app.get('/api/self-model/outcomes', requireAuth, (req, res) => {
     const type = req.query.type;
     const rows = type ? stmts.listOutcomesByType.all(userId, type, limit) : stmts.listOutcomes.all(userId, limit);
     res.json({ success: true, outcomes: rows });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // --- Tool Reliability (shared across users — measures backend tool behavior) ---
@@ -3629,7 +4306,7 @@ app.post('/api/self-model/tool-reliability', requireAuth, (req, res) => {
       (!success && errorReason) ? errorReason.slice(0, 500) : ''
     );
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/tool-reliability', requireAuth, (req, res) => {
@@ -3643,7 +4320,7 @@ app.get('/api/self-model/tool-reliability', requireAuth, (req, res) => {
       lastFailureReason: r.last_failure_reason || '',
     }));
     res.json({ success: true, tools: rows });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // --- User Corrections ---
@@ -3661,7 +4338,7 @@ app.post('/api/self-model/corrections', requireAuth, (req, res) => {
       stmts.insertCorrection.run(id, originalValue || '', correctedValue || '', category || 'general', Date.now(), userId);
       res.json({ success: true, id, correctionCount: 1 });
     }
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/corrections', requireAuth, (req, res) => {
@@ -3677,7 +4354,7 @@ app.get('/api/self-model/corrections', requireAuth, (req, res) => {
       lastCorrected: r.last_corrected,
     }));
     res.json({ success: true, corrections: rows });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // --- Decision Log ---
@@ -3688,7 +4365,7 @@ app.post('/api/self-model/decisions', requireAuth, (req, res) => {
     const id = randomUUID();
     stmts.insertDecision.run(id, b.tbwoId || '', b.decisionType || '', JSON.stringify(b.optionsConsidered || []), b.chosenOption || '', b.reasoning || '', b.outcome || '', b.confidence || 0, b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/decisions', requireAuth, (req, res) => {
@@ -3708,7 +4385,7 @@ app.get('/api/self-model/decisions', requireAuth, (req, res) => {
       timestamp: r.timestamp,
     }));
     res.json({ success: true, decisions: rows });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // --- Thinking Traces ---
@@ -3719,7 +4396,7 @@ app.post('/api/self-model/thinking-traces', requireAuth, (req, res) => {
     const id = randomUUID();
     stmts.insertThinkingTrace.run(id, b.conversationId || '', b.messageId || '', b.tbwoId || null, b.thinkingContent || '', b.timestamp || Date.now(), userId);
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/thinking-traces', requireAuth, (req, res) => {
@@ -3745,7 +4422,7 @@ app.get('/api/self-model/thinking-traces', requireAuth, (req, res) => {
       timestamp: r.timestamp,
     }));
     res.json({ success: true, traces });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 // --- Layer Memory ---
@@ -3757,7 +4434,7 @@ app.post('/api/self-model/layer-memory', requireAuth, (req, res) => {
     const now = Date.now();
     stmts.insertLayerMemory.run(id, b.layer || 'short_term', b.content || '', b.category || '', b.salience ?? 0.5, b.expiresAt || null, JSON.stringify(b.metadata || {}), now, now, userId);
     res.json({ success: true, id });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.get('/api/self-model/layer-memory', requireAuth, (req, res) => {
@@ -3778,15 +4455,866 @@ app.get('/api/self-model/layer-memory', requireAuth, (req, res) => {
       updatedAt: r.updated_at,
     }));
     res.json({ success: true, memories: rows });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
 
 app.post('/api/self-model/layer-memory/prune', requireAuth, (req, res) => {
   try {
     const result = stmts.pruneExpiredLayers.run(req.user.id, Date.now());
     res.json({ success: true, pruned: result.changes });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { sendError(res, 500, error.message); }
 });
+
+// ============================================================================
+// MULTI-AGENT CODING ARCHITECTURE — Server-Side Tool Loop
+// ============================================================================
+
+import multer from 'multer';
+const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max per file
+
+// --- User workspace registry ---
+const userWorkspaces = new Map(); // userId → { path, createdAt, lastAccessed }
+const WORKSPACE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function getUserWorkspacePath(userId) {
+  return path.join(os.tmpdir(), 'alin-workspaces', userId);
+}
+
+function sanitizePath(p) {
+  return path.normalize(p).replace(/^(\.\.[/\\])+/, '').replace(/\\/g, '/');
+}
+
+function isWithinDirectory(fullPath, baseDir) {
+  return path.resolve(fullPath).startsWith(path.resolve(baseDir));
+}
+
+// --- Non-streaming Claude API call (for tool loop + scan agent) ---
+async function callClaudeSync({ model, messages, system, tools, maxTokens }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
+
+  const body = {
+    model: model || 'claude-sonnet-4-5-20250929',
+    max_tokens: maxTokens || 8192,
+    stream: false,
+    messages,
+  };
+  if (system) body.system = system;
+  if (tools && tools.length > 0) body.tools = tools;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Anthropic API ${response.status}: ${text.slice(0, 500)}`);
+  }
+
+  return response.json();
+}
+
+// --- Compress tool result (cap at 70K chars) ---
+function compressToolResult(result) {
+  if (!result || typeof result !== 'string') return result || '';
+  if (result.length <= 70000) return result;
+  return result.slice(0, 70000) + `\n\n[...truncated, ${result.length} chars total]`;
+}
+
+// --- Internal tool handler functions (workspace-scoped) ---
+
+async function toolFileRead(input, workspacePath) {
+  try {
+    const filePath = sanitizePath(input.path || '');
+    const fullPath = path.join(workspacePath, filePath);
+    if (!isWithinDirectory(fullPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    const content = await fs.readFile(fullPath, 'utf-8');
+    return { success: true, result: content };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolFileWrite(input, workspacePath) {
+  try {
+    const filePath = sanitizePath(input.path || '');
+    const fullPath = path.join(workspacePath, filePath);
+    if (!isWithinDirectory(fullPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, input.content || '');
+    return { success: true, result: `File written: ${filePath} (${(input.content || '').length} bytes)` };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolFileList(input, workspacePath) {
+  try {
+    const dirPath = sanitizePath(input.path || '.');
+    const fullPath = path.join(workspacePath, dirPath);
+    if (!isWithinDirectory(fullPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    const entries = await fs.readdir(fullPath, { withFileTypes: true });
+    const list = entries.map(e => `${e.isDirectory() ? '[DIR] ' : ''}${e.name}`).join('\n');
+    return { success: true, result: list || '(empty directory)' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolScanDirectory(input, workspacePath) {
+  try {
+    const scanPath = sanitizePath(input.path || '.');
+    const rootPath = path.join(workspacePath, scanPath);
+    if (!isWithinDirectory(rootPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    const maxDepth = input.maxDepth || input.depth || 3;
+    const maxFiles = input.maxFiles || 50;
+    const excludeSet = new Set(SCAN_DEFAULTS.defaultExclude);
+    const files = [];
+    let totalSize = 0;
+    const treeLines = [];
+
+    async function walk(dir, depth, prefix) {
+      if (depth > maxDepth || files.length >= maxFiles || totalSize >= 2 * 1024 * 1024) return;
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+      entries.sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      for (let i = 0; i < entries.length; i++) {
+        if (files.length >= maxFiles) break;
+        const entry = entries[i];
+        if (excludeSet.has(entry.name)) continue;
+        const isLast = i === entries.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        const childPrefix = prefix + (isLast ? '    ' : '│   ');
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          treeLines.push(`${prefix}${connector}${entry.name}/`);
+          await walk(fullPath, depth + 1, childPrefix);
+        } else {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (SCAN_DEFAULTS.binaryExtensions.has(ext)) continue;
+          treeLines.push(`${prefix}${connector}${entry.name}`);
+          try {
+            const stat = await fs.stat(fullPath);
+            if (stat.size <= 100 * 1024 && totalSize + stat.size <= 2 * 1024 * 1024) {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              const relPath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
+              files.push({ path: relPath, content });
+              totalSize += stat.size;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    treeLines.push(path.basename(rootPath) + '/');
+    await walk(rootPath, 0, '');
+
+    let result = `## Directory Tree\n\`\`\`\n${treeLines.join('\n')}\n\`\`\`\n\n## File Contents\n`;
+    for (const f of files) {
+      const ext = path.extname(f.path).replace('.', '') || 'text';
+      result += `\n### ${f.path}\n\`\`\`${ext}\n${f.content}\n\`\`\`\n`;
+    }
+    result += `\n(${files.length} files, ${Math.round(totalSize / 1024)}KB total)`;
+
+    return { success: true, result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolCodeSearch(input, workspacePath) {
+  try {
+    const query = input.query || input.pattern || '';
+    if (!query) return { success: false, error: 'Query is required' };
+    const searchPath = sanitizePath(input.path || '.');
+    const rootPath = path.join(workspacePath, searchPath);
+    if (!isWithinDirectory(rootPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    const excludeSet = new Set(SCAN_DEFAULTS.defaultExclude);
+    const matches = [];
+    const maxResults = 100;
+
+    let searchRegex;
+    try { searchRegex = new RegExp(query, 'gi'); } catch { searchRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); }
+
+    async function searchDir(dir) {
+      if (matches.length >= maxResults) return;
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (matches.length >= maxResults) break;
+        if (excludeSet.has(entry.name)) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) { await searchDir(fullPath); continue; }
+        const ext = path.extname(entry.name).toLowerCase();
+        if (SCAN_DEFAULTS.binaryExtensions.has(ext)) continue;
+        try {
+          const stat = await fs.stat(fullPath);
+          if (stat.size > 100 * 1024) continue;
+          const content = await fs.readFile(fullPath, 'utf-8');
+          const lines = content.split('\n');
+          for (let ln = 0; ln < lines.length && matches.length < maxResults; ln++) {
+            searchRegex.lastIndex = 0;
+            if (searchRegex.test(lines[ln])) {
+              const relPath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
+              matches.push(`${relPath}:${ln + 1}: ${lines[ln].trim()}`);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    await searchDir(rootPath);
+    return { success: true, result: matches.length > 0 ? matches.join('\n') : 'No matches found.' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolEditFile(input, workspacePath) {
+  try {
+    const filePath = sanitizePath(input.path || '');
+    const fullPath = path.join(workspacePath, filePath);
+    if (!isWithinDirectory(fullPath, workspacePath)) {
+      return { success: false, error: 'Path traversal detected' };
+    }
+    const oldStr = input.old_str ?? input.oldStr ?? '';
+    const newStr = input.new_str ?? input.newStr ?? '';
+    if (!oldStr) return { success: false, error: 'old_str is required' };
+
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const occurrences = content.split(oldStr).length - 1;
+    if (occurrences === 0) return { success: false, error: `old_str not found in ${filePath}` };
+    if (occurrences > 1) return { success: false, error: `old_str found ${occurrences} times in ${filePath} — must be unique. Include more surrounding context.` };
+
+    const newContent = content.replace(oldStr, newStr);
+    await fs.writeFile(fullPath, newContent);
+    return { success: true, result: `Edited ${filePath}: replaced ${oldStr.length} chars with ${newStr.length} chars` };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolRunCommand(input, workspacePath) {
+  try {
+    const command = input.command || '';
+    if (!command) return { success: false, error: 'Command is required' };
+    const cmdLower = command.toLowerCase().trim();
+    for (const dangerous of DANGEROUS_COMMANDS) {
+      if (cmdLower.includes(dangerous.toLowerCase())) {
+        return { success: false, error: `Command blocked: contains "${dangerous}"` };
+      }
+    }
+
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(command, { shell: true, cwd: workspacePath, timeout: 60000, env: { ...process.env, FORCE_COLOR: '0' } });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', d => { stdout += d.toString(); if (stdout.length > 200000) child.kill('SIGTERM'); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('close', exitCode => resolve({ stdout, stderr, exitCode }));
+      child.on('error', reject);
+    });
+
+    let output = '';
+    if (result.stdout) output += result.stdout.slice(0, 100000);
+    if (result.stderr) output += (output ? '\n--- stderr ---\n' : '') + result.stderr.slice(0, 20000);
+    output += `\n(exit code: ${result.exitCode})`;
+    return { success: result.exitCode === 0, result: output, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolGit(input, workspacePath) {
+  try {
+    const operation = input.operation || '';
+    const args = Array.isArray(input.args) ? input.args : (input.args ? [input.args] : []);
+    if (!operation) return { success: false, error: 'Operation is required' };
+
+    const allOps = [...GIT_READ_OPS, ...GIT_WRITE_OPS];
+    if (!allOps.includes(operation)) {
+      return { success: false, error: `Unknown git operation: "${operation}". Allowed: ${allOps.join(', ')}` };
+    }
+
+    const fullCmd = `${operation} ${args.join(' ')}`.toLowerCase();
+    for (const blocked of GIT_BLOCKED_PATTERNS) {
+      if (fullCmd.includes(blocked)) {
+        return { success: false, error: `Git operation blocked: "${blocked}" not allowed` };
+      }
+    }
+
+    const gitArgs = [operation, ...args];
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn('git', gitArgs, { cwd: workspacePath, timeout: 30000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('close', exitCode => resolve({ stdout, stderr, exitCode }));
+      child.on('error', reject);
+    });
+
+    let output = result.stdout.slice(0, 100000);
+    if (result.stderr) output += '\n' + result.stderr.slice(0, 20000);
+    return { success: result.exitCode === 0, result: output, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolExecuteCode(input) {
+  try {
+    const { language, code } = input;
+    if (!code) return { success: false, error: 'Code is required' };
+    const tempDir = os.tmpdir();
+    const ext = language === 'python' ? 'py' : 'js';
+    const tempFile = path.join(tempDir, `alin-exec-${Date.now()}.${ext}`);
+    await fs.writeFile(tempFile, code);
+    const cmd = language === 'python' ? `python "${tempFile}"` : `node "${tempFile}"`;
+
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(cmd, { shell: true, timeout: 30000 });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('close', exitCode => resolve({ stdout, stderr, exitCode }));
+      child.on('error', reject);
+    });
+
+    try { await fs.unlink(tempFile); } catch {}
+    let output = result.stdout.slice(0, 50000);
+    if (result.stderr) output += '\n--- stderr ---\n' + result.stderr.slice(0, 10000);
+    return { success: result.exitCode === 0, result: output, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolWebSearch(input) {
+  try {
+    const query = input.query || '';
+    if (!query) return { success: false, error: 'Query is required' };
+    const braveKey = process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY;
+    if (!braveKey) return { success: false, error: 'Brave API key not configured' };
+
+    const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`, {
+      headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
+    });
+    if (!resp.ok) return { success: false, error: `Search failed: ${resp.status}` };
+    const data = await resp.json();
+    const results = (data.web?.results || []).map(r => `**${r.title}**\n${r.url}\n${r.description || ''}`).join('\n\n');
+    return { success: true, result: results || 'No results found.' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolMemoryStore(input, userId) {
+  try {
+    const { content, tags, category } = input;
+    if (!content) return { success: false, error: 'Content is required' };
+    const id = randomUUID();
+    const now = Date.now();
+    stmts.insertMemory.run(id, content, 'general', category || '', 0.5, 0, JSON.stringify(tags || []), '[]', '[]', '{}', 0, 0, 0, now, now, userId);
+    return { success: true, result: `Memory stored (id: ${id.slice(0, 8)})` };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function toolMemoryRecall(input, userId) {
+  try {
+    const query = input.query || '';
+    if (!query) return { success: false, error: 'Query is required' };
+    const rows = stmts.listMemories.all(userId);
+    const queryLower = query.toLowerCase();
+    const matching = rows.filter(r => r.content.toLowerCase().includes(queryLower)).slice(0, 10);
+    if (matching.length === 0) return { success: true, result: 'No matching memories found.' };
+    return { success: true, result: matching.map(m => `- ${m.content}`).join('\n') };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// --- Main tool dispatcher ---
+async function executeToolServerSide(toolName, toolInput, workspacePath, userId) {
+  switch (toolName) {
+    case 'file_read': return toolFileRead(toolInput, workspacePath);
+    case 'file_write': return toolFileWrite(toolInput, workspacePath);
+    case 'file_list': return toolFileList(toolInput, workspacePath);
+    case 'scan_directory': return toolScanDirectory(toolInput, workspacePath);
+    case 'code_search': return toolCodeSearch(toolInput, workspacePath);
+    case 'edit_file': return toolEditFile(toolInput, workspacePath);
+    case 'run_command': return toolRunCommand(toolInput, workspacePath);
+    case 'execute_code': return toolExecuteCode(toolInput);
+    case 'git': return toolGit(toolInput, workspacePath);
+    case 'web_search': return toolWebSearch(toolInput);
+    case 'memory_store': return toolMemoryStore(toolInput, userId);
+    case 'memory_recall': return toolMemoryRecall(toolInput, userId);
+    case 'spawn_scan_agent': return runScanAgent(toolInput.task || toolInput.query || '', workspacePath, userId);
+    default:
+      return { success: false, error: `Unknown tool: ${toolName}` };
+  }
+}
+
+// --- Coding mode tool definitions (sent to Claude) ---
+const CODING_TOOLS = [
+  { name: 'file_read', description: 'Read a file from the workspace', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative path within workspace' } }, required: ['path'] } },
+  { name: 'file_write', description: 'Write/create a file in the workspace', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative path' }, content: { type: 'string', description: 'File content' } }, required: ['path', 'content'] } },
+  { name: 'file_list', description: 'List files in a directory', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative directory path (default: .)' } } } },
+  { name: 'scan_directory', description: 'Recursively scan a directory tree and read all file contents in one call. Use this FIRST to understand a codebase.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative path (default: .)' }, depth: { type: 'number', description: 'Max depth (default: 3)' }, maxFiles: { type: 'number', description: 'Max files to read (default: 50)' } } } },
+  { name: 'code_search', description: 'Search for text/regex patterns across files (like grep/ripgrep)', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Search pattern (supports regex)' }, path: { type: 'string', description: 'Directory to search (default: .)' } }, required: ['query'] } },
+  { name: 'edit_file', description: 'Find-and-replace edit. old_str must be unique in the file.', input_schema: { type: 'object', properties: { path: { type: 'string' }, old_str: { type: 'string', description: 'Exact text to find (must be unique)' }, new_str: { type: 'string', description: 'Replacement text' } }, required: ['path', 'old_str', 'new_str'] } },
+  { name: 'run_command', description: 'Execute a shell command in the workspace (npm test, npm run build, etc.)', input_schema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] } },
+  { name: 'execute_code', description: 'Execute Python or JavaScript code', input_schema: { type: 'object', properties: { language: { type: 'string', enum: ['python', 'javascript'] }, code: { type: 'string' } }, required: ['language', 'code'] } },
+  { name: 'git', description: 'Execute git operations (status, diff, log, add, commit, etc.)', input_schema: { type: 'object', properties: { operation: { type: 'string' }, args: { type: 'array', items: { type: 'string' } } }, required: ['operation'] } },
+  { name: 'web_search', description: 'Search the web for information', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'memory_store', description: 'Store information for later recall', input_schema: { type: 'object', properties: { content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, category: { type: 'string' } }, required: ['content'] } },
+  { name: 'memory_recall', description: 'Search stored memories', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'spawn_scan_agent', description: 'Spawn a fast read-only subagent (Haiku) to explore and analyze the codebase. Returns a summary. Use for large-scale code understanding without consuming main context.', input_schema: { type: 'object', properties: { task: { type: 'string', description: 'What to explore/analyze (e.g., "Find all React components that use useState")' } }, required: ['task'] } },
+];
+
+// --- Coding mode system prompt ---
+const CODING_SERVER_SYSTEM_PROMPT = `You are ALIN in coding mode — an expert autonomous software engineer. You solve coding tasks by working through them methodically: reading, understanding, planning, implementing, and verifying.
+
+CORE PRINCIPLES:
+1. Read before writing. Always call scan_directory or file_read first.
+2. Verify after changing. Run tests or check for errors after every edit.
+3. Fix your own mistakes. If something breaks, fix it yourself.
+4. Minimize user interruption. Complete the task autonomously.
+5. Work in tight loops. Think → Act → Observe → Repeat.
+
+WORKFLOW:
+1. scan_directory → understand project structure in ONE call
+2. code_search → find definitions, imports, usages
+3. edit_file or file_write → implement changes
+4. run_command → verify (npm test, tsc --noEmit, etc.)
+5. Repeat until complete
+
+Use spawn_scan_agent for large-scale codebase exploration — it uses a fast model to scan and summarize without consuming your context.
+
+All file paths are relative to the workspace root. Never use absolute paths.`;
+
+// --- Scan subagent (Haiku-powered read-only codebase explorer) ---
+async function runScanAgent(task, workspacePath, userId) {
+  if (!task) return { success: false, error: 'Task is required' };
+
+  const scanTools = CODING_TOOLS.filter(t => ['file_read', 'file_list', 'scan_directory', 'code_search'].includes(t.name));
+  const scanSystem = `You are a fast, read-only code scanner. Your job is to explore a codebase and provide a clear, structured summary.
+
+You have these read-only tools: file_read, file_list, scan_directory, code_search.
+Use scan_directory first to get an overview, then drill into specific files as needed.
+All paths are relative to the workspace root.
+
+Be thorough but concise. Return a structured summary answering the user's question.`;
+
+  let messages = [{ role: 'user', content: task }];
+  const MAX_SCAN_ITERATIONS = 10;
+
+  for (let i = 0; i < MAX_SCAN_ITERATIONS; i++) {
+    const response = await callClaudeSync({
+      model: 'claude-haiku-4-5-20251001',
+      messages,
+      system: scanSystem,
+      tools: scanTools,
+      maxTokens: 4096,
+    });
+
+    // Extract text
+    const textBlocks = (response.content || []).filter(b => b.type === 'text');
+    const toolUseBlocks = (response.content || []).filter(b => b.type === 'tool_use');
+
+    if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+      // Done — return final text
+      const summary = textBlocks.map(b => b.text).join('\n');
+      return { success: true, result: summary || 'Scan completed but no summary was generated.' };
+    }
+
+    // Execute tools and continue
+    messages.push({ role: 'assistant', content: response.content });
+
+    const toolResults = [];
+    for (const toolUse of toolUseBlocks) {
+      const result = await executeToolServerSide(toolUse.name, toolUse.input, workspacePath, userId);
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: compressToolResult(result.success ? (result.result || 'Done') : `Error: ${result.error}`),
+        is_error: !result.success,
+      });
+    }
+
+    messages.push({ role: 'user', content: toolResults });
+  }
+
+  return { success: true, result: 'Scan agent reached maximum iterations.' };
+}
+
+// --- Main coding tool loop endpoint ---
+app.post('/api/coding/stream', requireAuth, checkPlanLimits, async (req, res) => {
+  const { messages, workspaceId, model, system } = req.body;
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'messages array required' });
+  }
+
+  const userId = req.user.id;
+  const wsId = workspaceId || userId;
+  const workspacePath = getUserWorkspacePath(wsId);
+
+  // Ensure workspace exists
+  try { await fs.mkdir(workspacePath, { recursive: true }); } catch {}
+
+  // Update workspace registry
+  userWorkspaces.set(userId, {
+    path: workspacePath,
+    createdAt: userWorkspaces.get(userId)?.createdAt || Date.now(),
+    lastAccessed: Date.now(),
+  });
+
+  setupSSE(res);
+  sendSSE(res, 'start', { model: model || 'claude-sonnet-4-5-20250929', provider: 'anthropic' });
+
+  const MAX_ITERATIONS = 25;
+  const MAX_DURATION_MS = 5 * 60 * 1000; // 5-minute time budget
+  const streamStartTime = Date.now();
+  const systemPrompt = system || CODING_SERVER_SYSTEM_PROMPT;
+  const selectedModel = model || 'claude-sonnet-4-5-20250929';
+  let conversationMessages = [...messages];
+
+  try {
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      // Time budget enforcement
+      if (Date.now() - streamStartTime > MAX_DURATION_MS) {
+        sendSSE(res, 'text_delta', { text: '\n\n*Time budget exceeded (5 minutes). Stopping execution.*' });
+        sendSSE(res, 'done', { stopReason: 'time_budget', model: selectedModel, iterations: iteration });
+        res.end();
+        return;
+      }
+      // Call Claude (non-streaming)
+      const response = await callClaudeSync({
+        model: selectedModel,
+        messages: conversationMessages,
+        system: systemPrompt,
+        tools: CODING_TOOLS,
+        maxTokens: 8192,
+      });
+
+      const contentBlocks = response.content || [];
+      const textBlocks = contentBlocks.filter(b => b.type === 'text');
+      const toolUseBlocks = contentBlocks.filter(b => b.type === 'tool_use');
+
+      // Send text to client
+      for (const tb of textBlocks) {
+        if (tb.text) sendSSE(res, 'text_delta', { text: tb.text });
+      }
+
+      // If no tool calls, we're done
+      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+        sendSSE(res, 'done', {
+          stopReason: response.stop_reason || 'end_turn',
+          inputTokens: response.usage?.input_tokens || 0,
+          outputTokens: response.usage?.output_tokens || 0,
+          model: selectedModel,
+          iterations: iteration + 1,
+        });
+        res.end();
+        return;
+      }
+
+      // Execute each tool
+      const toolResults = [];
+      for (const toolUse of toolUseBlocks) {
+        const activityId = randomUUID();
+        sendSSE(res, 'tool_start', {
+          activityId,
+          toolName: toolUse.name,
+          toolInput: toolUse.input,
+        });
+
+        const result = await executeToolServerSide(toolUse.name, toolUse.input, workspacePath, userId);
+
+        const rawResult = result.success ? (result.result || 'Done') : `Error: ${result.error}`;
+        sendSSE(res, 'tool_result', {
+          activityId,
+          toolName: toolUse.name,
+          success: result.success,
+          result: rawResult.slice(0, 2000), // abbreviated for client display
+        });
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: compressToolResult(rawResult),
+          is_error: !result.success,
+        });
+      }
+
+      // Append to conversation for next iteration
+      conversationMessages.push({ role: 'assistant', content: contentBlocks });
+      conversationMessages.push({ role: 'user', content: toolResults });
+    }
+
+    // Reached max iterations
+    sendSSE(res, 'text_delta', { text: '\n\n*Reached maximum tool iterations (25). You can continue by sending another message.*' });
+    sendSSE(res, 'done', { stopReason: 'max_iterations', model: selectedModel, iterations: MAX_ITERATIONS });
+    res.end();
+  } catch (error) {
+    console.error('[CodingLoop] Error:', error.message);
+    try { sendSSE(res, 'error', { error: error.message }); } catch {}
+    try { res.end(); } catch {}
+  }
+});
+
+// --- Scan agent endpoint (client-initiated) ---
+app.post('/api/coding/scan-agent', requireAuth, async (req, res) => {
+  try {
+    const { task, workspaceId } = req.body;
+    if (!task) return res.status(400).json({ error: 'task is required' });
+
+    const userId = req.user.id;
+    const wsId = workspaceId || userId;
+    const workspacePath = getUserWorkspacePath(wsId);
+
+    const result = await runScanAgent(task, workspacePath, userId);
+    res.json(result);
+  } catch (error) {
+    console.error('[ScanAgent] Error:', error.message);
+    sendError(res, 500, error.message);
+  }
+});
+
+// ============================================================================
+// USER WORKSPACE ENDPOINTS
+// ============================================================================
+
+// POST /api/workspace/init — Create/get workspace
+app.post('/api/workspace/init', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+    await fs.mkdir(workspacePath, { recursive: true });
+
+    userWorkspaces.set(userId, {
+      path: workspacePath,
+      createdAt: userWorkspaces.get(userId)?.createdAt || Date.now(),
+      lastAccessed: Date.now(),
+    });
+
+    console.log(`[Workspace] Initialized user workspace: ${workspacePath}`);
+    res.json({ success: true, workspaceId: userId, workspacePath });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/workspace/upload — Upload files (with zip auto-extraction)
+app.post('/api/workspace/upload', requireAuth, upload.array('files', 50), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+    await fs.mkdir(workspacePath, { recursive: true });
+
+    const uploadedFiles = [];
+
+    for (const file of (req.files || [])) {
+      const targetDir = req.body.targetDir ? sanitizePath(req.body.targetDir) : '';
+      const destDir = path.join(workspacePath, targetDir);
+
+      if (!isWithinDirectory(destDir, workspacePath)) {
+        continue; // skip path traversal attempts
+      }
+
+      // Check if zip file — auto-extract
+      if (file.originalname.toLowerCase().endsWith('.zip')) {
+        try {
+          const zipData = await fs.readFile(file.path);
+          const zip = await JSZip.loadAsync(zipData);
+          const entries = Object.entries(zip.files);
+
+          for (const [entryName, zipEntry] of entries) {
+            if (zipEntry.dir) continue;
+            const safeName = sanitizePath(entryName);
+            const entryDest = path.join(destDir, safeName);
+            if (!isWithinDirectory(entryDest, workspacePath)) continue;
+
+            await fs.mkdir(path.dirname(entryDest), { recursive: true });
+            const content = await zipEntry.async('nodebuffer');
+            await fs.writeFile(entryDest, content);
+            uploadedFiles.push(path.relative(workspacePath, entryDest).replace(/\\/g, '/'));
+          }
+        } catch (zipErr) {
+          console.error('[Workspace] Zip extraction error:', zipErr.message);
+        }
+      } else {
+        // Regular file — copy to workspace
+        const safeName = sanitizePath(file.originalname);
+        const dest = path.join(destDir, safeName);
+        if (!isWithinDirectory(dest, workspacePath)) continue;
+
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.copyFile(file.path, dest);
+        uploadedFiles.push(path.relative(workspacePath, dest).replace(/\\/g, '/'));
+      }
+
+      // Clean up temp file
+      try { await fs.unlink(file.path); } catch {}
+    }
+
+    // Update workspace registry
+    userWorkspaces.set(userId, {
+      path: workspacePath,
+      createdAt: userWorkspaces.get(userId)?.createdAt || Date.now(),
+      lastAccessed: Date.now(),
+    });
+
+    console.log(`[Workspace] Uploaded ${uploadedFiles.length} files for user ${userId}`);
+    res.json({ success: true, files: uploadedFiles, count: uploadedFiles.length });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/workspace/tree — Recursive directory tree
+app.get('/api/workspace/tree', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+
+    async function buildTree(dir, depth = 0, maxDepth = 5) {
+      if (depth > maxDepth) return [];
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return []; }
+
+      const result = [];
+      entries.sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (const entry of entries) {
+        if (SCAN_DEFAULTS.defaultExclude.includes(entry.name)) continue;
+        const relativePath = path.relative(workspacePath, path.join(dir, entry.name)).replace(/\\/g, '/');
+        if (entry.isDirectory()) {
+          const children = await buildTree(path.join(dir, entry.name), depth + 1, maxDepth);
+          result.push({ name: entry.name, type: 'directory', path: relativePath, children });
+        } else {
+          try {
+            const stat = await fs.stat(path.join(dir, entry.name));
+            result.push({ name: entry.name, type: 'file', path: relativePath, size: stat.size });
+          } catch {
+            result.push({ name: entry.name, type: 'file', path: relativePath });
+          }
+        }
+      }
+      return result;
+    }
+
+    const tree = await buildTree(workspacePath);
+    res.json({ success: true, files: tree });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/workspace/file?path=... — Download single file
+app.get('/api/workspace/file', requireAuthOrToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ error: 'path query param required' });
+
+    const relativePath = sanitizePath(filePath);
+    const fullPath = path.join(workspacePath, relativePath);
+    if (!isWithinDirectory(fullPath, workspacePath)) {
+      return res.status(403).json({ error: 'Path traversal detected' });
+    }
+
+    const filename = path.basename(relativePath);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.sendFile(path.resolve(fullPath));
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/workspace/zip — Download all as zip
+app.get('/api/workspace/zip', requireAuthOrToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+
+    const zip = new JSZip();
+
+    async function addDir(dirPath, zipFolder) {
+      let entries;
+      try { entries = await fs.readdir(dirPath, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (SCAN_DEFAULTS.defaultExclude.includes(entry.name)) continue;
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          await addDir(entryPath, zipFolder.folder(entry.name));
+        } else {
+          const content = await fs.readFile(entryPath);
+          zipFolder.file(entry.name, content);
+        }
+      }
+    }
+
+    await addDir(workspacePath, zip);
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="workspace-${userId.slice(0, 8)}.zip"`);
+    zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' }).pipe(res);
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// DELETE /api/workspace — Delete workspace
+app.delete('/api/workspace', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(userId);
+    try { await fs.rm(workspacePath, { recursive: true, force: true }); } catch {}
+    userWorkspaces.delete(userId);
+    console.log(`[Workspace] Deleted user workspace: ${userId}`);
+    res.json({ success: true });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// --- Workspace TTL cleanup (daily) ---
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, ws] of userWorkspaces) {
+    if (now - ws.lastAccessed > WORKSPACE_TTL) {
+      fs.rm(ws.path, { recursive: true, force: true }).catch(() => {});
+      userWorkspaces.delete(userId);
+      console.log(`[Workspace] Cleaned up stale workspace: ${userId}`);
+    }
+  }
+}, 24 * 60 * 60 * 1000);
 
 // Start server
 app.listen(PORT, () => {

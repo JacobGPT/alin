@@ -16,6 +16,7 @@ export default defineConfig(({ command }) => ({
     // PWA support - Only in dev (disabled in prod until icons are added)
     ...(command === 'serve' ? [VitePWA({
       registerType: 'autoUpdate',
+      selfDestroying: true,
       includeAssets: ['icons/*.svg', 'icons/*.png'],
       manifest: {
         name: 'ALIN - AI Operating System',

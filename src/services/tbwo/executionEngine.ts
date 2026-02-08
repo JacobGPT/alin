@@ -51,6 +51,7 @@ import { contractService } from '../contractService';
 import { tbwoUpdateService } from './websocketService';
 import { getDomainPodPrompt } from './domainPrompts';
 import { usePodPoolStore, getPooledPodContext } from '../../store/podPoolStore';
+import { useAuthStore } from '../../store/authStore';
 
 // ============================================================================
 // CONSTANTS
@@ -90,6 +91,9 @@ interface ExecutionState {
   podPoolMapping?: Map<string, string>; // TBWO podId → pool podId
   podInboxes: Map<string, BusMessage[]>;
   pendingClarifications: Map<string, { taskId: string; podId: string; question: string; timestamp: number }>;
+  workspaceMode: boolean;
+  workspaceId: string | null;
+  workspaceFiles: Array<{ relativePath: string; size: number; downloadUrl: string }>;
 }
 
 interface PhaseResult {
@@ -169,8 +173,29 @@ export class ExecutionEngine {
       totalTokensUsed: 0,
       podInboxes: new Map(),
       pendingClarifications: new Map(),
+      workspaceMode: false,
+      workspaceId: null,
+      workspaceFiles: [],
     };
     this.states.set(tbwoId, state);
+
+    // Initialize server-side workspace for isolated file I/O
+    try {
+      const initResp = await fetch(`${BACKEND_URL}/api/tbwo/${tbwoId}/workspace/init`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+      if (initResp.ok) {
+        const initData = await initResp.json();
+        state.workspaceMode = true;
+        state.workspaceId = initData.workspaceId;
+        console.log(`[ExecutionEngine] Workspace initialized: ${initData.workspaceId}`);
+      } else {
+        console.warn('[ExecutionEngine] Workspace init failed, falling back to direct file I/O');
+      }
+    } catch {
+      console.warn('[ExecutionEngine] Workspace init unavailable, using direct file I/O');
+    }
 
     try {
       // Create contract
@@ -356,6 +381,14 @@ export class ExecutionEngine {
     });
 
     tbwoUpdateService.executionComplete(tbwoId, false);
+
+    // Immediate workspace cleanup on cancel (user-initiated, no delay needed)
+    if (state.workspaceMode && state.workspaceId) {
+      fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders(),
+      }).catch(() => {});
+    }
 
     // Clean up state
     this.states.delete(tbwoId);
@@ -1234,6 +1267,25 @@ export class ExecutionEngine {
     // Deliver file artifacts as chat attachments
     const deliveredCount = this.deliverFilesToChat(state);
 
+    // If workspace mode, deliver zip download pill
+    if (state.workspaceMode && state.workspaceId && state.workspaceFiles.length > 0) {
+      const token = useAuthStore.getState().token || '';
+      const zipUrl = `${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/zip?token=${encodeURIComponent(token)}`;
+      const totalSize = state.workspaceFiles.reduce((sum, f) => sum + f.size, 0);
+
+      this.postToChat(state.tbwoId, [
+        { type: 'text' as const, text: `**Download all files** (${state.workspaceFiles.length} files)` },
+        {
+          type: 'file' as const,
+          fileId: `zip-${state.tbwoId}`,
+          filename: `tbwo-${state.tbwoId.slice(0, 8)}.zip`,
+          mimeType: 'application/zip',
+          size: totalSize,
+          url: zipUrl,
+        } as ContentBlock,
+      ]);
+    }
+
     // Terminate pods
     await this.terminatePods(state);
 
@@ -1346,7 +1398,7 @@ export class ExecutionEngine {
           try {
             await fetch(`${BACKEND_URL}/api/files/write`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: this.getAuthHeaders(),
               body: JSON.stringify({ path: receiptPath, content: JSON.stringify(receiptData, null, 2) }),
             });
             console.log('[ExecutionEngine] Fallback receipt.json created at', receiptPath);
@@ -1365,12 +1417,25 @@ export class ExecutionEngine {
       if (tbwo?.receipts) {
         await fetch(`${BACKEND_URL}/api/tbwo/${state.tbwoId}/receipts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getAuthHeaders(),
           body: JSON.stringify({ type: 'full', data: tbwo.receipts }),
         });
       }
     } catch {
       // Non-critical
+    }
+
+    // Schedule workspace cleanup (delay to allow zip downloads)
+    if (state.workspaceMode && state.workspaceId) {
+      const wsId = state.workspaceId;
+      setTimeout(async () => {
+        try {
+          await fetch(`${BACKEND_URL}/api/tbwo/${wsId}/workspace`, {
+            method: 'DELETE',
+            headers: this.getAuthHeaders(),
+          });
+        } catch {}
+      }, 30 * 60 * 1000); // 30 minutes delay
     }
 
     // Clean up internal state
@@ -1423,6 +1488,19 @@ export class ExecutionEngine {
       { type: 'text' as const, text: failMsg },
     ]);
 
+    // Schedule workspace cleanup (shorter delay for failed runs)
+    if (state.workspaceMode && state.workspaceId) {
+      const wsId = state.workspaceId;
+      setTimeout(async () => {
+        try {
+          await fetch(`${BACKEND_URL}/api/tbwo/${wsId}/workspace`, {
+            method: 'DELETE',
+            headers: this.getAuthHeaders(),
+          });
+        } catch {}
+      }, 5 * 60 * 1000); // 5 minutes delay for failed runs
+    }
+
     // Clean up internal state
     this.states.delete(state.tbwoId);
   }
@@ -1442,6 +1520,11 @@ export class ExecutionEngine {
    * Returns the number of files delivered.
    */
   private deliverFilesToChat(state: ExecutionState): number {
+    // In workspace mode, files were already delivered as individual pills during execution
+    if (state.workspaceMode) {
+      return state.workspaceFiles.length;
+    }
+
     // Collect file artifacts with real content
     const fileArtifacts: Artifact[] = [];
     for (const [, artifact] of state.artifacts) {
@@ -1603,6 +1686,62 @@ export class ExecutionEngine {
   }
 
   // ==========================================================================
+  // AUTH & UTILITY HELPERS
+  // ==========================================================================
+
+  /**
+   * Build auth headers for all backend fetch calls.
+   * Fixes the pre-existing bug where tool calls fail with 401 on authenticated servers.
+   */
+  private getAuthHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      ...useAuthStore.getState().getAuthHeader(),
+    };
+  }
+
+  /**
+   * Simple MIME type lookup by file extension.
+   */
+  private getMimeType(filePath: string): string {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const mimeMap: Record<string, string> = {
+      html: 'text/html', css: 'text/css', js: 'application/javascript',
+      ts: 'application/typescript', tsx: 'application/typescript',
+      json: 'application/json', md: 'text/markdown', py: 'text/x-python',
+      svg: 'image/svg+xml', xml: 'application/xml', yaml: 'text/yaml',
+      yml: 'text/yaml', txt: 'text/plain',
+    };
+    return mimeMap[ext] || 'text/plain';
+  }
+
+  /**
+   * Post a FileBlock pill to the TBWO chat conversation for an individual file.
+   */
+  private postFileBlockToChat(tbwoId: string, file: {
+    fileId: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    url: string;
+  }): void {
+    const token = useAuthStore.getState().token || '';
+    const authedUrl = `${file.url}${file.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+
+    this.postToChat(tbwoId, [
+      { type: 'text' as const, text: `**File created:** \`${file.filename}\`` },
+      {
+        type: 'file' as const,
+        fileId: file.fileId,
+        filename: file.filename,
+        mimeType: file.mimeType,
+        size: file.size,
+        url: authedUrl,
+      } as ContentBlock,
+    ]);
+  }
+
+  // ==========================================================================
   // TOOL EXECUTION
   // ==========================================================================
 
@@ -1618,9 +1757,21 @@ export class ExecutionEngine {
     try {
       switch (name) {
         case 'file_read': {
+          if (state.workspaceMode && state.workspaceId) {
+            let filePath = String(input['path'] || '');
+            filePath = filePath.replace(/^output\/tbwo\/[^/]+\//, '');
+            const resp = await fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/read`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              body: JSON.stringify({ path: filePath }),
+            });
+            if (!resp.ok) throw new Error(`workspace file_read failed: ${resp.status}`);
+            const data = await resp.json();
+            return typeof data.content === 'string' ? data.content : JSON.stringify(data);
+          }
           const resp = await fetch(`${BACKEND_URL}/api/files/read`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({ path: input['path'] }),
           });
           if (!resp.ok) throw new Error(`file_read failed: ${resp.status}`);
@@ -1629,21 +1780,54 @@ export class ExecutionEngine {
         }
 
         case 'file_write': {
-          // Enforce TBWO output folder — pods should save to output/tbwo/<objective>/
           let filePath = String(input['path'] || '');
+
+          // Workspace mode: write to isolated temp dir, post FileBlock pill
+          if (state.workspaceMode && state.workspaceId) {
+            // Strip output/tbwo/<slug>/ prefix — workspace IS the output dir
+            filePath = filePath.replace(/^output\/tbwo\/[^/]+\//, '');
+            // Also strip bare output/ prefix
+            filePath = filePath.replace(/^output\//, '');
+
+            const resp = await fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/write`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              body: JSON.stringify({ path: filePath, content: input['content'] }),
+            });
+            if (!resp.ok) throw new Error(`workspace file_write failed: ${resp.status}`);
+            const wsData = await resp.json();
+
+            // Track file for zip delivery
+            state.workspaceFiles.push({
+              relativePath: wsData.path,
+              size: wsData.size,
+              downloadUrl: wsData.downloadUrl,
+            });
+
+            // Post FileBlock pill to chat immediately
+            this.postFileBlockToChat(state.tbwoId, {
+              fileId: nanoid(),
+              filename: wsData.path,
+              mimeType: this.getMimeType(wsData.path),
+              size: wsData.size,
+              url: wsData.downloadUrl,
+            });
+
+            return wsData.message || `File written to ${wsData.path}`;
+          }
+
+          // Fallback: enforce TBWO output folder for direct file I/O
           if (filePath && !filePath.startsWith('output/')) {
-            // Get TBWO objective for folder name
             const tbwo = useTBWOStore.getState().getTBWOById(state.tbwoId);
             const folderName = tbwo?.objective
               ? tbwo.objective.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
               : state.tbwoId;
             filePath = `output/tbwo/${folderName}/${filePath}`;
-            // Update the input path reference for artifact tracking
             (input as Record<string, unknown>)['path'] = filePath;
           }
           const resp = await fetch(`${BACKEND_URL}/api/files/write`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({ path: filePath, content: input['content'] }),
           });
           if (!resp.ok) throw new Error(`file_write failed: ${resp.status}`);
@@ -1652,9 +1836,19 @@ export class ExecutionEngine {
         }
 
         case 'file_list': {
+          if (state.workspaceMode && state.workspaceId) {
+            const resp = await fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/list`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              body: JSON.stringify({ path: input['path'] || '.' }),
+            });
+            if (!resp.ok) throw new Error(`workspace file_list failed: ${resp.status}`);
+            const data = await resp.json();
+            return JSON.stringify(data.files || data, null, 2);
+          }
           const resp = await fetch(`${BACKEND_URL}/api/files/list`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({ path: input['path'] || '.' }),
           });
           if (!resp.ok) throw new Error(`file_list failed: ${resp.status}`);
@@ -1665,7 +1859,7 @@ export class ExecutionEngine {
         case 'scan_directory': {
           const resp = await fetch(`${BACKEND_URL}/api/files/scan`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({ path: input['path'] || '.', depth: input['depth'] || 3 }),
           });
           if (!resp.ok) throw new Error(`scan_directory failed: ${resp.status}`);
@@ -1676,7 +1870,7 @@ export class ExecutionEngine {
         case 'code_search': {
           const resp = await fetch(`${BACKEND_URL}/api/files/search`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               pattern: input['pattern'],
               path: input['path'] || '.',
@@ -1691,7 +1885,7 @@ export class ExecutionEngine {
         case 'execute_code': {
           const resp = await fetch(`${BACKEND_URL}/api/code/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               language: input['language'] || 'javascript',
               code: input['code'],
@@ -1705,7 +1899,7 @@ export class ExecutionEngine {
         case 'run_command': {
           const resp = await fetch(`${BACKEND_URL}/api/command/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               command: input['command'],
               cwd: input['cwd'] || input['working_directory'],
@@ -1719,7 +1913,7 @@ export class ExecutionEngine {
         case 'git': {
           const resp = await fetch(`${BACKEND_URL}/api/git/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               command: input['command'],
               args: input['args'],
@@ -1732,9 +1926,38 @@ export class ExecutionEngine {
         }
 
         case 'edit_file': {
+          if (state.workspaceMode && state.workspaceId) {
+            // Read → apply str_replace in-memory → write back
+            let filePath = String(input['path'] || '');
+            filePath = filePath.replace(/^output\/tbwo\/[^/]+\//, '').replace(/^output\//, '');
+
+            const readResp = await fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/read`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              body: JSON.stringify({ path: filePath }),
+            });
+            if (!readResp.ok) throw new Error(`workspace edit_file read failed: ${readResp.status}`);
+            const readData = await readResp.json();
+            let content = readData.content as string;
+
+            const oldStr = String(input['old_str'] || '');
+            const newStr = String(input['new_str'] || '');
+            if (!content.includes(oldStr)) {
+              return `Error: old_str not found in ${filePath}`;
+            }
+            content = content.replace(oldStr, newStr);
+
+            const writeResp = await fetch(`${BACKEND_URL}/api/tbwo/${state.workspaceId}/workspace/write`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              body: JSON.stringify({ path: filePath, content }),
+            });
+            if (!writeResp.ok) throw new Error(`workspace edit_file write failed: ${writeResp.status}`);
+            return `File edited: ${filePath}`;
+          }
           const resp = await fetch(`${BACKEND_URL}/api/editor/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               command: 'str_replace',
               path: input['path'],
@@ -1750,7 +1973,7 @@ export class ExecutionEngine {
         case 'web_search': {
           const resp = await fetch(`${BACKEND_URL}/api/search`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({ query: input['query'] }),
           });
           if (!resp.ok) throw new Error(`web_search failed: ${resp.status}`);
@@ -1761,7 +1984,7 @@ export class ExecutionEngine {
         case 'generate_image': {
           const resp = await fetch(`${BACKEND_URL}/api/images/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               prompt: input['prompt'],
               size: input['size'] || '1024x1024',
@@ -1777,7 +2000,7 @@ export class ExecutionEngine {
         case 'memory_store': {
           const resp = await fetch(`${BACKEND_URL}/api/memory/store`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               key: input['key'],
               value: input['value'],
@@ -1792,7 +2015,7 @@ export class ExecutionEngine {
         case 'memory_recall': {
           const resp = await fetch(`${BACKEND_URL}/api/memory/recall`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               query: input['query'],
               category: input['category'],
@@ -1816,7 +2039,7 @@ export class ExecutionEngine {
         case 'gpu_compute': {
           const resp = await fetch(`${BACKEND_URL}/api/hardware/gpu-compute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               script: input['script'],
               framework: input['framework'] || 'python',
@@ -1831,7 +2054,7 @@ export class ExecutionEngine {
         case 'blender_execute': {
           const resp = await fetch(`${BACKEND_URL}/api/blender/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               script: input['script'],
               // Optional: start from an existing .blend
@@ -1870,7 +2093,7 @@ export class ExecutionEngine {
         case 'blender_render': {
           const resp = await fetch(`${BACKEND_URL}/api/blender/render`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               blendFile: input['blendFile'],
               frame: input['frame'] || 1,

@@ -127,6 +127,15 @@ const LAYER_CONFIG: Record<MemoryLayer, {
   },
 };
 
+const DEFAULT_LAYER_CONFIG = {
+  icon: <DocumentTextIcon className="h-5 w-5" />,
+  color: 'text-gray-400',
+  bgColor: 'bg-gray-500/10',
+  borderColor: 'border-gray-500/30',
+  label: 'Unknown',
+  description: 'Unrecognized memory layer',
+};
+
 // ============================================================================
 // MEMORY DASHBOARD COMPONENT
 // ============================================================================
@@ -387,7 +396,7 @@ interface MemoryCardProps {
 }
 
 function MemoryCard({ memory, isSelected, onSelect, onPin, onDelete }: MemoryCardProps) {
-  const layerConfig = LAYER_CONFIG[memory.layer];
+  const layerConfig = LAYER_CONFIG[memory.layer] || DEFAULT_LAYER_CONFIG;
 
   return (
     <motion.div
