@@ -7,7 +7,7 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
   // Dev: base '/' so you just go to localhost:3000
-  // Build: base '/app/' so the backend serves it at /app/
+  // Build: base '/' so the backend serves it at /app/
   base: command === 'serve' ? '/' : '/app/',
   plugins: [
     // React with SWC for ultra-fast refresh
