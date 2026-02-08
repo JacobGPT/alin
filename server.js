@@ -3878,7 +3878,7 @@ app.listen(PORT, () => {
   console.log('  Allowed Directories:');
   ALLOWED_DIRS.forEach(dir => console.log(`    - ${dir}`));
   console.log('');
-  console.log(`  Database: SQLite at ${DB_PATH}`);
+  console.log(`  Database: SQLite at ${dbPath}`);
   console.log(`  API Keys: Anthropic=${!!process.env.ANTHROPIC_API_KEY ? '✓' : '✗'} OpenAI=${!!process.env.OPENAI_API_KEY ? '✓' : '✗'} Brave=${!!(process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY) ? '✓' : '✗'}`);
   console.log('  Health: GET /api/health');
   console.log('========================================================');
