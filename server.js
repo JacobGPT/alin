@@ -499,7 +499,7 @@ db.exec(`
   );
 `);
 
-console.log('[DB] SQLite database initialized at', DB_PATH);
+console.log('[DB] SQLite database initialized at', dbPath);
 
 // Prepared statements for performance — ALL user-scoped queries filter by user_id
 const stmts = {
