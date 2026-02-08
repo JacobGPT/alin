@@ -1669,21 +1669,33 @@ class MemoryService {
    * Initialize from existing memories
    */
   private initializeFromStore(): void {
-    const store = useMemoryStore.getState();
-    store.memories.forEach((memory) => {
-      const docId = this.docIdCounter++;
-      this.embedding.addDocument(memory.content, docId);
-      this.memoryIdToDocId.set(memory.id, docId);
-      this.graph.addNode(memory.id);
+    try {
+      const store = useMemoryStore.getState();
+      if (!store.memories || store.memories.size === 0) return;
+      store.memories.forEach((memory) => {
+        try {
+          if (!memory?.content) return;
+          const docId = this.docIdCounter++;
+          this.embedding.addDocument(memory.content, docId);
+          this.memoryIdToDocId.set(memory.id, docId);
+          this.graph.addNode(memory.id);
 
-      // Add edges for related memories
-      memory.relatedMemories.forEach((relatedId) => {
-        this.graph.addEdge(memory.id, relatedId, 'reference');
+          // Add edges for related memories
+          if (Array.isArray(memory.relatedMemories)) {
+            memory.relatedMemories.forEach((relatedId) => {
+              this.graph.addEdge(memory.id, relatedId, 'reference');
+            });
+          }
+        } catch (e) {
+          console.warn('[MemoryService] Skipping corrupt memory entry:', memory?.id, e);
+        }
       });
-    });
 
-    // Initial clustering
-    this.graph.detectCommunities();
+      // Initial clustering
+      this.graph.detectCommunities();
+    } catch (e) {
+      console.warn('[MemoryService] initializeFromStore failed, starting fresh:', e);
+    }
   }
 
   /**
