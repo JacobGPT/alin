@@ -347,7 +347,7 @@ class ProactiveService {
       store.addSuggestion({
         type: 'tool',
         title: 'Enable Image Mode',
-        description: 'Switch to Image mode for DALL-E image generation and gallery.',
+        description: 'Switch to Image mode for FLUX.2 [max] image generation and gallery.',
         confidence: 0.65,
         expiresAt: Date.now() + 30000,
         source: 'context',

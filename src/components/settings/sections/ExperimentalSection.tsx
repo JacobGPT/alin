@@ -31,7 +31,7 @@ export function ExperimentalSection() {
 
       <SettingToggle
         label="Image Generation"
-        description="Generate images with DALL-E or Stable Diffusion"
+        description="Generate images with FLUX.2 [max]"
         checked={experimental.enableImageGeneration}
         onChange={() => toggleExperimentalFeature('enableImageGeneration')}
       />

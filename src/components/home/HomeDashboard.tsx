@@ -573,7 +573,7 @@ function ImagePreview() {
         )}
       </div>
       <div className="text-[11px] text-text-quaternary">
-        DALL·E 3 · Style control
+        FLUX.2 [max] · 4MP · Web-grounded
       </div>
     </div>
   );

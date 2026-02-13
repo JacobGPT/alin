@@ -1186,7 +1186,7 @@ export function buildToolDefinitions(whitelist: string[]): any[] {
     },
     generate_image: {
       name: 'generate_image',
-      description: 'Generate an image using DALL-E 3.',
+      description: 'Generate an image using FLUX.2 [max].',
       input_schema: {
         type: 'object',
         properties: {

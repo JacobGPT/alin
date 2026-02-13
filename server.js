@@ -11,7 +11,7 @@
  * - Git operations
  * - Computer use (screenshot, mouse, keyboard)
  * - Text editor operations
- * - DALL-E image generation proxy
+ * - FLUX.2 [max] image generation (BFL API)
  * - System metrics (CPU, memory, GPU)
  *
  * INSTALL: npm install better-sqlite3
@@ -44,6 +44,7 @@ import { CloudflareImages } from './server/services/cloudflareImages.js';
 import { CloudflareStream } from './server/services/cloudflareStream.js';
 import { CloudflareVectorize } from './server/services/cloudflareVectorize.js';
 import { buildStaticSite } from './server/services/buildStaticSite.js';
+import { generateImage as bflGenerateImage, editImage as bflEditImage, checkBFLHealth } from './server/services/bflClient.js';
 import { SandboxPipeline, getPipeline, setPipeline } from './server/services/sandboxPipeline.js';
 import { generatePatchPlan, applyPatchPlan } from './server/services/sitePatchPlanner.js';
 import { assemblePrompt, detectMode } from './server/prompts/index.js';
@@ -634,7 +635,7 @@ db.exec(`
     url TEXT NOT NULL,
     prompt TEXT NOT NULL,
     revised_prompt TEXT,
-    model TEXT DEFAULT 'dall-e-3',
+    model TEXT DEFAULT 'flux2-max',
     size TEXT DEFAULT '1024x1024',
     quality TEXT DEFAULT 'standard',
     style TEXT DEFAULT 'vivid',
@@ -1015,7 +1016,8 @@ try {
 // Warn about missing API keys (fail on first use, not startup)
 const envWarnings = [];
 if (!process.env.ANTHROPIC_API_KEY) envWarnings.push('ANTHROPIC_API_KEY (Claude will not work)');
-if (!process.env.OPENAI_API_KEY) envWarnings.push('OPENAI_API_KEY (GPT/DALL-E will not work)');
+if (!process.env.OPENAI_API_KEY) envWarnings.push('OPENAI_API_KEY (GPT will not work)');
+if (!process.env.BFL_API_KEY) envWarnings.push('BFL_API_KEY (FLUX.2 image generation will not work)');
 if (!process.env.RESEND_API_KEY) envWarnings.push('RESEND_API_KEY (email verification will not work)');
 if (!process.env.BRAVE_API_KEY && !process.env.VITE_BRAVE_API_KEY) envWarnings.push('BRAVE_API_KEY (web search will not work)');
 if (envWarnings.length > 0) {
@@ -4045,7 +4047,7 @@ app.post('/api/images/metadata', requireAuth, (req, res) => {
     const id = b.id || randomUUID();
     stmts.insertImage.run(
       id, b.url || '', b.prompt || '', b.revisedPrompt || null,
-      b.model || 'dall-e-3', b.size || '1024x1024',
+      b.model || 'flux2-max', b.size || '1024x1024',
       b.quality || 'standard', b.style || 'vivid',
       b.conversationId || null, b.messageId || null,
       b.createdAt || Date.now(), userId
@@ -5106,75 +5108,122 @@ app.post('/api/editor/execute', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
-// IMAGE GENERATION (DALL-E 3) - Backend proxy
+// IMAGE GENERATION (FLUX.2 [max]) — Backend proxy
 // ============================================================================
 
 app.post('/api/images/generate', requireAuth, async (req, res) => {
   try {
-    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    const userId = req.user.id;
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+
+    // Quota check
     if (limits.maxCfImages >= 0) {
-      const used = getQuotaCount(req.user.id, 'image_generations');
+      const used = getQuotaCount(userId, 'image_generations');
       if (used >= limits.maxCfImages) {
-        return res.status(429).json({ error: 'Monthly image generation limit reached', used, limit: limits.maxCfImages, code: 'IMAGE_QUOTA_EXCEEDED' });
+        return res.status(429).json({
+          error: 'Monthly image generation limit reached',
+          quota: { used, max: limits.maxCfImages, plan },
+          code: 'IMAGE_QUOTA_EXCEEDED',
+        });
       }
     }
-    const { prompt, size = '1024x1024', quality = 'standard', style = 'vivid', apiKey } = req.body;
 
-    if (!prompt) {
-      return res.status(400).json({ success: false, error: 'Prompt is required' });
+    const { prompt, width, height, reference_images, purpose } = req.body;
+
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'prompt is required' });
     }
 
-    // Get API key from request or environment
-    const openaiKey = apiKey || process.env.OPENAI_API_KEY;
-    if (!openaiKey) {
-      return res.status(400).json({
-        success: false,
-        error: 'OpenAI API key required for image generation. Set OPENAI_API_KEY or pass apiKey in request.',
-      });
-    }
+    console.log(`[FLUX.2] Generating: "${prompt.slice(0, 60)}..." (${width || 1024}x${height || 1024}) purpose: ${purpose || 'api'}`);
 
-    console.log(`[Image Gen] Generating: "${prompt.slice(0, 60)}..." (${size}, ${quality}, ${style})`);
-
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json',
+    const result = await bflGenerateImage(
+      prompt.trim(),
+      {
+        width: Math.min(Math.max(parseInt(width) || 1024, 256), 2048),
+        height: Math.min(Math.max(parseInt(height) || 1024, 256), 2048),
+        reference_images: Array.isArray(reference_images) ? reference_images.slice(0, 10) : [],
       },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt,
-        n: 1,
-        size,
-        quality,
-        style,
-      }),
-    });
+      userId,
+      cfR2
+    );
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Image Gen] Error:', errorData);
-      return res.status(response.status).json({
-        success: false,
-        error: errorData.error?.message || 'Image generation failed',
-      });
-    }
+    incrementQuota(userId, 'image_generations');
 
-    const data = await response.json();
-    const imageData = data.data[0];
+    console.log(`[FLUX.2] Success for user ${userId} | ${result.width}x${result.height} | ~${result.cost_credits}¢`);
 
-    console.log(`[Image Gen] Success, revised prompt: "${(imageData.revised_prompt || '').slice(0, 60)}..."`);
-
-    incrementQuota(req.user.id, 'image_generations');
     res.json({
       success: true,
-      url: imageData.url,
-      revised_prompt: imageData.revised_prompt,
+      url: result.url,
+      image: {
+        url: result.url,
+        width: result.width,
+        height: result.height,
+        provider: result.provider,
+      },
+      quota: { used: getQuotaCount(userId, 'image_generations'), max: limits.maxCfImages },
     });
   } catch (error) {
-    console.error('[Image Gen] Error:', error.message);
+    console.error('[FLUX.2] Generation error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+app.post('/api/images/edit', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+
+    if (limits.maxCfImages >= 0) {
+      const used = getQuotaCount(userId, 'image_generations');
+      if (used >= limits.maxCfImages) {
+        return res.status(429).json({
+          error: 'Monthly image generation limit reached',
+          quota: { used, max: limits.maxCfImages, plan },
+        });
+      }
+    }
+
+    const { prompt, source_image, reference_images, width, height } = req.body;
+
+    if (!prompt || !source_image) {
+      return res.status(400).json({ error: 'prompt and source_image are required' });
+    }
+
+    const result = await bflEditImage(
+      prompt.trim(),
+      source_image,
+      {
+        reference_images: Array.isArray(reference_images) ? reference_images.slice(0, 9) : [],
+        width: width ? Math.min(Math.max(parseInt(width), 256), 2048) : undefined,
+        height: height ? Math.min(Math.max(parseInt(height), 256), 2048) : undefined,
+      },
+      userId,
+      cfR2
+    );
+
+    incrementQuota(userId, 'image_generations');
+
+    res.json({
+      success: true,
+      image: {
+        url: result.url,
+        width: result.width,
+        height: result.height,
+        provider: result.provider,
+      },
+      quota: { used: getQuotaCount(userId, 'image_generations'), max: limits.maxCfImages },
+    });
+  } catch (error) {
+    console.error('[FLUX.2] Edit error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/images/health', requireAuth, async (req, res) => {
+  const health = await checkBFLHealth();
+  res.json(health);
 });
 
 // ============================================================================
@@ -6883,6 +6932,8 @@ async function executeToolServerSide(toolName, toolInput, workspacePath, userId)
     case 'spawn_scan_agent': return runScanAgent(toolInput.task || toolInput.query || '', workspacePath, userId);
     case 'list_templates': return toolListTemplates();
     case 'get_template': return toolGetTemplate(toolInput);
+    case 'generate_image': return toolGenerateImage(toolInput, userId);
+    case 'edit_image': return toolEditImage(toolInput, userId);
     default:
       return { success: false, error: `Unknown tool: ${toolName}` };
   }
@@ -6906,6 +6957,8 @@ const CODING_TOOLS = [
   { name: 'spawn_scan_agent', description: 'Spawn a fast read-only subagent (Haiku) to explore and analyze the codebase. Returns a summary. Use for large-scale code understanding without consuming main context.', input_schema: { type: 'object', properties: { task: { type: 'string', description: 'What to explore/analyze (e.g., "Find all React components that use useState")' } }, required: ['task'] } },
   { name: 'list_templates', description: 'List all available website templates from the ALIN template library. Returns template IDs, names, descriptions, categories, and which components each includes. Use this FIRST when a user wants to build a website — check if a template matches before building from scratch.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'get_template', description: 'Fetch a specific website template by ID. Returns all template files (HTML, CSS, JS) with {{VARIABLE}} placeholders. Adapt the template to the user\'s needs by replacing all variables with real content, adjusting colors/fonts, and customizing copy. NEVER deploy a raw template — always customize it.', input_schema: { type: 'object', properties: { template_id: { type: 'string', description: 'Template ID from list_templates (e.g., "saas-landing", "portfolio", "restaurant")' } }, required: ['template_id'] } },
+  { name: 'generate_image', description: 'Generate a new image using FLUX.2 [max], the most advanced AI image model. Use for photorealistic photos, logos with text, illustrations, product shots, hero backgrounds, decorative images. Supports web-grounded generation (include "Search the internet" in prompt for real-world context). Supports precise hex colors. IMPORTANT: Never use this to replace user-provided images — only generate when no user asset exists for a needed slot, or when the user explicitly requests generation.', input_schema: { type: 'object', properties: { prompt: { type: 'string', description: 'Detailed image description. Be specific about subject, composition, lighting, style, mood, camera angle. For real-world context, include "Search the internet" at the start. For brand colors, use exact hex codes like #10b981. For logos/text, include exact text to render.' }, width: { type: 'integer', description: 'Image width in pixels (256-2048, default 1024)' }, height: { type: 'integer', description: 'Image height in pixels (256-2048, default 1024)' }, reference_images: { type: 'array', items: { type: 'string' }, description: 'Up to 10 reference image URLs for style/identity consistency' }, purpose: { type: 'string', enum: ['hero', 'background', 'logo', 'product', 'portrait', 'illustration', 'icon', 'card', 'decorative', 'other'], description: 'Intended use of this image' } }, required: ['prompt'] } },
+  { name: 'edit_image', description: 'Edit an existing image using FLUX.2 [max]. Retexture, change backgrounds, modify details while preserving the rest. IMPORTANT: Only use on images the user has explicitly asked you to modify.', input_schema: { type: 'object', properties: { prompt: { type: 'string', description: 'Description of the edit to make' }, source_image: { type: 'string', description: 'URL of the image to edit' }, reference_images: { type: 'array', items: { type: 'string' }, description: 'Additional reference images for consistency' }, width: { type: 'integer', description: 'Output width' }, height: { type: 'integer', description: 'Output height' } }, required: ['prompt', 'source_image'] } },
 ];
 
 // DEPRECATED: Coding mode prompt now served by server/prompts/codingMode.js
@@ -7435,24 +7488,64 @@ async function toolBlenderRender(input) {
   } catch (error) { return { success: false, error: error.message }; }
 }
 
-async function toolGenerateImage(input) {
+async function toolGenerateImage(input, userId = 'system') {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return { success: false, error: 'OPENAI_API_KEY not configured for image generation' };
-    const { prompt, size, quality, style } = input;
+    const { prompt, width, height, reference_images, purpose } = input;
     if (!prompt) return { success: false, error: 'Prompt is required' };
-    const resp = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'dall-e-3', prompt, n: 1,
-        size: size || '1024x1024', quality: quality || 'standard', style: style || 'vivid',
+
+    const result = await bflGenerateImage(
+      prompt,
+      {
+        width: width || 1024,
+        height: height || 1024,
+        reference_images: reference_images || [],
+      },
+      userId,
+      cfR2
+    );
+
+    console.log(`[FLUX.2] Generated image for user ${userId} | ${result.width}x${result.height} | ~${result.cost_credits}¢ | purpose: ${purpose || 'general'}`);
+
+    return {
+      success: true,
+      result: JSON.stringify({
+        url: result.url,
+        width: result.width,
+        height: result.height,
+        provider: 'flux2-max',
       }),
-    });
-    if (!resp.ok) { const t = await resp.text(); return { success: false, error: `DALL-E error ${resp.status}: ${t}` }; }
-    const data = await resp.json();
-    const img = data.data?.[0];
-    return { success: true, result: JSON.stringify({ url: img?.url, revised_prompt: img?.revised_prompt }) };
+    };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolEditImage(input, userId = 'system') {
+  try {
+    const { prompt, source_image, reference_images, width, height } = input;
+    if (!prompt || !source_image) return { success: false, error: 'prompt and source_image are required' };
+
+    const result = await bflEditImage(
+      prompt,
+      source_image,
+      {
+        reference_images: reference_images || [],
+        width: width || 1024,
+        height: height || 1024,
+      },
+      userId,
+      cfR2
+    );
+
+    console.log(`[FLUX.2] Edited image for user ${userId} | ~${result.cost_credits}¢`);
+
+    return {
+      success: true,
+      result: JSON.stringify({
+        url: result.url,
+        width: result.width,
+        height: result.height,
+        provider: 'flux2-max',
+      }),
+    };
   } catch (error) { return { success: false, error: error.message }; }
 }
 
@@ -7505,7 +7598,8 @@ app.post('/api/tools/execute', requireAuth, async (req, res) => {
       case 'webcam_capture': result = await toolWebcamCapture(toolInput); break;
       case 'blender_execute': result = await toolBlenderExecute(toolInput); break;
       case 'blender_render': result = await toolBlenderRender(toolInput); break;
-      case 'generate_image': result = await toolGenerateImage(toolInput); break;
+      case 'generate_image': result = await toolGenerateImage(toolInput, userId); break;
+      case 'edit_image': result = await toolEditImage(toolInput, userId); break;
       case 'system_status': result = await toolSystemStatus(toolInput); break;
       default: result = { success: false, error: `Unknown tool: ${toolName}` };
     }

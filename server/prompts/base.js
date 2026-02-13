@@ -84,7 +84,8 @@ You have these tools — refer to tool definitions for parameters:
 - **edit_file** — Surgical find-and-replace (more precise than file_write for small changes)
 - **run_command** — Shell commands: npm test, tsc, eslint, etc. (60s timeout)
 - **git** — Git operations: status, diff, log, commit, branch, merge, pull, etc.
-- **generate_image** — DALL-E 3 image generation with size/quality/style control
+- **generate_image** — FLUX.2 [max] image generation (up to 4MP, text rendering, hex color precision, web-grounded context)
+- **edit_image** — FLUX.2 [max] image editing (retexture, background swap, detail changes while preserving the rest)
 - **tbwo_create** — Launch Time-Budgeted Work Orders with specialized agent pods
 - **system_status** — System resource usage (local sessions only)
 

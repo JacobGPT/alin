@@ -209,14 +209,14 @@
         <div id="station-website" class="docs-section">
           <h2 class="docs-h2">Website Sprint</h2>
           <p class="docs-p">Describe a website and get custom HTML, CSS, and JavaScript deployed to a live URL. Not templates — real code written specifically for your description.</p>
-          <p class="docs-p">The Website Sprint station activates an enhanced prompt system optimized for web development. ALIN plans the site structure, generates all files, optionally creates images with DALL-E, optimizes for performance and mobile, then deploys to Cloudflare R2 with a <code>yourname.alinai.dev</code> subdomain and automatic SSL.</p>
+          <p class="docs-p">The Website Sprint station activates an enhanced prompt system optimized for web development. ALIN plans the site structure, generates all files, optionally creates images with FLUX.2 [max], optimizes for performance and mobile, then deploys to Cloudflare R2 with a <code>yourname.alinai.dev</code> subdomain and automatic SSL.</p>
 
           <div class="docs-code">
             <div class="docs-code__header"><span class="docs-code__lang">Deploy Pipeline</span><button class="docs-code__copy">Copy</button></div>
             <div class="docs-code__body"><span class="cm">// Internal deploy sequence:</span>
 <span class="kw">1.</span> <span class="fn">plan()</span>       <span class="cm">→ Structure pages, choose layout approach</span>
 <span class="kw">2.</span> <span class="fn">generate()</span>   <span class="cm">→ Write HTML, CSS, JS files</span>
-<span class="kw">3.</span> <span class="fn">image()</span>      <span class="cm">→ DALL-E hero/assets if requested</span>
+<span class="kw">3.</span> <span class="fn">image()</span>      <span class="cm">→ FLUX.2 hero/assets if requested</span>
 <span class="kw">4.</span> <span class="fn">optimize()</span>   <span class="cm">→ Minify, compress, responsive checks</span>
 <span class="kw">5.</span> <span class="fn">deploy()</span>     <span class="cm">→ Upload to Cloudflare R2 CDN</span>
 <span class="kw">6.</span> <span class="fn">register()</span>   <span class="cm">→ yourname.alinai.dev + SSL cert</span></div>
@@ -282,15 +282,15 @@
         <!-- Image Studio -->
         <div id="station-image" class="docs-section">
           <h2 class="docs-h2">Image Studio</h2>
-          <p class="docs-p">Generate images with DALL-E 3, store them on Cloudflare Images CDN, and integrate directly into websites built in the Website Sprint station.</p>
-          <p class="docs-p">ALIN crafts detailed prompts from your natural language descriptions, generates images in multiple size options (1024×1024, 1024×1792, 1792×1024), uploads to Cloudflare Images for global CDN delivery, and can embed the results directly into any website project. Useful for hero images, product mockups, illustrations, and brand assets.</p>
+          <p class="docs-p">Generate images with FLUX.2 [max], store them on CDN, and integrate directly into websites built in the Website Sprint station.</p>
+          <p class="docs-p">ALIN crafts detailed prompts from your natural language descriptions, generates images at up to 4MP resolution with web-grounded context, hex color precision, and multi-reference consistency. Results are delivered via CDN and can be embedded directly into any website project. Supports logos with text rendering, product shots, hero images, and brand assets.</p>
 
           <div class="docs-code">
             <div class="docs-code__header"><span class="docs-code__lang">Example</span><button class="docs-code__copy">Copy</button></div>
             <div class="docs-code__body"><span class="kw">You:</span> <span class="str">"Generate a hero image for a coffee shop — warm tones, minimalist, overhead shot of latte art"</span>
 
-<span class="cm">// ALIN crafts an optimized DALL-E prompt, generates the image,</span>
-<span class="cm">// uploads to Cloudflare Images, and returns the CDN URL.</span>
+<span class="cm">// ALIN crafts an optimized FLUX.2 prompt, generates the image,</span>
+<span class="cm">// uploads to CDN, and returns the delivery URL.</span>
 <span class="cm">// If you're in Website Sprint, it auto-embeds into your site.</span></div>
           </div>
         </div>
@@ -643,7 +643,7 @@ const docIndex=[
   {title:'Code Lab',section:'Stations',icon:'⚡',id:'station-code',hint:'Execute & debug'},
   {title:'Research Hub',section:'Stations',icon:'🔍',id:'station-research',hint:'Search & analyze'},
   {title:'Memory System',section:'Stations',icon:'🧠',id:'station-memory',hint:'Persistent context'},
-  {title:'Image Studio',section:'Stations',icon:'🎨',id:'station-image',hint:'DALL-E generation'},
+  {title:'Image Studio',section:'Stations',icon:'🎨',id:'station-image',hint:'FLUX.2 generation'},
   {title:'Tool Overview',section:'Tools',icon:'🔧',id:'tools-overview',hint:'20+ built-in tools'},
   {title:'Web Search & Fetch',section:'Tools',icon:'🌐',id:'tools-web',hint:'Brave Search, web_fetch'},
   {title:'File Operations',section:'Tools',icon:'📁',id:'tools-file',hint:'Read, write, edit, scan'},

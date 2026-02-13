@@ -266,28 +266,34 @@ export const ALIN_TOOLS: ClaudeTool[] = [
     },
   },
 
-  // Image Generation (DALL-E 3)
+  // Image Generation (FLUX.2 [max])
   {
     name: 'generate_image',
-    description: 'Generate an image using DALL-E 3. Creates high-quality images from text descriptions. Returns the image URL and revised prompt.',
+    description: 'Generate a new image using FLUX.2 [max]. Supports photorealistic photos, logos with text, illustrations, product shots. Include "Search the internet" in prompt for web-grounded context. Use hex codes for precise brand colors. Never replace user-provided images — only generate when no user asset exists.',
     input_schema: {
       type: 'object',
       properties: {
         prompt: {
           type: 'string',
-          description: 'A detailed description of the image to generate. Be specific about style, composition, colors, and subject matter.',
+          description: 'Detailed image description. Be specific about subject, composition, lighting, style, mood. For brand colors use hex codes like #10b981. For logos include exact text to render.',
         },
-        size: {
-          type: 'string',
-          description: 'Image size: "1024x1024" (square), "1792x1024" (landscape), or "1024x1792" (portrait). Default: "1024x1024"',
+        width: {
+          type: 'integer',
+          description: 'Image width in pixels (256-2048). Common: 1920 (hero), 1024 (general), 800 (card), 512 (icon). Default: 1024.',
         },
-        quality: {
-          type: 'string',
-          description: 'Image quality: "standard" or "hd". HD produces more detailed images. Default: "standard"',
+        height: {
+          type: 'integer',
+          description: 'Image height in pixels (256-2048). Common: 1080 (hero 16:9), 1024 (square), 600 (card). Default: 1024.',
         },
-        style: {
+        reference_images: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Up to 10 reference image URLs for style/identity consistency across generations.',
+        },
+        purpose: {
           type: 'string',
-          description: 'Image style: "vivid" (hyper-real/dramatic) or "natural" (more natural, less hyper-real). Default: "vivid"',
+          enum: ['hero', 'background', 'logo', 'product', 'portrait', 'illustration', 'icon', 'card', 'decorative', 'other'],
+          description: 'Intended use of this image.',
         },
       },
       required: ['prompt'],
@@ -1359,30 +1365,32 @@ async function executeTextEditor(input: Record<string, unknown>): Promise<ToolEx
 }
 
 // ============================================================================
-// IMAGE GENERATION TOOL (DALL-E 3)
+// IMAGE GENERATION TOOL (FLUX.2 [max])
 // ============================================================================
 
 async function executeGenerateImage(input: Record<string, unknown>): Promise<ToolExecutionResult> {
   const prompt = input['prompt'] as string;
-  const size = (input['size'] as string) || '1024x1024';
-  const quality = (input['quality'] as string) || 'standard';
-  const style = (input['style'] as string) || 'vivid';
+  const width = (input['width'] as number) || 1024;
+  const height = (input['height'] as number) || 1024;
+  const reference_images = (input['reference_images'] as string[]) || [];
+  const purpose = (input['purpose'] as string) || 'general';
+
+  // Backward compat: if old "size" param passed (e.g. "1024x1024"), parse it
+  if (input['size'] && typeof input['size'] === 'string' && !input['width']) {
+    const parts = (input['size'] as string).split('x').map(Number);
+    if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+      return executeGenerateImageViaBackend(prompt, parts[0], parts[1], reference_images, purpose);
+    }
+  }
 
   if (!prompt) {
     return { success: false, error: 'Image prompt is required' };
   }
 
-  // Validate size
-  const validSizes = ['1024x1024', '1792x1024', '1024x1792'];
-  if (!validSizes.includes(size)) {
-    return { success: false, error: `Invalid size. Must be one of: ${validSizes.join(', ')}` };
-  }
-
-  console.log(`[ALIN] Generating image: "${prompt.slice(0, 80)}..." (${size}, ${quality}, ${style})`);
+  console.log(`[ALIN] Generating image: "${prompt.slice(0, 80)}..." (${width}x${height}, purpose: ${purpose})`);
 
   try {
-    // Route through backend proxy — API keys are server-side only
-    return await executeGenerateImageViaBackend(prompt, size, quality, style);
+    return await executeGenerateImageViaBackend(prompt, width, height, reference_images, purpose);
   } catch (outerError: any) {
     console.error('[ALIN] Image generation failed:', outerError);
     return { success: false, error: outerError.message || 'Image generation failed' };
@@ -1391,15 +1399,16 @@ async function executeGenerateImage(input: Record<string, unknown>): Promise<Too
 
 async function executeGenerateImageViaBackend(
   prompt: string,
-  size: string,
-  quality: string,
-  style: string
+  width: number,
+  height: number,
+  reference_images: string[],
+  purpose: string
 ): Promise<ToolExecutionResult> {
   try {
     const response = await fetch('/api/images/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...useAuthStore.getState().getAuthHeader() },
-      body: JSON.stringify({ prompt, size, quality, style }),
+      body: JSON.stringify({ prompt, width, height, reference_images, purpose }),
     });
 
     if (!response.ok) {
@@ -1408,27 +1417,27 @@ async function executeGenerateImageViaBackend(
     }
 
     const data = await response.json();
+    const imageUrl = data.url || data.image?.url;
 
     // Store in image gallery
     useImageStore.getState().addImage({
-      url: data.url,
+      url: imageUrl,
       prompt,
-      revisedPrompt: data.revised_prompt,
-      model: 'dall-e-3',
-      size,
-      quality,
-      style,
+      revisedPrompt: '',
+      model: 'flux2-max',
+      size: `${width}x${height}`,
+      quality: 'max',
+      style: purpose,
     });
 
     return {
       success: true,
       result: JSON.stringify({
-        url: data.url,
-        revised_prompt: data.revised_prompt || prompt,
-        size,
-        quality,
-        style,
-        message: `Image generated successfully. The image has been added to your Image Gallery.`,
+        url: imageUrl,
+        width: data.image?.width || width,
+        height: data.image?.height || height,
+        provider: 'flux2-max',
+        message: `Image generated successfully (${width}×${height}). The image has been added to your Image Gallery.`,
       }),
     };
   } catch (error: any) {

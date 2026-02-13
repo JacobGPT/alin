@@ -2260,7 +2260,7 @@ class MemoryService {
    */
   private assessImportance(text: string): MemoryImportance {
     if (!text || typeof text !== 'string') {
-      return { overall: 0.5, factors: { emotionalIntensity: 0, novelty: 0.5, relevanceToGoals: 0.5, frequency: 0, userEmphasis: 0, temporalProximity: 1.0, semanticCentrality: 0.5 } } as MemoryImportance;
+      return { score: 0.5, factors: { emotionalIntensity: 0, novelty: 0.5, relevanceToGoals: 0.5, frequency: 0, userEmphasis: 0, temporalProximity: 1.0, semanticCentrality: 0.5 } };
     }
     const factors = {
       emotionalIntensity: 0,

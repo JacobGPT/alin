@@ -314,7 +314,7 @@ export const MessageComponent = memo(function MessageComponent({
               title="Download image"
               onClick={(e) => {
                 e.stopPropagation();
-                // Fetch and download since DALL-E URLs are cross-origin
+                // Fetch and download since image URLs may be cross-origin
                 fetch(block.url)
                   .then(res => res.blob())
                   .then(blob => {

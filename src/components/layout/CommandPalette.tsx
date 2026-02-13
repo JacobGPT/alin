@@ -549,7 +549,7 @@ export function CommandPalette() {
       description: 'Create an image with AI',
       icon: <PhotoIcon className="h-4 w-4" />,
       category: 'tools',
-      keywords: ['dall-e', 'art'],
+      keywords: ['flux', 'image', 'art'],
       action: () => {
         // Would open image generation modal
       },

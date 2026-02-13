@@ -383,7 +383,7 @@ async function migrateLocalStorageToDb(): Promise<void> {
             url: img.url,
             prompt: img.prompt,
             revisedPrompt: img.revisedPrompt,
-            model: img.model || 'dall-e-3',
+            model: img.model || 'flux2-max',
             size: img.size || '1024x1024',
             quality: img.quality || 'standard',
             style: img.style || 'vivid',
