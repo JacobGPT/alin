@@ -1,86 +1,310 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>API Reference — ALIN</title>
   <meta name="description" content="ALIN REST API documentation — endpoints, authentication, request formats, and response schemas.">
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link">Features</a><a href="/m/stations.html" class="nav__link">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/docs.html" class="nav__mobile-link">Docs</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-<section class="page-hero"><div class="container"><span class="page-hero__overline">API</span><h1 class="page-hero__title">API Reference</h1><p class="page-hero__desc">Integrate ALIN into your workflow with the REST API.</p></div></section>
+<body>
 
-<section class="section"><div class="container"><div class="prose animate-on-scroll">
+<div class="reading-progress" id="readingProgress"></div>
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('api'));</script>
 
-<h2>Authentication</h2>
-<p>All API requests require a JWT token in the <code>Authorization</code> header:</p>
-<p><code>Authorization: Bearer &lt;your-token&gt;</code></p>
-<p>Obtain a token via <code>POST /api/auth/login</code> or <code>POST /api/auth/signup</code>. Tokens expire after 7 days.</p>
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">API</span>
+      <h1 class="page-hero__title" data-scramble>API Reference</h1>
+      <p class="page-hero__desc">Integrate ALIN into your workflow with the REST API.</p>
+    </div>
+  </div>
+</section>
 
-<h2>Auth Endpoints</h2>
-<p><strong>POST /api/auth/signup</strong> — Create account. Body: <code>{ email, password, displayName }</code>. Returns <code>{ token, user }</code>.</p>
-<p><strong>POST /api/auth/login</strong> — Sign in. Body: <code>{ email, password }</code>. Returns <code>{ token, user }</code>.</p>
-<p><strong>GET /api/auth/me</strong> — Get current user profile. Requires auth.</p>
-<p><strong>PATCH /api/auth/profile</strong> — Update profile. Body: <code>{ displayName?, email? }</code>. Requires auth.</p>
-<p><strong>POST /api/auth/change-password</strong> — Change password. Body: <code>{ oldPassword, newPassword }</code>. Requires auth.</p>
+<section class="section">
+  <div class="wrap">
+    <div class="docs-layout">
 
-<h2>Chat Streaming</h2>
-<p><strong>POST /api/chat/stream</strong> — Stream an AI response via SSE. Requires auth + plan check. Body: <code>{ messages, model, provider, system?, tools?, thinking?, thinkingBudget?, maxTokens? }</code>.</p>
-<p>SSE events: <code>start</code>, <code>text_delta</code>, <code>thinking_start</code>, <code>thinking_delta</code>, <code>tool_use</code>, <code>usage</code>, <code>done</code>, <code>error</code>.</p>
-<p><strong>POST /api/chat/continue</strong> — Continue after tool results. Same format as /stream.</p>
+      <!-- SIDEBAR -->
+      <nav class="docs-sidebar" id="docsSidebar">
+        <div class="docs-nav__section">
+          <button class="docs-nav__title">Overview</button>
+          <div class="docs-nav__links">
+            <a href="#authentication" class="docs-nav__link active">Authentication</a>
+            <a href="#rate-limits" class="docs-nav__link">Rate Limits</a>
+          </div>
+        </div>
+        <div class="docs-nav__section">
+          <button class="docs-nav__title">Endpoints</button>
+          <div class="docs-nav__links">
+            <a href="#auth-endpoints" class="docs-nav__link">Auth</a>
+            <a href="#chat" class="docs-nav__link">Chat Streaming</a>
+            <a href="#conversations" class="docs-nav__link">Conversations</a>
+            <a href="#messages" class="docs-nav__link">Messages</a>
+            <a href="#tbwo" class="docs-nav__link">TBWO</a>
+            <a href="#memory" class="docs-nav__link">Memory</a>
+            <a href="#self-model" class="docs-nav__link">Self-Model</a>
+            <a href="#files" class="docs-nav__link">File Operations</a>
+            <a href="#code" class="docs-nav__link">Code Execution</a>
+            <a href="#system" class="docs-nav__link">System</a>
+          </div>
+        </div>
+      </nav>
 
-<h2>Conversations</h2>
-<p><strong>GET /api/conversations</strong> — List all conversations.</p>
-<p><strong>POST /api/conversations</strong> — Create conversation. Body: <code>{ id, title?, model? }</code>.</p>
-<p><strong>GET /api/conversations/:id</strong> — Get conversation with messages.</p>
-<p><strong>PATCH /api/conversations/:id</strong> — Update conversation metadata.</p>
-<p><strong>DELETE /api/conversations/:id</strong> — Delete conversation and messages.</p>
+      <!-- MAIN -->
+      <div class="docs-content">
+        <button class="docs-mobile-toggle" id="mobileToggle">☰ Navigation</button>
+        <div class="breadcrumb"><a href="index.html" data-page="index.html">Home</a><span class="breadcrumb__sep">/</span><a href="docs.html" data-page="docs.html">Docs</a><span class="breadcrumb__sep">/</span><span class="breadcrumb__current">API Reference</span></div>
 
-<h2>Messages</h2>
-<p><strong>POST /api/messages</strong> — Create message. Body: <code>{ id, conversationId, role, content, model?, tokens?, thinkingContent? }</code>.</p>
-<p><strong>PATCH /api/messages/:id</strong> — Update message.</p>
-<p><strong>DELETE /api/messages/:id</strong> — Delete message.</p>
+        <!-- Authentication -->
+        <div id="authentication" class="docs-section">
+          <h2 class="docs-h2">Authentication</h2>
+          <p class="docs-p">All API requests require a JWT token in the <code>Authorization</code> header:</p>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Header</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body">Authorization: Bearer &lt;your-token&gt;</div></div>
+          <p class="docs-p">Obtain a token via <code>POST /api/auth/login</code> or <code>POST /api/auth/signup</code>. Tokens expire after 7 days.</p>
+        </div>
 
-<h2>TBWO</h2>
-<p><strong>GET /api/tbwos</strong> — List all TBWOs.</p>
-<p><strong>POST /api/tbwos</strong> — Create TBWO. Requires Pro plan.</p>
-<p><strong>GET /api/tbwos/:id</strong> — Get TBWO details.</p>
-<p><strong>PATCH /api/tbwos/:id</strong> — Update TBWO.</p>
-<p><strong>POST /api/tbwo/:id/receipts</strong> — Add receipt to TBWO.</p>
+        <!-- Rate Limits -->
+        <div id="rate-limits" class="docs-section">
+          <h2 class="docs-h2">Rate Limits</h2>
+          <p class="docs-p">Rate limits vary by plan. Exceeded limits return <code>429 Too Many Requests</code>.</p>
+          <div style="overflow-x:auto">
+            <table class="docs-table">
+              <thead><tr><th>Plan</th><th>Messages</th><th>Tool calls/msg</th><th>TBWO</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag tag--brand">Free</span></td><td>100/day, 25/hr burst</td><td>3</td><td>—</td></tr>
+                <tr><td><span class="tag tag--purple">Pro</span></td><td>1,000/day</td><td>Unlimited</td><td>50/month</td></tr>
+                <tr><td><span class="tag tag--purple">Elite</span></td><td>Unlimited</td><td>Unlimited</td><td>Unlimited</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Rate Limit Headers</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="fn">X-RateLimit-Limit</span>: <span class="num">100</span>
+<span class="fn">X-RateLimit-Remaining</span>: <span class="num">87</span>
+<span class="fn">X-RateLimit-Reset</span>: <span class="num">1708300800</span></div></div>
+        </div>
 
-<h2>Memory</h2>
-<p><strong>GET /api/memories</strong> — List memory entries.</p>
-<p><strong>POST /api/memories</strong> — Create memory entry.</p>
-<p><strong>DELETE /api/memories/:id</strong> — Delete memory entry.</p>
+        <div class="feedback"><span>Was this section helpful?</span><button class="feedback__btn" data-vote="up">👍 Yes</button><button class="feedback__btn" data-vote="down">👎 No</button><span class="feedback__thanks">Thanks for the feedback!</span></div>
 
-<h2>Self-Model</h2>
-<p><strong>POST /api/self-model/outcomes</strong> — Record execution outcome.</p>
-<p><strong>GET /api/self-model/outcomes</strong> — List outcomes. Query: <code>?type=&amp;limit=</code>.</p>
-<p><strong>POST /api/self-model/tool-reliability</strong> — Record tool usage.</p>
-<p><strong>GET /api/self-model/tool-reliability</strong> — Get tool stats.</p>
-<p><strong>POST /api/self-model/corrections</strong> — Record user correction.</p>
-<p><strong>GET /api/self-model/corrections</strong> — List corrections. Query: <code>?minCount=</code>.</p>
-<p><strong>POST /api/self-model/layer-memory</strong> — Store layer memory.</p>
-<p><strong>GET /api/self-model/layer-memory</strong> — List layer memories. Query: <code>?layer=&amp;limit=</code>.</p>
-<p><strong>POST /api/self-model/layer-memory/prune</strong> — Remove expired memories.</p>
+        <!-- Auth Endpoints -->
+        <div id="auth-endpoints" class="docs-section">
+          <h2 class="docs-h2">Auth Endpoints</h2>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Auth</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">POST</span> <span class="fn">/api/auth/signup</span>
+  <span class="cm">Body: { email, password, displayName }</span>
+  <span class="cm">Returns: { token, user }</span>
 
-<h2>File Operations (Desktop Only)</h2>
-<p><strong>POST /api/files/read</strong> — Read file. Body: <code>{ filePath }</code>.</p>
-<p><strong>POST /api/files/write</strong> — Write file. Body: <code>{ filePath, content }</code>.</p>
-<p><strong>POST /api/files/list</strong> — List directory. Body: <code>{ dirPath }</code>.</p>
-<p><strong>POST /api/files/scan</strong> — Scan directory tree with contents.</p>
-<p><strong>POST /api/files/search</strong> — Search code across files.</p>
+<span class="kw">POST</span> <span class="fn">/api/auth/login</span>
+  <span class="cm">Body: { email, password }</span>
+  <span class="cm">Returns: { token, user }</span>
 
-<h2>Code Execution (Desktop Only)</h2>
-<p><strong>POST /api/code/execute</strong> — Run code. Body: <code>{ code, language }</code>. Supports Python, JavaScript, shell.</p>
+<span class="kw">GET</span>  <span class="fn">/api/auth/me</span>
+  <span class="cm">Returns: current user profile (requires auth)</span>
 
-<h2>System</h2>
-<p><strong>GET /api/health</strong> — Health check.</p>
-<p><strong>GET /api/system/metrics</strong> — CPU, memory, GPU metrics (Desktop only).</p>
+<span class="kw">PATCH</span> <span class="fn">/api/auth/profile</span>
+  <span class="cm">Body: { displayName?, email? } (requires auth)</span>
 
-<h2>Rate Limits</h2>
-<p>Free: 10 messages/hour, max 3 tool calls/message. Pro: unlimited. Enterprise: unlimited with custom routing. Rate limit headers: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>.</p>
+<span class="kw">POST</span> <span class="fn">/api/auth/change-password</span>
+  <span class="cm">Body: { oldPassword, newPassword } (requires auth)</span></div></div>
+        </div>
 
-</div></div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>
+        <!-- Chat Streaming -->
+        <div id="chat" class="docs-section">
+          <h2 class="docs-h2">Chat Streaming</h2>
+          <p class="docs-p">Stream AI responses via Server-Sent Events. Requires auth + plan check.</p>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Chat</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">POST</span> <span class="fn">/api/chat/stream</span>
+  <span class="cm">Body: {</span>
+    <span class="str">messages</span>,        <span class="cm">// array of { role, content }</span>
+    <span class="str">model</span>,           <span class="cm">// e.g. "claude-sonnet-4-5"</span>
+    <span class="str">provider</span>,        <span class="cm">// "anthropic" | "openai"</span>
+    <span class="str">system?</span>,         <span class="cm">// optional system prompt override</span>
+    <span class="str">tools?</span>,          <span class="cm">// optional tool definitions</span>
+    <span class="str">thinking?</span>,       <span class="cm">// enable extended thinking</span>
+    <span class="str">thinkingBudget?</span>, <span class="cm">// max thinking tokens</span>
+    <span class="str">maxTokens?</span>       <span class="cm">// max output tokens</span>
+  <span class="cm">}</span>
+
+<span class="kw">POST</span> <span class="fn">/api/chat/continue</span>
+  <span class="cm">Continue after tool results. Same format as /stream.</span></div></div>
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">SSE Events:</strong> <code>start</code>, <code>text_delta</code>, <code>thinking_start</code>, <code>thinking_delta</code>, <code>tool_use</code>, <code>usage</code>, <code>done</code>, <code>error</code>.</div></div>
+        </div>
+
+        <!-- Conversations -->
+        <div id="conversations" class="docs-section">
+          <h2 class="docs-h2">Conversations</h2>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Conversations</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">GET</span>    <span class="fn">/api/conversations</span>       <span class="cm">→ List all</span>
+<span class="kw">POST</span>   <span class="fn">/api/conversations</span>       <span class="cm">→ Create { id, title?, model? }</span>
+<span class="kw">GET</span>    <span class="fn">/api/conversations/:id</span>   <span class="cm">→ Get with messages</span>
+<span class="kw">PATCH</span>  <span class="fn">/api/conversations/:id</span>   <span class="cm">→ Update metadata</span>
+<span class="kw">DELETE</span> <span class="fn">/api/conversations/:id</span>   <span class="cm">→ Delete + messages</span></div></div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages" class="docs-section">
+          <h2 class="docs-h2">Messages</h2>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Messages</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">POST</span>   <span class="fn">/api/messages</span>       <span class="cm">→ Create { id, conversationId, role, content, model?, tokens?, thinkingContent? }</span>
+<span class="kw">PATCH</span>  <span class="fn">/api/messages/:id</span>   <span class="cm">→ Update message</span>
+<span class="kw">DELETE</span> <span class="fn">/api/messages/:id</span>   <span class="cm">→ Delete message</span></div></div>
+        </div>
+
+        <!-- TBWO -->
+        <div id="tbwo" class="docs-section">
+          <h2 class="docs-h2">TBWO</h2>
+          <p class="docs-p">Time-Budgeted Work Orders. Requires Pro plan or higher.</p>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">TBWO</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">GET</span>    <span class="fn">/api/tbwos</span>              <span class="cm">→ List all TBWOs</span>
+<span class="kw">POST</span>   <span class="fn">/api/tbwos</span>              <span class="cm">→ Create TBWO (Pro+)</span>
+<span class="kw">GET</span>    <span class="fn">/api/tbwos/:id</span>          <span class="cm">→ Get details</span>
+<span class="kw">PATCH</span>  <span class="fn">/api/tbwos/:id</span>          <span class="cm">→ Update TBWO</span>
+<span class="kw">POST</span>   <span class="fn">/api/tbwo/:id/receipts</span>  <span class="cm">→ Add completion receipt</span></div></div>
+        </div>
+
+        <!-- Memory -->
+        <div id="memory" class="docs-section">
+          <h2 class="docs-h2">Memory</h2>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Memory</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">GET</span>    <span class="fn">/api/memories</span>       <span class="cm">→ List memory entries</span>
+<span class="kw">POST</span>   <span class="fn">/api/memories</span>       <span class="cm">→ Create entry</span>
+<span class="kw">DELETE</span> <span class="fn">/api/memories/:id</span>   <span class="cm">→ Delete entry</span></div></div>
+        </div>
+
+        <!-- Self-Model -->
+        <div id="self-model" class="docs-section">
+          <h2 class="docs-h2">Self-Model</h2>
+          <p class="docs-p">ALIN's self-improvement system. Track outcomes, tool reliability, corrections, and layer memories.</p>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Self-Model</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="cm">// Execution outcomes</span>
+<span class="kw">POST</span>  <span class="fn">/api/self-model/outcomes</span>           <span class="cm">→ Record outcome</span>
+<span class="kw">GET</span>   <span class="fn">/api/self-model/outcomes</span>           <span class="cm">→ List (?type=&limit=)</span>
+
+<span class="cm">// Tool reliability</span>
+<span class="kw">POST</span>  <span class="fn">/api/self-model/tool-reliability</span>   <span class="cm">→ Record usage</span>
+<span class="kw">GET</span>   <span class="fn">/api/self-model/tool-reliability</span>   <span class="cm">→ Get stats</span>
+
+<span class="cm">// User corrections</span>
+<span class="kw">POST</span>  <span class="fn">/api/self-model/corrections</span>        <span class="cm">→ Record correction</span>
+<span class="kw">GET</span>   <span class="fn">/api/self-model/corrections</span>        <span class="cm">→ List (?minCount=)</span>
+
+<span class="cm">// Layer memory</span>
+<span class="kw">POST</span>  <span class="fn">/api/self-model/layer-memory</span>       <span class="cm">→ Store</span>
+<span class="kw">GET</span>   <span class="fn">/api/self-model/layer-memory</span>       <span class="cm">→ List (?layer=&limit=)</span>
+<span class="kw">POST</span>  <span class="fn">/api/self-model/layer-memory/prune</span> <span class="cm">→ Remove expired</span></div></div>
+        </div>
+
+        <!-- File Operations -->
+        <div id="files" class="docs-section">
+          <h2 class="docs-h2">File Operations</h2>
+          <div class="callout callout--warn"><span class="callout__icon">⚠️</span><div><strong class="text-hi">Desktop only.</strong> File operations require the ALIN desktop app with local file system access.</div></div>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Files</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">POST</span>  <span class="fn">/api/files/read</span>    <span class="cm">→ { filePath }</span>
+<span class="kw">POST</span>  <span class="fn">/api/files/write</span>   <span class="cm">→ { filePath, content }</span>
+<span class="kw">POST</span>  <span class="fn">/api/files/list</span>    <span class="cm">→ { dirPath }</span>
+<span class="kw">POST</span>  <span class="fn">/api/files/scan</span>    <span class="cm">→ Directory tree with contents</span>
+<span class="kw">POST</span>  <span class="fn">/api/files/search</span>  <span class="cm">→ Regex search across files</span></div></div>
+        </div>
+
+        <!-- Code Execution -->
+        <div id="code" class="docs-section">
+          <h2 class="docs-h2">Code Execution</h2>
+          <div class="callout callout--warn"><span class="callout__icon">⚠️</span><div><strong class="text-hi">Desktop only.</strong> Code execution runs in a sandboxed environment on the local machine.</div></div>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">Code</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">POST</span>  <span class="fn">/api/code/execute</span>
+  <span class="cm">Body: { code, language }</span>
+  <span class="cm">Languages: "python" | "javascript" | "shell"</span>
+  <span class="cm">Returns: { output, exitCode, duration }</span></div></div>
+        </div>
+
+        <!-- System -->
+        <div id="system" class="docs-section" style="padding-bottom:4rem">
+          <h2 class="docs-h2">System</h2>
+          <div class="docs-code"><div class="docs-code__header"><span class="docs-code__lang">System</span><button class="docs-code__copy">Copy</button></div><div class="docs-code__body"><span class="kw">GET</span>  <span class="fn">/api/health</span>           <span class="cm">→ Health check (public)</span>
+<span class="kw">GET</span>  <span class="fn">/api/system/metrics</span>    <span class="cm">→ CPU, memory, GPU (Desktop only)</span></div></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Ready to integrate?</h2>
+    <p class="cta__desc">API access launches Q2 2026. Sign up to get early access.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Get Started Free →</a>
+      <a href="docs.html" class="btn btn--secondary btn--lg" data-magnetic data-page="docs.html">Full Docs</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// Reading progress
+(function(){
+  var bar=document.getElementById('readingProgress');
+  if(!bar)return;
+  window.addEventListener('scroll',function(){
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    bar.style.width=(h>0?(scrollY/h)*100:0)+'%';
+  },{passive:true});
+})();
+
+// Copy buttons
+document.querySelectorAll('.docs-code__copy').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var code=btn.closest('.docs-code').querySelector('.docs-code__body').textContent;
+    navigator.clipboard.writeText(code).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy'},1500)});
+  });
+});
+
+// Sidebar scroll spy
+(function(){
+  var sections=document.querySelectorAll('.docs-section[id]');
+  var observer=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        document.querySelectorAll('.docs-nav__link').forEach(function(l){
+          l.classList.toggle('active',l.getAttribute('href')==='#'+e.target.id);
+        });
+      }
+    });
+  },{threshold:0.1,rootMargin:'-80px 0px -60% 0px'});
+  sections.forEach(function(el){observer.observe(el)});
+})();
+
+// Sidebar link clicks
+document.querySelectorAll('.docs-nav__link').forEach(function(l){
+  l.addEventListener('click',function(e){
+    e.preventDefault();
+    var id=l.getAttribute('href').replace('#','');
+    var el=document.getElementById(id);
+    if(el)window.scrollTo({top:el.getBoundingClientRect().top+window.scrollY-80,behavior:'smooth'});
+    document.querySelectorAll('.docs-nav__link').forEach(function(x){x.classList.toggle('active',x===l)});
+    var sb=document.getElementById('docsSidebar');
+    if(sb.classList.contains('docs-sidebar--mobile'))sb.classList.remove('docs-sidebar--mobile');
+  });
+});
+
+// Sidebar collapse
+document.querySelectorAll('.docs-nav__title').forEach(function(btn){
+  btn.addEventListener('click',function(){btn.parentElement.classList.toggle('collapsed')});
+});
+
+// Mobile toggle
+document.getElementById('mobileToggle').addEventListener('click',function(){
+  document.getElementById('docsSidebar').classList.toggle('docs-sidebar--mobile');
+});
+
+// Feedback
+document.querySelectorAll('.feedback__btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var fb=btn.closest('.feedback');
+    fb.querySelectorAll('.feedback__btn').forEach(function(b){b.style.display='none'});
+    fb.querySelector('.feedback__thanks').style.display='inline';
+  });
+});
+
+initPage();
+</script>
+</body>
+</html>

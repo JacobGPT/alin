@@ -1,65 +1,294 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Stations — ALIN</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="description" content="ALIN's six specialized stations: Chat, Website Builder, Code Lab, Research Hub, Memory System, and Image Studio. Each station is purpose-built for a different workflow.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link">Features</a><a href="/m/stations.html" class="nav__link nav__link--active">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/docs.html" class="nav__mobile-link">Docs</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-  <section class="page-hero"><div class="container"><span class="page-hero__overline">The Six Stations</span><h1 class="page-hero__title">One Network, Six Powerhouses</h1><p class="page-hero__desc">Each station is purpose-built for a specific workflow. Together they form a comprehensive AI command center.</p></div></section>
+<body>
 
-  <section class="section"><div class="container">
-    <div class="stations__grid" style="grid-template-columns:repeat(2,1fr);gap:1.5rem;max-width:900px;margin:0 auto;">
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('stations'));</script>
 
-      <div class="station-card animate-on-scroll" style="padding:2rem;">
-        <div class="station-card__emoji" style="font-size:2rem;">💬</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Chat Station</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">The primary interface. Natural conversation with persistent context across sessions. Multi-model streaming supports Claude and OpenAI side by side. Smart model routing picks the best provider per message. File uploads, code blocks, markdown rendering, and branching conversations.</p>
-      </div>
-
-      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.06s;">
-        <div class="station-card__emoji" style="font-size:2rem;">🖥️</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Code Lab</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Full development environment with syntax highlighting, code execution in a sandboxed Docker environment, file system operations, and AI-powered code generation. Run Node.js, Python, and shell commands. Git integration for version control.</p>
-      </div>
-
-      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.12s;">
-        <div class="station-card__emoji" style="font-size:2rem;">📋</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">TBWO Command</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">The orchestration center. Create Time-Budgeted Work Orders and watch ALIN break them into phases with specialized Agent Pods. Real-time execution timeline, pod visualization, checkpoint gating, and detailed receipts for every decision.</p>
-      </div>
-
-      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.04s;">
-        <div class="station-card__emoji" style="font-size:2rem;">🔬</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Research Hub</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Deep web research powered by Brave Search with intelligent synthesis. Ask complex questions and get comprehensive, sourced answers. Citation tracking, source evaluation, and the ability to generate structured intelligence reports with 20+ sources.</p>
-      </div>
-
-      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.1s;">
-        <div class="station-card__emoji" style="font-size:2rem;">🎨</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Image Studio</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Create and iterate on visuals with DALL-E 3 integration. Style direction, prompt refinement, image gallery management, and creative asset organization. Generate UI mockups, illustrations, icons, and concept art all within your workflow.</p>
-      </div>
-
-      <div class="station-card animate-on-scroll" style="padding:2rem;transition-delay:0.16s;">
-        <div class="station-card__emoji" style="font-size:2rem;">🎙️</div>
-        <h3 class="station-card__title" style="font-size:1.25rem;margin-bottom:0.625rem;">Voice Room</h3>
-        <p class="station-card__desc" style="font-size:0.875rem;line-height:1.7;">Hands-free interaction through Whisper speech-to-text and ElevenLabs text-to-speech. Emotion-aware voice synthesis with adaptive modulation. Control any station by voice, dictate messages, and hear responses naturally.</p>
-      </div>
-
+<!-- PAGE HERO -->
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">Stations</span>
+      <h1 class="page-hero__title" data-scramble>Six stations.<br>One intelligence.</h1>
+      <p class="page-hero__desc">Each station is a purpose-built workspace powered by the same AI core. Click a node below to explore.</p>
     </div>
-  </div></section>
+  </div>
+</section>
 
-  <section class="section section--alt"><div class="container">
-    <div class="section__header animate-on-scroll"><span class="section__overline">Architecture</span><h2 class="section__title">Hub-and-Spoke Design</h2><p class="section__desc">All six stations orbit a central intelligence hub. Shared memory, shared context, unified identity.</p></div>
-    <div class="features__grid" style="grid-template-columns:repeat(3,1fr);">
-      <div class="feature-card animate-on-scroll"><div class="feature-card__icon">🔗</div><h3 class="feature-card__title">Shared Context</h3><p class="feature-card__desc">Start a conversation in Chat, continue in Code Lab, review in Research. Context follows you across every station seamlessly.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🧠</div><h3 class="feature-card__title">Unified Memory</h3><p class="feature-card__desc">All stations read and write to the same 8-layer memory system. What ALIN learns in one station applies everywhere.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">📡</div><h3 class="feature-card__title">Message Bus</h3><p class="feature-card__desc">Stations communicate through a pub/sub message bus with request/response patterns, correlation IDs, and priority levels.</p></div>
+<!-- ORBITAL DIAGRAM -->
+<section class="section">
+  <div class="wrap">
+    <div class="orbit-wrap reveal-scale" id="orbitWrap">
+
+      <!-- SVG connection lines -->
+      <svg class="orbit-lines" id="orbitLines" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet"></svg>
+
+      <!-- Ambient particles -->
+      <div class="orbit-ambient" id="orbitAmbient"></div>
+
+      <!-- Pulse rings -->
+      <div class="orbit-pulse orbit-pulse--1"></div>
+      <div class="orbit-pulse orbit-pulse--2"></div>
+      <div class="orbit-pulse orbit-pulse--3"></div>
+
+      <!-- Orbit rings -->
+      <div class="orbit-ring orbit-ring--1"></div>
+      <div class="orbit-ring orbit-ring--2"></div>
+      <div class="orbit-ring orbit-ring--3"></div>
+
+      <!-- Center core -->
+      <div class="orbit-core" id="orbitCore">
+        <div class="orbit-core__ring"></div>
+        <div class="orbit-core__ring orbit-core__ring--2"></div>
+        <div class="orbit-core__icon">⚛️</div>
+        <div class="orbit-core__label">ALIN Core</div>
+      </div>
+
+      <!-- Station nodes -->
+      <div class="orbit-node" id="node-chat" data-sid="chat"><div class="orbit-node__dot">💬</div><div class="orbit-node__label">Chat</div></div>
+      <div class="orbit-node" id="node-website" data-sid="website"><div class="orbit-node__dot">🌐</div><div class="orbit-node__label">Website</div></div>
+      <div class="orbit-node" id="node-code" data-sid="code"><div class="orbit-node__dot">⚡</div><div class="orbit-node__label">Code</div></div>
+      <div class="orbit-node" id="node-research" data-sid="research"><div class="orbit-node__dot">🔍</div><div class="orbit-node__label">Research</div></div>
+      <div class="orbit-node" id="node-memory" data-sid="memory"><div class="orbit-node__dot">🧠</div><div class="orbit-node__label">Memory</div></div>
+      <div class="orbit-node" id="node-image" data-sid="image"><div class="orbit-node__dot">🎨</div><div class="orbit-node__label">Image</div></div>
     </div>
-  </div></section>
 
-  <section class="cta"><div class="container"><div class="cta__content animate-on-scroll"><h2 class="cta__title">Six Stations.<br>One Intelligence.</h2><p class="cta__desc">Experience the full command center. Free during beta.</p><div class="cta__actions"><a href="/m/signup.html" class="btn btn--primary btn--large">Get Started Free</a><a href="/m/pricing.html" class="btn btn--secondary btn--large">See Pricing</a></div></div></div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));</script></body></html>
+    <!-- Detail panel -->
+    <div class="station-detail" id="stationDetail"></div>
+  </div>
+</section>
+
+<!-- STATION SHOWCASE GRID -->
+<section class="section section--alt">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">All Stations</span>
+      <h2 class="section__title" data-scramble>Built for how you actually work</h2>
+      <p class="section__desc">Each station brings the right tools, models, and UI for its workflow. Click any card to see details above.</p>
+    </div>
+    <div class="showcase-grid stagger" id="showcaseGrid">
+      <div class="show-card reveal" data-tilt data-station="chat">
+        <div class="show-card__icon">💬</div>
+        <h3 class="show-card__title">Chat Station</h3>
+        <p class="show-card__desc">Real-time streaming conversations with any model. Branching threads, thinking panel, tool activity viewer.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+      <div class="show-card reveal" data-tilt data-station="website">
+        <div class="show-card__icon">🌐</div>
+        <h3 class="show-card__title">Website Sprint</h3>
+        <p class="show-card__desc">Describe → build → deploy. Real HTML/CSS/JS sites on Cloudflare's edge CDN in under a minute.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+      <div class="show-card reveal" data-tilt data-station="code">
+        <div class="show-card__icon">⚡</div>
+        <h3 class="show-card__title">Code Lab</h3>
+        <p class="show-card__desc">Sandboxed Python and JavaScript execution. Full file system, shell commands, git operations.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+      <div class="show-card reveal" data-tilt data-station="research">
+        <div class="show-card__icon">🔍</div>
+        <h3 class="show-card__title">Research Hub</h3>
+        <p class="show-card__desc">Web search, full article analysis, source cross-referencing, and structured reports with citations.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+      <div class="show-card reveal" data-tilt data-station="memory">
+        <div class="show-card__icon">🧠</div>
+        <h3 class="show-card__title">Memory System</h3>
+        <p class="show-card__desc">8-layer persistent memory. User model, project context, tool reliability, correction learning.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+      <div class="show-card reveal" data-tilt data-station="image">
+        <div class="show-card__icon">🎨</div>
+        <h3 class="show-card__title">Image Studio</h3>
+        <p class="show-card__desc">DALL-E 3 generation with prompt crafting. Cloudflare Images CDN. Direct website integration.</p>
+        <a href="signup.html" class="show-card__cta" data-page="signup.html">Try this station →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW STATIONS WORK -->
+<section class="section">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Intelligence</span>
+      <h2 class="section__title">How stations work together</h2>
+      <p class="section__desc">Stations aren't silos — they share context, memory, and files. Start in Chat, switch to Code, deploy from Website. The AI remembers everything across stations.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal" data-tilt-light><div class="step__num">1</div><h3 class="step__title">Shared context</h3><p class="step__desc">Conversation history and project state travel between stations automatically.</p></div>
+      <div class="step reveal reveal--delay-1" data-tilt-light><div class="step__num">2</div><h3 class="step__title">Smart routing</h3><p class="step__desc">ALIN detects intent and suggests the right station — or auto-switches when it makes sense.</p></div>
+      <div class="step reveal reveal--delay-2" data-tilt-light><div class="step__num">3</div><h3 class="step__title">Unified memory</h3><p class="step__desc">Everything you teach ALIN in one station applies everywhere. Your preferences are global.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Try every station for free</h2>
+    <p class="cta__desc">All six stations are available on the free tier. See which ones fit your workflow.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Start Building Free →</a>
+      <a href="features.html" class="btn btn--secondary btn--lg" data-magnetic data-page="features.html">See Full Feature List</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== STATION DATA =====
+var stations={
+  chat:{icon:'💬',title:'Chat Station',subtitle:'Conversational AI',desc:'Your primary interface for interacting with any AI model. Stream responses in real time, fork conversations into branches, see the AI\'s reasoning in the thinking panel, and monitor every tool call as it happens.',tools:['Streaming SSE','Branching','Thinking Panel','Tool Activity','Code Highlighting','Conversation Search','Model Switching'],stats:[{val:'7',label:'AI models available'},{val:'<1s',label:'First token latency'},{val:'∞',label:'Context threads'}]},
+  website:{icon:'🌐',title:'Website Sprint',subtitle:'Build & Deploy',desc:'Describe a website in plain language and ALIN writes real HTML, CSS, and JavaScript — not templates. One click deploys to Cloudflare\'s global edge CDN with SSL and a custom subdomain.',tools:['HTML/CSS/JS Generation','Cloudflare R2 Deploy','Subdomain Registration','SSL Certificates','Version History','Rollback','DALL-E Images','Natural Language Editing'],stats:[{val:'28s',label:'Avg deploy time'},{val:'300+',label:'Edge locations'},{val:'0',label:'Config needed'}]},
+  code:{icon:'⚡',title:'Code Lab',subtitle:'Execute & Debug',desc:'A full development environment inside your conversation. Run Python and JavaScript, access the file system, execute shell commands, perform git operations, and search codebases with regex.',tools:['Python Sandbox','JavaScript Runtime','File System','Shell Commands','Git Operations','Regex Search','Find & Replace','npm / pip'],stats:[{val:'2',label:'Languages'},{val:'Full',label:'File system access'},{val:'Git',label:'Version control'}]},
+  research:{icon:'🔍',title:'Research Hub',subtitle:'Search & Analyze',desc:'Web search powered by Brave API with full article reading, source cross-referencing, and Cloudflare Vectorize for semantic search and retrieval-augmented generation.',tools:['Brave Search API','Web Fetch','Full Article Reader','Source Evaluation','Cross-Reference','Vectorize RAG','Citation Generation','Structured Reports'],stats:[{val:'12+',label:'Sources per query'},{val:'Full',label:'Article reading'},{val:'RAG',label:'Semantic retrieval'}]},
+  memory:{icon:'🧠',title:'Memory System',subtitle:'Learn & Remember',desc:'ALIN\'s 8-layer memory system means it genuinely learns you over time. Your preferences, project context, tool reliability data, and corrections accumulate across every session.',tools:['Tag-based Storage','Semantic Recall','User Model','Project Memory','Session Memory','Tool Reliability','Correction Learning','Outcome Tracking'],stats:[{val:'8',label:'Memory layers'},{val:'∞',label:'Retention'},{val:'Auto',label:'Learning mode'}]},
+  image:{icon:'🎨',title:'Image Studio',subtitle:'Generate & Integrate',desc:'DALL-E 3 image generation with detailed prompt crafting. Images are stored on Cloudflare Images CDN and can be directly embedded into websites built in the Website Sprint station.',tools:['DALL-E 3','Prompt Engineering','Cloudflare Images','CDN Delivery','Size Variants','Website Integration','Brand Consistency','Batch Generation'],stats:[{val:'DALL-E 3',label:'Model'},{val:'CDN',label:'Global delivery'},{val:'Direct',label:'Site integration'}]}
+};
+
+// ===== ORBIT POSITIONING =====
+var nodeIds=['chat','website','code','research','memory','image'];
+var orbitWrap=document.getElementById('orbitWrap');
+var orbitW=600,centerX=300,centerY=300,radiusX=240,radiusY=240;
+
+function measureOrbit(){
+  orbitW=orbitWrap.offsetWidth;
+  var orbitH=orbitWrap.offsetHeight;
+  centerX=orbitW/2;centerY=orbitH/2;
+  radiusX=orbitW*0.38;radiusY=orbitH*0.38;
+  document.getElementById('orbitLines').setAttribute('viewBox','0 0 '+orbitW+' '+orbitH);
+}
+
+function positionNodes(time){
+  var baseSpeed=0.0001;
+  nodeIds.forEach(function(id,i){
+    var angle=(i/6)*Math.PI*2-Math.PI/2+time*baseSpeed;
+    var x=centerX+Math.cos(angle)*radiusX;
+    var y=centerY+Math.sin(angle)*radiusY;
+    var node=document.getElementById('node-'+id);
+    node.style.left=x+'px';
+    node.style.top=y+'px';
+    node.dataset.cx=x;node.dataset.cy=y;
+  });
+  drawLines();
+}
+
+// ===== CONNECTION LINES =====
+function drawLines(){
+  var svg=document.getElementById('orbitLines');
+  var html='';
+  nodeIds.forEach(function(id){
+    var node=document.getElementById('node-'+id);
+    var x=parseFloat(node.dataset.cx),y=parseFloat(node.dataset.cy);
+    var active=node.classList.contains('active')?'active':'';
+    html+='<line class="orbit-line '+active+'" x1="'+centerX+'" y1="'+centerY+'" x2="'+x+'" y2="'+y+'"/>';
+    html+='<line class="orbit-line-pulse" x1="'+centerX+'" y1="'+centerY+'" x2="'+x+'" y2="'+y+'"/>';
+  });
+  svg.innerHTML=html;
+}
+
+// Animation loop
+var orbitTime=0,orbitPaused=false;
+function animateOrbit(){
+  if(!orbitPaused)orbitTime+=16;
+  positionNodes(orbitTime);
+  requestAnimationFrame(animateOrbit);
+}
+
+// ===== AMBIENT PARTICLES =====
+function spawnAmbient(){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var container=document.getElementById('orbitAmbient');
+  setInterval(function(){
+    var p=document.createElement('div');p.classList.add('orbit-particle');
+    p.style.left=Math.random()*100+'%';p.style.top=(40+Math.random()*20)+'%';
+    p.style.animationDuration=(4+Math.random()*4)+'s';
+    p.style.animationDelay=Math.random()*2+'s';
+    container.appendChild(p);
+    setTimeout(function(){p.remove()},8000);
+  },300);
+}
+
+// ===== SELECT STATION =====
+var activeStation=null;
+function selectStation(id){
+  orbitPaused=true;
+  activeStation=id;
+  document.querySelectorAll('.orbit-node').forEach(function(n){n.classList.remove('active')});
+  document.getElementById('node-'+id).classList.add('active');
+  document.querySelectorAll('.show-card').forEach(function(c){c.classList.remove('active','highlight')});
+  var matchCard=document.querySelector('.show-card[data-station="'+id+'"]');
+  if(matchCard)matchCard.classList.add('highlight');
+  var s=stations[id];
+  var toolsHtml=s.tools.map(function(t){return '<span class="sd-tool">'+t+'</span>'}).join('');
+  var statsHtml=s.stats.map(function(st){return '<div class="sd-stat"><div class="sd-stat__val">'+st.val+'</div><div class="sd-stat__label">'+st.label+'</div></div>'}).join('');
+  var detailEl=document.getElementById('stationDetail');
+  detailEl.innerHTML='<div class="sd-card" id="sdCard"><div class="sd-card__header"><div class="sd-card__icon">'+s.icon+'</div><div><div class="sd-card__title">'+s.title+'</div><div class="sd-card__subtitle">'+s.subtitle+'</div></div></div><p class="sd-card__desc">'+s.desc+'</p><div class="sd-card__tools">'+toolsHtml+'</div><div class="sd-card__stats">'+statsHtml+'</div></div>';
+  var sdCard=document.getElementById('sdCard');
+  sdCard.addEventListener('mousemove',function(e){var r=sdCard.getBoundingClientRect();sdCard.style.setProperty('--mx',(e.clientX-r.left)+'px');sdCard.style.setProperty('--my',(e.clientY-r.top)+'px')});
+  drawLines();
+}
+
+function clearStation(){
+  orbitPaused=false;
+  activeStation=null;
+  document.querySelectorAll('.orbit-node').forEach(function(n){n.classList.remove('active')});
+  document.querySelectorAll('.show-card').forEach(function(c){c.classList.remove('active','highlight')});
+  document.getElementById('stationDetail').innerHTML='';
+  drawLines();
+}
+
+function scrollToOrbit(){
+  var el=document.getElementById('orbitWrap');
+  if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// ===== EVENT LISTENERS =====
+// Orbit nodes
+document.querySelectorAll('.orbit-node[data-sid]').forEach(function(node){
+  node.addEventListener('click',function(){selectStation(node.dataset.sid)});
+});
+
+// Core reset
+document.getElementById('orbitCore').addEventListener('click',clearStation);
+
+// Showcase cards
+document.querySelectorAll('.show-card[data-station]').forEach(function(card){
+  card.addEventListener('click',function(e){
+    if(e.target.closest('.show-card__cta'))return;
+    selectStation(card.dataset.station);
+    scrollToOrbit();
+  });
+  // Spotlight on cards
+  card.addEventListener('mousemove',function(e){var r=card.getBoundingClientRect();card.style.setProperty('--mx',(e.clientX-r.left)+'px');card.style.setProperty('--my',(e.clientY-r.top)+'px')});
+});
+
+// ===== INIT =====
+requestAnimationFrame(function(){
+  measureOrbit();
+  positionNodes(orbitTime);
+  animateOrbit();
+});
+addEventListener('resize',function(){measureOrbit();positionNodes(orbitTime)});
+spawnAmbient();
+
+// Auto-select chat after 2.5s
+setTimeout(function(){if(!activeStation)selectStation('chat')},2500);
+
+initPage();
+</script>
+</body>
+</html>

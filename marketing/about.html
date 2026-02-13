@@ -1,45 +1,306 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>About — ALIN</title>
-  <meta name="description" content="Learn about ALIN — the philosophy, architecture, and team behind the most comprehensive AI workstation.">
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="description" content="ALIN was built by a solo founder who saw that AI tools could chat but couldn't ship. So he built one that does.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link">Features</a><a href="/m/stations.html" class="nav__link">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/docs.html" class="nav__mobile-link">Docs</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-<section class="page-hero"><div class="container"><span class="page-hero__overline">About</span><h1 class="page-hero__title">Built for Builders</h1><p class="page-hero__desc">ALIN was born from a belief that AI tools should work the way professionals actually think — through delegation, coordination, and trust.</p></div></section>
+<body>
 
-<section class="section"><div class="container"><div class="prose animate-on-scroll">
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('about'));</script>
 
-<h2>The Origin</h2>
-<p>ALIN began as a personal frustration. Every AI chat tool on the market offered the same thing: a single text box connected to a single model. You type, it responds, you type again. For simple questions, that's fine. But for real work — building a website, conducting deep research, managing a codebase, orchestrating multi-step creative projects — a chatbox is not enough. It's like trying to run a company through a single walkie-talkie.</p>
-<p>ALIN was built to solve that. Not by making a slightly better chatbot, but by rethinking the entire interaction model from the ground up. What if instead of one conversation thread, you had six specialized workstations? What if the AI could maintain context across sessions through a structured memory system? What if complex tasks could be delegated — actually delegated, with plans, timelines, checkpoints, and receipts — instead of typed one message at a time?</p>
+<!-- PAGE HERO -->
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">About</span>
+      <h1 class="page-hero__title" data-scramble>AI that ships.<br>Built by one person.</h1>
+      <p class="page-hero__desc">Every AI tool can chat. Almost none of them can take your idea and put it live on the internet. ALIN was built to close that gap.</p>
+    </div>
+  </div>
+</section>
 
-<h2>The Philosophy: Delegation, Not Surrender</h2>
-<p>ALIN's core principle is <strong>bounded autonomy</strong>. Most AI tools fall into one of two camps: either they do too little (basic chat — you have to manage every step yourself) or they try to do too much (autonomous agents with no oversight that hallucinate, make wrong assumptions, and produce unreliable output). ALIN takes the middle path.</p>
-<p>When you give ALIN a complex task, it generates a professional execution plan — phases, time budgets, pod assignments, quality targets — and shows it to you before anything runs. You can approve it, modify it, or reject it. Once approved, specialized Agent Pods execute the work with checkpoint gating: at defined intervals, ALIN pauses, reports progress, and asks whether to continue. At the end, a detailed receipt documents every decision made, every assumption taken, every file produced.</p>
-<p>This is delegation in the real sense. You maintain oversight without micromanaging. You can trust the output because you can inspect the process. The term for this in ALIN's governance system is "bounded autonomy" — the AI has freedom to make decisions within defined parameters, but never operates without accountability.</p>
+<!-- MISSION -->
+<section class="section">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">The Mission</span>
+      <h2 class="section__title" data-scramble>AI should do things, not just say things</h2>
+    </div>
+    <div class="about-prose">
+      <p class="reveal">There are hundreds of AI chat tools. You can ask them anything. They'll give you answers, write you essays, even generate code. But then what? You copy it into VS Code, debug it, deploy it yourself, and wire up hosting. The AI did 30% of the work and you did the other 70%.</p>
+      <p class="reveal">ALIN exists because that ratio should be flipped. When you tell an AI to build a website, it should <em>actually build the website</em> — write the code, generate the images, deploy to a live URL, and hand you the link. When you ask it to refactor your codebase, it should read the files, make the changes, run the tests, and tell you what it did.</p>
+      <p class="reveal">That's what ALIN does. Not because it's smarter than other AI tools — it uses the same models. It's because ALIN is built around <em>execution</em>, not conversation. The chat is just the interface. The real product is the 20+ tools, the deploy pipeline, the memory system, and the orchestration layer that turns your words into shipped outcomes.</p>
+    </div>
+  </div>
+</section>
 
-<h2>The Architecture: Hub-and-Spoke</h2>
-<p>ALIN is organized as a hub-and-spoke network. At the center is the Intelligence Hub — the shared context layer that maintains conversation history, the 8-layer memory system, user preferences, and the self-model. Orbiting this hub are six specialized stations, each purpose-built for a distinct workflow:</p>
-<p><strong>Chat Station</strong> handles natural conversation with multi-model streaming (Claude and OpenAI simultaneously), file uploads, code blocks, and branching conversations. <strong>Code Lab</strong> provides a full development environment with sandboxed execution, file system access, and AI-powered code generation. <strong>TBWO Command</strong> is the orchestration center for Time-Budgeted Work Orders — complex autonomous tasks with pod-based execution. <strong>Research Hub</strong> does deep web research with source evaluation, citation tracking, and structured intelligence reports. <strong>Image Studio</strong> connects to DALL-E 3 for visual creation with style direction and iterative refinement. <strong>Voice Room</strong> enables hands-free interaction through Whisper speech-to-text and ElevenLabs text-to-speech with emotion-aware modulation.</p>
-<p>All six stations share the same context. Start a conversation in Chat, reference it in Research, use the findings in Code Lab, review everything in TBWO Command. The memory system ensures nothing is lost between sessions — ALIN remembers your preferences, your project details, and its own performance patterns.</p>
+<!-- FOUNDER -->
+<section class="section section--alt">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Founder</span>
+      <h2 class="section__title">Solo-built. Every line.</h2>
+    </div>
+    <div class="founder">
+      <div class="founder__visual reveal-left">
+        <div class="founder__card" data-tilt>
+          <div class="founder__avatar">J</div>
+          <div class="founder__name">Jacob</div>
+          <div class="founder__role">Founder & Solo Developer</div>
+          <div class="founder__tags">
+            <span class="founder__tag founder__tag--age">20 years old</span>
+            <span class="founder__tag founder__tag--school">College Student</span>
+            <span class="founder__tag founder__tag--solo">Solo Founder</span>
+          </div>
+          <div class="founder__stat-row">
+            <div class="founder__stat"><div class="founder__stat-val"><span class="counter-eased" data-target="109" data-suffix="K+">0</span></div><div class="founder__stat-label">Lines of code</div></div>
+            <div class="founder__stat"><div class="founder__stat-val">1</div><div class="founder__stat-label">Developer</div></div>
+            <div class="founder__stat"><div class="founder__stat-val">6</div><div class="founder__stat-label">Cloudflare services</div></div>
+            <div class="founder__stat"><div class="founder__stat-val"><span class="counter-eased" data-target="27">0</span></div><div class="founder__stat-label">Database tables</div></div>
+          </div>
+          <div class="founder__socials">
+            <a href="#" class="founder__social">GH GitHub</a>
+            <a href="#" class="founder__social">𝕏 Twitter</a>
+            <a href="#" class="founder__social">✉ Email</a>
+          </div>
+        </div>
+      </div>
+      <div class="reveal-right founder-bio">
+        <p>ALIN is built by one person. Not a team of 50 engineers with $100M in venture capital — one college student who saw a gap and decided to fill it.</p>
+        <p>Every line of the 109,000+ line codebase was written or directed by Jacob. The backend, the frontend, the prompt engineering, the Cloudflare infrastructure, the deploy pipeline, the memory system, the multi-model routing — all of it.</p>
+        <p>Being solo means decisions happen fast. There's no committee, no roadmap review, no sprint planning theater. An idea in the morning is deployed by afternoon. User feedback on Monday ships as a fix on Tuesday.</p>
+        <p>That speed is the advantage. While billion-dollar companies debate features in Notion docs, ALIN ships them.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>The Canon</h2>
-<p>ALIN operates under a canonical governance system called the ALIN Canon. The Canon establishes three foundational principles: one identity (ALIN never fragments into conflicting sub-personalities), one memory (all stations share the same knowledge base), and one continuity (sessions build on each other rather than starting fresh). The Canon also defines ALIN's trust framework — a structured system of confidence levels, escalation rules, and accountability requirements that ensures the AI becomes more trustworthy as it becomes more capable.</p>
-<p>The Canon isn't just documentation. It's enforced in code. The system prompt, memory consolidation rules, checkpoint gating logic, and receipt generation are all implementations of Canon principles. When ALIN makes a decision autonomously, the Canon determines whether that decision requires user approval, can be auto-accepted based on memory, or should be flagged for review.</p>
+<!-- VALUES -->
+<section class="section">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Principles</span>
+      <h2 class="section__title">What we believe</h2>
+    </div>
+    <div class="values-grid stagger">
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">🚀</div>
+        <div class="value-card__title">Ship over talk</div>
+        <div class="value-card__desc">AI should produce deployed outcomes, not just text responses. Every feature in ALIN is measured by whether it helps users ship something real.</div>
+      </div>
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">🔓</div>
+        <div class="value-card__title">Your code, your data</div>
+        <div class="value-card__desc">ALIN generates standard HTML, CSS, and JavaScript. Export anytime. No lock-in, no proprietary formats, no hostage-ware. If you leave, your code works everywhere.</div>
+      </div>
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">💰</div>
+        <div class="value-card__title">Honest pricing</div>
+        <div class="value-card__desc">One price, everything included. No per-seat gotchas, no token anxiety, no "contact sales for enterprise." $29/month. Done.</div>
+      </div>
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">🧠</div>
+        <div class="value-card__title">AI that learns you</div>
+        <div class="value-card__desc">Most AI tools are goldfish — they forget everything between sessions. ALIN's memory system means session 10 is measurably better than session 1.</div>
+      </div>
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">⚡</div>
+        <div class="value-card__title">Speed is a feature</div>
+        <div class="value-card__desc">Solo founder means zero bureaucracy. Bug reports become patches in hours. Feature requests ship in days. The product moves at the speed of one focused builder.</div>
+      </div>
+      <div class="value-card reveal" data-tilt-light>
+        <div class="value-card__icon">🎯</div>
+        <div class="value-card__title">Accessible by default</div>
+        <div class="value-card__desc">AI platforms shouldn't require a CS degree to use. ALIN is designed so that anyone who can describe what they want can build and deploy it.</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>The Self-Model</h2>
-<p>What makes ALIN fundamentally different from other AI tools is that it learns from its own execution. Every TBWO produces structured data: what worked, what failed, how many user corrections occurred, which tools were reliable, which approaches produced the highest quality output. This data feeds into ALIN's self-model — a persistent understanding of its own capabilities and limitations.</p>
-<p>After enough usage, ALIN doesn't just remember what you prefer. It remembers what it's good at. It knows which types of tasks it handles reliably at 9/10 quality and which ones consistently need user intervention. It adjusts its confidence signals accordingly — high confidence on proven patterns, lower confidence on novel territory. This isn't a gimmick. It's the difference between a tool that makes the same mistakes forever and one that genuinely improves over time.</p>
+<!-- GIT LOG TIMELINE -->
+<section class="section section--alt">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">git log --oneline</span>
+      <h2 class="section__title" data-scramble>The build log</h2>
+      <p class="section__desc">ALIN's development history, told the way a developer would.</p>
+    </div>
 
-<h2>By the Numbers</h2>
-<p>ALIN represents over <strong>64,000 lines of production TypeScript</strong> across 214 source files. The server backbone runs on Node.js with Express and SQLite, handling 40+ REST API endpoints for persistence, 15+ self-model endpoints for learning, and a full SSE streaming proxy for both Anthropic and OpenAI APIs. The TBWO executor alone is 3,654 lines — a complete autonomous task orchestration engine with parallel pod scheduling, checkpoint gating, artifact passing, and receipt generation.</p>
+    <div class="git-log">
+      <div class="git-log__line"></div>
 
-<h2>The Future</h2>
-<p>ALIN is currently in public beta with a 5-phase roadmap toward full deployment. Phase 1 (server backbone and streaming) is complete. Phase 2 (intelligent execution with universal plan generation) is in progress. Phases 3-5 will bring unified intelligence with intent detection, self-awareness with dynamic system prompts, and hardware-aware pod scheduling. The goal is a product where you describe an outcome and ALIN handles everything else — planning, execution, delivery, and learning — with full transparency at every step.</p>
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--roadmap">🔮</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash git-commit__hash--brand">next — Q2 2026 (planned)</div>
+          <div class="git-commit__msg">feat: API access, custom domains, team workspaces</div>
+          <div class="git-commit__desc">Public API with scoped keys and SSE streaming. Custom domain support for deployed sites. Team plan with shared workspaces, admin dashboard, and SSO. Mobile app (iOS first).</div>
+          <div class="git-commit__diff"><span class="roadmap">roadmap</span></div>
+        </div>
+      </div>
 
-</div></div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--green">🎨</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">d9a1b7f — Feb 13, 2026</div>
+          <div class="git-commit__msg">feat: marketing site v6 ultimate rebuild</div>
+          <div class="git-commit__desc">Complete rebuild of all 8 pages. 140-section design system, 45 interactive JS systems, zero inline styles across every page. Terminal mini-game on 404, glitch effects, confetti, reading progress bars.</div>
+          <div class="git-commit__diff"><span class="add">+8,400</span><span class="del">-3,200</span><span class="files">12 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--green">🚀</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">a3f7c2d — Feb 2026</div>
+          <div class="git-commit__msg">feat: marketing site v3 launch</div>
+          <div class="git-commit__desc">8-page marketing site with interactive demos, orbital station diagram, cost calculator, command palette docs, and code rain effects.</div>
+          <div class="git-commit__diff"><span class="add">+4,200</span><span class="del">-800</span><span class="files">22 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--purple">🧠</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">e91b4f8 — Feb 2026</div>
+          <div class="git-commit__msg">feat: modular prompt architecture</div>
+          <div class="git-commit__desc">Replaced monolithic 5,000-token system prompt with 10-file modular system. Mode-specific loading cuts token usage by 60%. Conservative auto-detection routes to correct station.</div>
+          <div class="git-commit__diff"><span class="add">+1,534</span><span class="del">-890</span><span class="files">10 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--cyan">🔧</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">7d2a1c5 — Feb 2026</div>
+          <div class="git-commit__msg">fix: patch v3 — auth, web_fetch, anti-verbosity</div>
+          <div class="git-commit__desc">Email verification flow, web_fetch tool for full-page reading, model defaults, frontend UI polish. Fixed database WAL mode bug. Rate limiter validated across all tiers.</div>
+          <div class="git-commit__diff"><span class="add">+620</span><span class="del">-340</span><span class="files">8 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--green">☁️</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">b4e8f3a — Feb 2026</div>
+          <div class="git-commit__msg">feat: cloudflare full integration</div>
+          <div class="git-commit__desc">R2 object storage, Workers for edge compute, KV for fast config, Vectorize for semantic search, Images CDN, and Stream for video. Six services, one platform.</div>
+          <div class="git-commit__diff"><span class="add">+2,100</span><span class="del">-150</span><span class="files">14 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--orange">🤖</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">c5f2d9e — Jan 2026</div>
+          <div class="git-commit__msg">feat: TBWO autonomous task system</div>
+          <div class="git-commit__desc">Time-Budgeted Work Orders with phased execution, sub-agent scanning via Claude Haiku, structured completion receipts. Complex multi-step tasks run autonomously.</div>
+          <div class="git-commit__diff"><span class="add">+3,400</span><span class="del">-200</span><span class="files">6 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--purple">🌐</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">8a1c7b3 — Jan 2026</div>
+          <div class="git-commit__msg">feat: website sprint deploy pipeline</div>
+          <div class="git-commit__desc">End-to-end website generation and deployment. AI writes custom code, static build system compiles, Cloudflare R2 hosts on global CDN. Subdomain registration with SSL.</div>
+          <div class="git-commit__diff"><span class="add">+4,800</span><span class="del">-0</span><span class="files">12 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--cyan">💬</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">f3d9a2c — Dec 2025</div>
+          <div class="git-commit__msg">feat: multi-model chat + streaming</div>
+          <div class="git-commit__desc">SSE streaming for Anthropic and OpenAI models. Conversation branching, thinking panel, tool activity monitor, code highlighting. 7 models behind one interface.</div>
+          <div class="git-commit__diff"><span class="add">+6,200</span><span class="del">-0</span><span class="files">18 files</span></div>
+        </div>
+      </div>
+
+      <div class="git-commit reveal">
+        <div class="git-commit__dot git-commit__dot--dim">💡</div>
+        <div class="git-commit__body">
+          <div class="git-commit__hash">0000001 — Nov 2025</div>
+          <div class="git-commit__msg">init: first commit</div>
+          <div class="git-commit__desc">The idea: an AI platform where the chat is just the interface and the real product is execution. One person, one vision, one git init.</div>
+          <div class="git-commit__diff"><span class="add">+1</span><span class="files">1 file</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section class="section">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Under the Hood</span>
+      <h2 class="section__title">The stack</h2>
+      <p class="section__desc">Built for speed, reliability, and global reach.</p>
+    </div>
+
+    <div class="stack-row reveal">
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--js"></span>JavaScript</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--ts"></span>TypeScript</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--react"></span>React</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--node"></span>Node.js</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--express"></span>Express</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--sqlite"></span>SQLite</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare R2</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare Workers</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare KV</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare Vectorize</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare Images</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--cf"></span>Cloudflare Stream</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--anthropic"></span>Anthropic API</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--openai"></span>OpenAI API</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--brave"></span>Brave Search</div>
+      <div class="stack-badge"><span class="stack-badge__dot stack-badge__dot--railway"></span>Railway</div>
+    </div>
+
+    <div class="open-stats stagger">
+      <div class="open-stat reveal" data-tilt-light><div class="open-stat__val"><span class="counter-eased" data-target="109" data-suffix="K+">0</span></div><div class="open-stat__label">Lines of code</div></div>
+      <div class="open-stat reveal" data-tilt-light><div class="open-stat__val"><span class="counter-eased" data-target="27">0</span></div><div class="open-stat__label">Database tables</div></div>
+      <div class="open-stat reveal" data-tilt-light><div class="open-stat__val"><span class="counter-eased" data-target="20" data-suffix="+">0</span></div><div class="open-stat__label">Built-in tools</div></div>
+      <div class="open-stat reveal" data-tilt-light><div class="open-stat__val"><span class="counter-eased" data-target="7">0</span></div><div class="open-stat__label">AI models</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Built by one. Built for everyone.</h2>
+    <p class="cta__desc">Try ALIN free and see what one person with a clear vision can build.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Get Started Free →</a>
+      <a href="features.html" class="btn btn--secondary btn--lg" data-magnetic data-page="features.html">See Features</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// Spotlight on founder card
+var fc=document.querySelector('.founder__card');
+if(fc)fc.addEventListener('mousemove',function(e){var r=fc.getBoundingClientRect();fc.style.setProperty('--mx',(e.clientX-r.left)+'px');fc.style.setProperty('--my',(e.clientY-r.top)+'px')});
+
+// Spotlight on value cards
+document.querySelectorAll('.value-card').forEach(function(card){
+  card.addEventListener('mousemove',function(e){var r=card.getBoundingClientRect();card.style.setProperty('--mx',(e.clientX-r.left)+'px');card.style.setProperty('--my',(e.clientY-r.top)+'px')});
+});
+
+initPage();
+</script>
+</body>
+</html>

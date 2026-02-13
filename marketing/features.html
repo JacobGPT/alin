@@ -1,44 +1,336 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Features — ALIN</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="description" content="Everything ALIN can do: conversational AI, website builder, code execution, deep research, persistent memory, image generation, and autonomous task orchestration.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link nav__link--active">Features</a><a href="/m/stations.html" class="nav__link">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/docs.html" class="nav__mobile-link">Docs</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-  <section class="page-hero"><div class="container"><span class="page-hero__overline">Features</span><h1 class="page-hero__title">Built Different, By Design</h1><p class="page-hero__desc">Every system in ALIN exists for a reason. No feature bloat, no wrappers — purpose-built intelligence that learns.</p></div></section>
+<body>
 
-  <section class="section"><div class="container">
-    <div class="section__header animate-on-scroll"><span class="section__overline">Execution</span><h2 class="section__title">TBWO Orchestration</h2><p class="section__desc">Time-Budgeted Work Orders are ALIN's execution framework for complex tasks. Not just task lists — intelligent, bounded autonomy.</p></div>
-    <div class="features__grid">
-      <div class="feature-card animate-on-scroll"><div class="feature-card__icon">📋</div><h3 class="feature-card__title">Work Orders</h3><p class="feature-card__desc">Describe an outcome and ALIN generates a professional execution plan with phases, pods, time budgets, and quality targets. Review and approve before anything runs.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🤖</div><h3 class="feature-card__title">Agent Pods</h3><p class="feature-card__desc">Specialized AI agents (Design, Frontend, Backend, QA, Copy, Motion) work in parallel. Each pod has domain-specific prompts and passes artifacts to the next.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">🧾</div><h3 class="feature-card__title">Receipt System</h3><p class="feature-card__desc">Every decision logged. Every assumption documented. Every file has provenance. Trust through transparency — see exactly what ALIN did and why.</p></div>
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('features'));</script>
+<canvas id="codeRain"></canvas>
+<script>
+(function(){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  var c=document.getElementById('codeRain'),ctx=c.getContext('2d');
+  var w,h,cols,drops=[];
+  var chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789{}[]();:=><+-*/\\|&!?.#@$%^~_const let var function return if else for while import export async await class new this true false null undefined'.split('');
+  var fontSize=13;
+  function resize(){w=c.width=innerWidth;h=c.height=innerHeight;cols=Math.floor(w/fontSize);drops=Array(cols).fill(0).map(function(){return Math.random()*-100})}
+  resize();addEventListener('resize',resize);
+  function draw(){
+    ctx.fillStyle='rgba(3,7,18,0.06)';ctx.fillRect(0,0,w,h);
+    ctx.font=fontSize+'px "JetBrains Mono",monospace';
+    for(var i=0;i<cols;i++){
+      var xPos=i*fontSize;var leftEdge=w*0.15;var rightEdge=w*0.85;
+      if(xPos>leftEdge&&xPos<rightEdge){drops[i]=Math.random()*-50;continue}
+      var char=chars[Math.floor(Math.random()*chars.length)];
+      var brightness=Math.random();
+      if(brightness>0.95)ctx.fillStyle='rgba(52,211,153,0.9)';
+      else if(brightness>0.7)ctx.fillStyle='rgba(16,185,129,0.4)';
+      else ctx.fillStyle='rgba(16,185,129,0.12)';
+      ctx.fillText(char,xPos,drops[i]*fontSize);
+      drops[i]++;
+      if(drops[i]*fontSize>h&&Math.random()>0.985)drops[i]=Math.random()*-20;
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+<!-- PAGE HERO -->
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">Features</span>
+      <h1 class="page-hero__title" data-scramble>Everything you need.<br>Nothing you don't.</h1>
+      <p class="page-hero__desc">Six specialized stations, 7 AI models, 20+ tools, and persistent memory — all in one conversation.</p>
     </div>
-  </div></section>
+  </div>
+</section>
 
-  <section class="section section--alt"><div class="container">
-    <div class="section__header animate-on-scroll"><span class="section__overline">Intelligence</span><h2 class="section__title">8-Layer Memory System</h2><p class="section__desc">Not just chat history. A structured cognitive architecture that makes ALIN genuinely smarter over time.</p></div>
-    <div class="features__grid">
-      <div class="feature-card animate-on-scroll"><div class="feature-card__icon">⚡</div><h3 class="feature-card__title">Session Memory</h3><p class="feature-card__desc">Layer 0: immediate context. Layer 1: 24-hour working memory. Fast, volatile, always current. The foundation everything else builds on.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">📂</div><h3 class="feature-card__title">Project Memory</h3><p class="feature-card__desc">Layer 2: project-scoped context. Layer 3: episodic (timestamped experiences). Remembers what happened in each project across sessions.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">🧠</div><h3 class="feature-card__title">Self-Model</h3><p class="feature-card__desc">Layers 5-7: user model, notes, and self-referential data. ALIN learns your preferences, tracks its own reliability, and adjusts behavior automatically.</p></div>
+<!-- STATION SWITCHER -->
+<section class="section">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Interactive Demo</span>
+      <h2 class="section__title">See every station in action</h2>
+      <p class="section__desc">Click a station below to see a simulated interface. Sign up to try the real thing.</p>
     </div>
-  </div></section>
-
-  <section class="section"><div class="container">
-    <div class="section__header animate-on-scroll"><span class="section__overline">Automation</span><h2 class="section__title">Unified Intelligence</h2><p class="section__desc">No modes. No templates. ALIN figures out what you need and handles it.</p></div>
-    <div class="features__grid">
-      <div class="feature-card animate-on-scroll"><div class="feature-card__icon">🎯</div><h3 class="feature-card__title">Intent Detection</h3><p class="feature-card__desc">ALIN classifies every request: quick answer, tool call, or full autonomous sprint. You never pick a mode — just describe what you want.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🔄</div><h3 class="feature-card__title">Self-Learning</h3><p class="feature-card__desc">Tracks execution outcomes, tool reliability, and user corrections. After 3+ overrides in the same direction, ALIN adjusts permanently.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">💻</div><h3 class="feature-card__title">Hardware-Aware</h3><p class="feature-card__desc">Pods schedule around your actual hardware. GPU for rendering, CPU for code, network for research. Never pegs your system at 100%.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.04s"><div class="feature-card__icon">🔀</div><h3 class="feature-card__title">Cross-Model Routing</h3><p class="feature-card__desc">Fast model for clarification, strong model for planning. ALIN picks the right model for each sub-task. Supports Claude + OpenAI simultaneously.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.1s"><div class="feature-card__icon">❓</div><h3 class="feature-card__title">Mid-Execution Clarification</h3><p class="feature-card__desc">Pods ask questions during work, not just at checkpoints. With auto-accept, ALIN answers using memory and logs the decision in the receipt.</p></div>
-      <div class="feature-card animate-on-scroll" style="transition-delay:0.16s"><div class="feature-card__icon">📊</div><h3 class="feature-card__title">Confidence Signals</h3><p class="feature-card__desc">See how certain ALIN is about each decision. Low confidence = escalate to you. High confidence = proceed autonomously. Always visible in the dashboard.</p></div>
+    <div class="switcher reveal-scale">
+      <div class="switcher__tabs" id="swTabs">
+        <button class="sw-tab active" data-station="chat">💬 Chat</button>
+        <button class="sw-tab" data-station="website">🌐 Website</button>
+        <button class="sw-tab" data-station="code">⚡ Code</button>
+        <button class="sw-tab" data-station="research">🔍 Research</button>
+        <button class="sw-tab" data-station="memory">🧠 Memory</button>
+        <button class="sw-tab" data-station="image">🎨 Image</button>
+      </div>
+      <div class="sw-demo" id="swDemo">
+        <div class="sw-demo__bar">
+          <span class="sw-demo__bar-dot sw-demo__bar-dot--r"></span>
+          <span class="sw-demo__bar-dot sw-demo__bar-dot--y"></span>
+          <span class="sw-demo__bar-dot sw-demo__bar-dot--g"></span>
+          <span class="sw-demo__bar-title" id="swTitle">Chat Station — Claude Sonnet 4.5</span>
+        </div>
+        <div class="sw-panel active" id="panel-chat">
+          <div class="mock-chat">
+            <div class="mock-msg mock-msg--user">Can you explain how WebSockets differ from Server-Sent Events?</div>
+            <div class="mock-msg mock-msg--ai"><div class="mock-model">Claude Sonnet 4.5</div>Great question. The key difference is directionality. WebSockets create a full-duplex connection — both client and server can send messages at any time. SSE is one-directional: the server pushes events to the client, but the client can only send data via regular HTTP requests.<br><br>For ALIN's streaming responses, SSE is actually the better choice because we only need server→client streaming for token delivery.</div>
+            <div class="mock-typing"><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <div class="sw-panel" id="panel-website">
+          <div class="sw-website-split">
+            <div class="sw-website-split__preview">
+              <div class="mock-site"><div class="mock-site__nav"><div class="mock-site__logo">☕ Bean & Bloom</div><div class="mock-site__links"><span>Menu</span><span>About</span><span>Contact</span></div></div><div class="mock-site__hero"><h3>Freshly roasted, locally loved</h3><p>Artisan coffee in the heart of downtown</p><span class="mock-site__btn">Order Now</span></div></div>
+              <div class="mock-site__deploy"><span class="mock-site__deploy-dot"></span>Live at bean-bloom.alinai.dev</div>
+            </div>
+            <div class="sw-website-split__log mock-mono">
+              <div>✓ Generated 3 pages</div><div>✓ Created responsive layout</div><div>✓ Generated hero image</div><div>✓ Optimized for mobile</div><div>✓ Deployed to Cloudflare edge</div><div class="mock-mono--status">✓ Build time: 28 seconds</div>
+            </div>
+          </div>
+        </div>
+        <div class="sw-panel" id="panel-code">
+          <div class="mock-code">
+            <div class="mock-code__line"><span class="mock-code__num">1</span><span><span class="kw">import</span> <span class="fn">pandas</span> <span class="kw">as</span> pd</span></div>
+            <div class="mock-code__line"><span class="mock-code__num">2</span><span><span class="kw">import</span> <span class="fn">matplotlib.pyplot</span> <span class="kw">as</span> plt</span></div>
+            <div class="mock-code__line"><span class="mock-code__num">3</span><span></span></div>
+            <div class="mock-code__line"><span class="mock-code__num">4</span><span>df = pd.<span class="fn">read_csv</span>(<span class="str">'sales_data.csv'</span>)</span></div>
+            <div class="mock-code__line"><span class="mock-code__num">5</span><span>monthly = df.<span class="fn">groupby</span>(<span class="str">'month'</span>)[<span class="str">'revenue'</span>].<span class="fn">sum</span>()</span></div>
+            <div class="mock-code__line"><span class="mock-code__num">6</span><span>monthly.<span class="fn">plot</span>(kind=<span class="str">'bar'</span>, color=<span class="str">'#10b981'</span>)</span></div>
+            <div class="mock-code__line"><span class="mock-code__num">7</span><span>plt.<span class="fn">savefig</span>(<span class="str">'revenue_chart.png'</span>)<span class="mock-code__cursor"></span></span></div>
+          </div>
+          <div class="mock-code__output">▸ Output: revenue_chart.png saved (12 months, total $2.4M)<br>▸ Execution time: 0.34s</div>
+        </div>
+        <div class="sw-panel" id="panel-research">
+          <div class="mock-research">
+            <div class="mock-mono mock-mono--brand">Searching: "AI coding tools comparison 2026"... found 12 sources</div>
+            <div class="mock-source"><div class="mock-source__num">1</div><div><div class="mock-source__title">The State of AI-Assisted Development in 2026</div><div class="mock-source__url">techcrunch.com/2026/01/ai-coding-tools</div></div></div>
+            <div class="mock-source"><div class="mock-source__num">2</div><div><div class="mock-source__title">Cursor vs Copilot vs Windsurf: Developer Survey Results</div><div class="mock-source__url">stackoverflow.blog/2026/dev-tools-survey</div></div></div>
+            <div class="mock-source"><div class="mock-source__num">3</div><div><div class="mock-source__title">AI Code Generation Benchmark Q1 2026</div><div class="mock-source__url">arxiv.org/abs/2602.14832</div></div></div>
+            <div class="mock-mono mock-mono--muted">Reading full articles... Cross-referencing claims...</div>
+          </div>
+        </div>
+        <div class="sw-panel" id="panel-memory">
+          <div class="mock-memory">
+            <div class="mock-mem-card"><div class="mock-mem-card__label">User Model</div><div class="mock-mem-card__val">Prefers TypeScript over JavaScript. Uses Tailwind CSS. Works on a SaaS dashboard project.</div></div>
+            <div class="mock-mem-card"><div class="mock-mem-card__label">Project Context</div><div class="mock-mem-card__val">E-commerce platform. PostgreSQL backend. Next.js frontend. Stripe payments integrated.</div></div>
+            <div class="mock-mem-card"><div class="mock-mem-card__label">Tool Reliability</div><div class="mock-mem-card__val">web_fetch: 94% success. code_execute: 98% success. image_generate: 89% success.</div></div>
+            <div class="mock-mem-card"><div class="mock-mem-card__label">Corrections Learned</div><div class="mock-mem-card__val">User prefers 2-space indent. Dislikes semicolons. Uses named exports over default.</div></div>
+          </div>
+        </div>
+        <div class="sw-panel" id="panel-image">
+          <div class="mock-mono mock-mono--brand">Prompt: "Minimalist logo for a coffee shop called Bean & Bloom, warm tones"</div>
+          <div class="mock-images">
+            <div><div class="mock-img mock-img--1">☕</div><div class="mock-img__label">Variation 1 — 1024×1024</div></div>
+            <div><div class="mock-img mock-img--2">🌿</div><div class="mock-img__label">Variation 2 — 1024×1024</div></div>
+            <div><div class="mock-img mock-img--3">🫘</div><div class="mock-img__label">Variation 3 — 1024×1024</div></div>
+          </div>
+          <div class="mock-mono mock-mono--muted">Generated via DALL-E 3 · Stored on Cloudflare Images CDN · Ready for website integration</div>
+        </div>
+      </div>
     </div>
-  </div></section>
+  </div>
+</section>
 
-  <section class="cta"><div class="container"><div class="cta__content animate-on-scroll"><h2 class="cta__title">Ready to Experience<br>Bounded Autonomy?</h2><p class="cta__desc">Start building with ALIN's full feature set. Free during beta.</p><div class="cta__actions"><a href="/m/signup.html" class="btn btn--primary btn--large">Get Started Free</a><a href="/m/docs.html" class="btn btn--secondary btn--large">Read the Docs</a></div></div></div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));</script></body></html>
+<!-- DEEP DIVE SECTIONS -->
+<section class="section section--alt dd-section">
+
+  <!-- LEFT GUTTER -->
+  <div class="ambient ambient--line" style="left:40px;top:80px;height:85%"></div>
+  <div class="ambient ambient--annotation" style="left:28px;top:200px">// features.ts</div>
+  <div class="ambient ambient--annotation" style="left:28px;top:520px">// line 127</div>
+  <div class="ambient ambient--annotation" style="left:28px;top:860px">/* v3.2 */</div>
+  <div class="ambient ambient--annotation" style="left:28px;top:1200px">// memory</div>
+  <div class="ambient ambient--annotation" style="left:28px;top:1550px">// tbwo.rs</div>
+  <div class="ambient ambient--shape square" style="left:60px;top:300px" data-parallax="0.02"></div>
+  <div class="ambient ambient--shape circle" style="left:70px;top:700px" data-parallax="0.03"></div>
+  <div class="ambient ambient--cross" style="left:56px;top:1000px" data-parallax="0.015"></div>
+  <div class="ambient ambient--shape diamond" style="left:48px;top:1400px" data-parallax="0.025"></div>
+  <div class="ambient ambient--glyph" style="left:58px;top:450px">{ }</div>
+  <div class="ambient ambient--glyph" style="left:62px;top:1100px">( )</div>
+
+  <!-- LEFT ORBS -->
+  <div class="ambient ambient--orb" style="width:200px;height:200px;background:rgba(16,185,129,0.04);left:-60px;top:15%"></div>
+  <div class="ambient ambient--orb" style="width:160px;height:160px;background:rgba(6,182,212,0.03);left:-30px;top:55%"></div>
+  <div class="ambient ambient--orb" style="width:140px;height:140px;background:rgba(139,92,246,0.025);left:-20px;top:85%"></div>
+
+  <!-- RIGHT GUTTER -->
+  <div class="ambient ambient--line" style="right:40px;top:120px;height:80%"></div>
+  <div class="ambient ambient--annotation" style="right:-60px;top:250px;transform:rotate(90deg);transform-origin:right top">export default</div>
+  <div class="ambient ambient--annotation" style="right:-35px;top:600px;transform:rotate(90deg);transform-origin:right top">// deploy</div>
+  <div class="ambient ambient--annotation" style="right:-45px;top:950px;transform:rotate(90deg);transform-origin:right top">async fn()</div>
+  <div class="ambient ambient--annotation" style="right:-38px;top:1300px;transform:rotate(90deg);transform-origin:right top">// agent</div>
+  <div class="ambient ambient--shape square" style="right:60px;top:400px" data-parallax="0.025"></div>
+  <div class="ambient ambient--shape circle" style="right:55px;top:800px" data-parallax="0.02"></div>
+  <div class="ambient ambient--cross" style="right:65px;top:1150px" data-parallax="0.03"></div>
+  <div class="ambient ambient--shape diamond" style="right:50px;top:1500px" data-parallax="0.02"></div>
+  <div class="ambient ambient--glyph" style="right:52px;top:550px">[ ]</div>
+  <div class="ambient ambient--glyph" style="right:58px;top:1050px">=></div>
+  <div class="ambient ambient--shape tri" style="right:62px;top:1350px" data-parallax="0.015"></div>
+
+  <!-- RIGHT ORBS -->
+  <div class="ambient ambient--orb" style="width:180px;height:180px;background:rgba(16,185,129,0.035);right:-50px;top:25%"></div>
+  <div class="ambient ambient--orb" style="width:150px;height:150px;background:rgba(249,115,22,0.02);right:-40px;top:65%"></div>
+  <div class="ambient ambient--orb" style="width:120px;height:120px;background:rgba(6,182,212,0.03);right:-20px;top:92%"></div>
+
+  <div class="wrap">
+    <div class="section__header reveal"><span class="section__overline">Deep Dive</span><h2 class="section__title" data-scramble>Every capability, explained</h2></div>
+
+    <!-- Website Builder -->
+    <div class="fd reveal">
+      <div>
+        <span class="fd__tag fd__tag--green">Website Builder</span>
+        <h3 class="fd__title">Describe a site. Get a live URL.</h3>
+        <p class="fd__desc">ALIN writes real HTML, CSS, and JavaScript — not low-code templates. The entire pipeline from code to deployed site happens in one conversation.</p>
+        <ul class="fd__list"><li>Custom code, not drag-and-drop templates</li><li>One-click deploy to Cloudflare R2 with global CDN</li><li>yourname.alinai.dev with SSL included</li><li>Version history and instant rollback</li><li>Edit live sites through natural language</li><li>DALL-E images built into the pipeline</li></ul>
+      </div>
+      <div class="fd__visual" data-tilt>
+        <div class="mock-mono">
+          <div><span class="kw">you:</span> <span class="str">"Build a portfolio for a photographer"</span></div>
+          <div><span class="cm">// ALIN generates 4 files...</span></div>
+          <div>├── <span class="fn">index.html</span> <span class="text-faint">(gallery grid)</span></div>
+          <div>├── <span class="fn">about.html</span> <span class="text-faint">(bio + contact)</span></div>
+          <div>├── <span class="fn">style.css</span> <span class="text-faint">(dark theme, masonry)</span></div>
+          <div>└── <span class="fn">main.js</span> <span class="text-faint">(lightbox, scroll)</span></div>
+          <div class="mock-mono--status" style="margin-top:.5rem">✓ <span class="fn">photos.alinai.dev</span> — deployed in 28s</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code Execution -->
+    <div class="fd fd--reverse reveal">
+      <div>
+        <span class="fd__tag fd__tag--cyan">Code Execution</span>
+        <h3 class="fd__title">A full dev environment in your chat</h3>
+        <p class="fd__desc">Run Python, JavaScript, and shell commands in sandboxed containers. Full file system access with git integration.</p>
+        <ul class="fd__list"><li>Python + JavaScript execution environments</li><li>Read, write, edit, scan file systems</li><li>Shell: npm, build scripts, system tools</li><li>Git: status, diff, commit, branch, log</li><li>Regex code search across workspaces</li><li>Surgical find-and-replace (no full rewrites)</li></ul>
+      </div>
+      <div class="fd__visual" data-tilt>
+        <div class="mock-code">
+          <div class="mock-code__line"><span class="mock-code__num">$</span><span class="fn"> git status</span></div>
+          <div class="mock-code__line"><span class="mock-code__num"> </span><span class="str">modified: src/api/routes.ts</span></div>
+          <div class="mock-code__line"><span class="mock-code__num"> </span><span class="str">modified: src/lib/auth.ts</span></div>
+          <div class="mock-code__line"><span class="mock-code__num">$</span><span class="fn"> npm run test</span></div>
+          <div class="mock-code__output">✓ 47 tests passed · 0 failed · 2.1s</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory -->
+    <div class="fd reveal">
+      <div>
+        <span class="fd__tag fd__tag--purple">Persistent Memory</span>
+        <h3 class="fd__title">An AI that actually learns you</h3>
+        <p class="fd__desc">Most AI chats reset every session. ALIN's multi-layer memory system means session 10 is measurably better than session 1.</p>
+        <ul class="fd__list"><li>Tag-based and category memory storage</li><li>Semantic recall — search by meaning</li><li>Session, project, and user model layers</li><li>Tool reliability tracking</li><li>Execution outcome learning</li><li>User correction accumulation</li></ul>
+      </div>
+      <div class="fd__visual" data-tilt>
+        <div class="mock-memory">
+          <div class="mock-mem-card"><div class="mock-mem-card__label">Session 1</div><div class="mock-mem-card__val">"Use TypeScript." "I prefer Tailwind." "2-space indent."</div></div>
+          <div class="mock-mem-card"><div class="mock-mem-card__label">Session 5</div><div class="mock-mem-card__val">Knows your stack. Remembers project structure. Applies your conventions automatically.</div></div>
+          <div class="mock-mem-card"><div class="mock-mem-card__label">Session 10</div><div class="mock-mem-card__val">Anticipates needs. Suggests based on past patterns. Avoids known failure modes.</div></div>
+          <div class="mock-mem-card"><div class="mock-mem-card__label">Ongoing</div><div class="mock-mem-card__val">Every interaction makes it smarter. Your corrections are permanent. Your AI evolves with you.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TBWO -->
+    <div class="fd fd--reverse reveal">
+      <div>
+        <span class="fd__tag fd__tag--orange">TBWO Orchestration</span>
+        <h3 class="fd__title">Complex tasks, autonomously executed</h3>
+        <p class="fd__desc">Time-Budgeted Work Orders let ALIN break large tasks into phases, set time estimates, execute autonomously, and deliver structured results — without constant babysitting.</p>
+        <ul class="fd__list"><li>Describe the outcome, not the steps</li><li>ALIN generates a phased execution plan</li><li>Built-in time budgets and checkpoints</li><li>Receipts document every action taken</li><li>Sub-agent scanning for codebase analysis</li></ul>
+      </div>
+      <div class="fd__visual" data-tilt id="tbwoVisual">
+        <div class="tbwo-flow">
+          <div class="tbwo-phase tbwo-phase--done" data-tip="Scans file structure, reads key files, maps dependencies and architecture. Uses sub-agents for large codebases."><span class="tbwo-phase__num">1</span><span class="tbwo-phase__label">Analyze current codebase</span><span class="tbwo-phase__time">✓ 45s</span><div class="tbwo-tip"></div></div>
+          <div class="tbwo-connector"></div>
+          <div class="tbwo-phase tbwo-phase--done" data-tip="Generates a strategy document with file list, risk assessment, and rollback plan before any code changes."><span class="tbwo-phase__num">2</span><span class="tbwo-phase__label">Plan refactoring strategy</span><span class="tbwo-phase__time">✓ 30s</span><div class="tbwo-tip"></div></div>
+          <div class="tbwo-connector"></div>
+          <div class="tbwo-phase tbwo-phase--active" data-tip="Surgical file_edit operations — find-and-replace, not full rewrites. Every change is minimal and targeted."><span class="tbwo-phase__num">3</span><span class="tbwo-phase__label">Execute migrations</span><span class="tbwo-phase__time">~2min</span><div class="tbwo-tip"></div></div>
+          <div class="tbwo-connector"></div>
+          <div class="tbwo-phase" data-tip="Executes your existing tests. If failures detected, automatically attempts fixes and re-runs before reporting."><span class="tbwo-phase__num">4</span><span class="tbwo-phase__label">Run test suite</span><span class="tbwo-phase__time">~30s</span><div class="tbwo-tip"></div></div>
+          <div class="tbwo-connector"></div>
+          <div class="tbwo-phase" data-tip="Structured summary: files changed, tests passed/failed, time spent per phase, before/after diffs."><span class="tbwo-phase__num">5</span><span class="tbwo-phase__label">Generate completion receipt</span><span class="tbwo-phase__time">~10s</span><div class="tbwo-tip"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">See it for yourself</h2>
+    <p class="cta__desc">Every feature described here is live and working. Try ALIN free — no credit card required.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Start Building Free →</a>
+      <a href="docs.html" class="btn btn--secondary btn--lg" data-magnetic data-page="docs.html">Read the Docs</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== STATION SWITCHER =====
+var titles={chat:'Chat Station — Claude Sonnet 4.5',website:'Website Sprint — Live Builder',code:'Code Lab — Sandboxed Execution',research:'Research Hub — Brave Search + RAG',memory:'Memory System — 8 Layers Deep',image:'Image Studio — DALL-E 3'};
+
+document.querySelectorAll('.sw-tab').forEach(function(tab){
+  tab.addEventListener('click',function(){
+    document.querySelectorAll('.sw-tab').forEach(function(t){t.classList.remove('active')});
+    tab.classList.add('active');
+    var id=tab.dataset.station;
+    document.querySelectorAll('.sw-panel').forEach(function(p){p.classList.remove('active')});
+    var panel=document.getElementById('panel-'+id);
+    if(panel){panel.classList.add('active');panel.style.animation='none';panel.offsetHeight;panel.style.animation='sw-in .5s var(--ease) both'}
+    document.getElementById('swTitle').textContent=titles[id]||'';
+  });
+  // Tab spotlight
+  tab.addEventListener('mousemove',function(e){var r=tab.getBoundingClientRect();tab.style.setProperty('--mx',(e.clientX-r.left)+'px');tab.style.setProperty('--my',(e.clientY-r.top)+'px')});
+});
+
+// ===== FD VISUAL SPOTLIGHT =====
+document.querySelectorAll('.fd__visual').forEach(function(v){
+  v.addEventListener('mousemove',function(e){var r=v.getBoundingClientRect();v.style.setProperty('--mx',(e.clientX-r.left)+'px');v.style.setProperty('--my',(e.clientY-r.top)+'px')});
+});
+
+// ===== TBWO PHASE ANIMATION =====
+var tbwoObs=new IntersectionObserver(function(es){es.forEach(function(e){
+  if(!e.isIntersecting)return;
+  e.target.querySelectorAll('.tbwo-phase').forEach(function(p,i){setTimeout(function(){p.classList.add('visible')},i*300)});
+  tbwoObs.unobserve(e.target);
+})},{threshold:.3});
+var tv=document.getElementById('tbwoVisual');if(tv)tbwoObs.observe(tv);
+
+// ===== TBWO TOOLTIPS =====
+document.querySelectorAll('.tbwo-phase[data-tip]').forEach(function(phase){
+  // Inject tip text from data attribute
+  var tipEl=phase.querySelector('.tbwo-tip');
+  if(tipEl)tipEl.textContent=phase.dataset.tip;
+
+  phase.addEventListener('click',function(e){
+    e.stopPropagation();
+    var wasOpen=phase.classList.contains('tip-open');
+    document.querySelectorAll('.tbwo-phase.tip-open').forEach(function(p){p.classList.remove('tip-open')});
+    if(!wasOpen)phase.classList.add('tip-open');
+  });
+});
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.tbwo-phase'))document.querySelectorAll('.tbwo-phase.tip-open').forEach(function(p){p.classList.remove('tip-open')});
+});
+
+initPage();
+</script>
+</body>
+</html>

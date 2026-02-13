@@ -1722,6 +1722,51 @@ app.post('/api/telemetry/feedback', requireAuth, (req, res) => {
 });
 
 // ============================================================================
+// WEBHOOK ENDPOINTS
+// ============================================================================
+
+app.post('/api/webhook/email', express.json(), (req, res) => {
+  const event = req.body;
+
+  if (event.type === 'email.received') {
+    const { from, to, subject, text, html } = event.data;
+
+    if (to.some(addr => addr.includes('help@'))) {
+      console.log(`[Webhook] Support email from ${from}: ${subject}`);
+
+      resend.emails.send({
+        from: 'noreply@alinai.dev',
+        to: from,
+        subject: `Re: ${subject}`,
+        text: 'Thanks for reaching out! We received your message and will respond shortly.'
+      }).catch(err => console.error('[Webhook] Auto-reply failed:', err.message));
+    }
+  }
+
+  res.json({ received: true });
+});
+
+app.post('/api/contact', express.json(), async (req, res) => {
+  const { name, email, subject, message } = req.body;
+  if (!name || !email || !message)
+    return res.status(400).json({ error: 'Name, email, and message required.' });
+
+  try {
+    await resend.emails.send({
+      from: 'ALIN Contact <noreply@alinai.dev>',
+      to: 'jacobbeach2@icloud.com',
+      replyTo: email,
+      subject: `[${subject}] from ${name}`,
+      text: `From: ${name} <${email}>\nSubject: ${subject}\n\n${message}`
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Contact] Failed to send:', err.message);
+    res.status(500).json({ error: 'Failed to send message.' });
+  }
+});
+
+// ============================================================================
 // CONVERSATION ENDPOINTS
 // ============================================================================
 

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>404 — ALIN</title>
+  <meta name="description" content="Page not found. Try the terminal game while you're here.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="four04--scanlines">
+<canvas class="four04-confetti" id="confettiCanvas"></canvas>
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav(''));</script>
+
+<section class="four04">
+  <div>
+    <div class="four04__code four04__code--glitch" data-text="404">404</div>
+    <p class="four04__msg">This page doesn't exist. Maybe the AI hasn't built it yet.</p>
+    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
+      <a href="index.html" class="btn btn--primary btn--lg" data-magnetic data-page="index.html">Back to Home</a>
+      <a href="docs.html" class="btn btn--secondary btn--lg" data-magnetic data-page="docs.html">Read the Docs</a>
+    </div>
+
+    <!-- Terminal Mini-Game -->
+    <div class="four04-terminal" id="terminal">
+      <div class="four04-terminal__bar">
+        <span class="four04-terminal__dot four04-terminal__dot--r"></span>
+        <span class="four04-terminal__dot four04-terminal__dot--y"></span>
+        <span class="four04-terminal__dot four04-terminal__dot--g"></span>
+        <span class="four04-terminal__title">page_finder.sh — lost &amp; found</span>
+      </div>
+      <div class="four04-terminal__body" id="termBody">
+        <div class="four04-terminal__line four04-terminal__line--system">ALIN Page Recovery System v0.9.4</div>
+        <div class="four04-terminal__line four04-terminal__line--system">The page you requested was not found in the deployment.</div>
+        <div class="four04-terminal__line four04-terminal__line--system">Type "help" for available commands.</div>
+        <div class="four04-terminal__input-row" id="inputRow">
+          <span class="four04-terminal__prompt">→</span>
+          <input class="four04-terminal__input" id="termInput" type="text" placeholder="Type a command..." autocomplete="off" spellcheck="false" autofocus>
+        </div>
+      </div>
+      <div class="four04-terminal__hint">Try: help · scan · hack · deploy · break · ↑ for history</div>
+    </div>
+  </div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== TERMINAL MINI-GAME =====
+(function(){
+  var body=document.getElementById('termBody');
+  var input=document.getElementById('termInput');
+  var inputRow=document.getElementById('inputRow');
+  var history=[];
+  var histIdx=-1;
+  var scanCount=0;
+  var hacked=false;
+  var deployed=false;
+  var broken=false;
+  var easterEggs=0;
+
+  function addLine(text,cls){
+    var line=document.createElement('div');
+    line.className='four04-terminal__line'+(cls?' four04-terminal__line--'+cls:'');
+    line.textContent=text;
+    body.insertBefore(line,inputRow);
+    body.scrollTop=body.scrollHeight;
+  }
+
+  function addLines(lines,cls,delay){
+    delay=delay||0;
+    lines.forEach(function(text,i){
+      setTimeout(function(){addLine(text,cls)},delay+(i*80));
+    });
+  }
+
+  function typewriter(text,cls,cb){
+    var line=document.createElement('div');
+    line.className='four04-terminal__line'+(cls?' four04-terminal__line--'+cls:'');
+    body.insertBefore(line,inputRow);
+    var i=0;
+    var interval=setInterval(function(){
+      line.textContent=text.slice(0,i+1);
+      i++;
+      body.scrollTop=body.scrollHeight;
+      if(i>=text.length){clearInterval(interval);if(cb)cb()}
+    },25);
+  }
+
+  var commands={
+    help:function(){
+      addLines([
+        'Available commands:',
+        '  help      — Show this message',
+        '  scan      — Scan for lost pages',
+        '  ls        — List deployment files',
+        '  status    — Check system status',
+        '  ping      — Ping the server',
+        '  hack      — Attempt unauthorized recovery',
+        '  deploy    — Deploy a replacement page',
+        '  whoami    — Identity check',
+        '  sudo      — Elevate privileges',
+        '  clear     — Clear terminal',
+        '  exit      — Close terminal',
+        '  ...and a few secret ones'
+      ],'system');
+    },
+    scan:function(){
+      scanCount++;
+      if(scanCount===1){
+        typewriter('Scanning R2 bucket alin-sites/...','prompt',function(){
+          setTimeout(function(){
+            addLines([
+              '  index.html        ... found',
+              '  features.html     ... found',
+              '  pricing.html      ... found',
+              '  stations.html     ... found',
+              '  docs.html         ... found',
+              '  about.html        ... found',
+              '  404.html          ... you are here',
+              '  ???.html          ... NOT FOUND',
+              '',
+              'Result: 7/8 pages recovered. 1 page missing.'
+            ]);
+          },600);
+        });
+      } else if(scanCount===2){
+        addLine('Deep scan initiated...','prompt');
+        setTimeout(function(){addLine('Found ghost file: _phantom_page.html.bak','success');addLine('It appears to be... sentient?','system')},800);
+      } else {
+        addLine('You have scanned '+scanCount+' times. The page is not coming back.','error');
+      }
+    },
+    ls:function(){
+      addLines([
+        'total 8 files  82.7KB deployed',
+        '-rw-r--  5.8K  index.html',
+        '-rw-r--  3.2K  features.html',
+        '-rw-r--  4.1K  pricing.html',
+        '-rw-r--  2.9K  stations.html',
+        '-rw-r--  7.4K  docs.html',
+        '-rw-r--  3.1K  about.html',
+        '-rw-r--  1.2K  404.html          <- you are here',
+        '-rw-r--  ???   [REDACTED]'
+      ]);
+    },
+    status:function(){
+      addLine('System status:','prompt');
+      addLines([
+        '  Server:    Railway (healthy)',
+        '  CDN:       Cloudflare R2 (300+ edges)',
+        '  Database:  SQLite WAL mode (27 tables)',
+        '  Memory:    8 layers active',
+        '  Uptime:    '+(Math.floor(Math.random()*99)+1)+' days',
+        '  Mood:      '+(broken?'broken':'slightly confused'),
+        '',
+        hacked?'  Auth: BYPASSED':'  Auth: Secure'
+      ]);
+    },
+    ping:function(){
+      addLine('PING alinai.dev (104.21.x.x)...','prompt');
+      setTimeout(function(){
+        addLines([
+          '64 bytes: time='+Math.floor(Math.random()*20+5)+'ms',
+          '64 bytes: time='+Math.floor(Math.random()*20+5)+'ms',
+          '64 bytes: time='+Math.floor(Math.random()*20+5)+'ms',
+          '',
+          '3 packets sent, 3 received, 0% loss'
+        ]);
+      },400);
+    },
+    hack:function(){
+      if(hacked){addLine('Already hacked. You are in.','success');return}
+      addLine('Initiating unauthorized access...','error');
+      setTimeout(function(){
+        typewriter('Bypassing auth layer... =================== 100%','prompt',function(){
+          setTimeout(function(){
+            addLine('ACCESS GRANTED','success');
+            addLine('Welcome, Admin. You now have root access.','success');
+            addLine('(Not really, but it felt cool right?)','system');
+            hacked=true;
+            easterEggs++;
+          },300);
+        });
+      },500);
+    },
+    deploy:function(){
+      if(deployed){addLine('Already deployed! Check the confetti.','success');return}
+      addLine('Deploying replacement page...','prompt');
+      setTimeout(function(){
+        typewriter('Building... ======================== 100%','prompt',function(){
+          setTimeout(function(){
+            addLine('Replacement page deployed to Cloudflare R2','success');
+            addLine('SSL certificate provisioned','success');
+            addLine('Page live at found-it.alinai.dev','success');
+            addLine('','');
+            addLine('Congratulations! You recovered the lost page!','success');
+            deployed=true;
+            easterEggs++;
+            fireConfetti();
+          },300);
+        });
+      },500);
+    },
+    whoami:function(){
+      addLine('You are: A curious human who found our 404 page','prompt');
+      addLine('Role: Page Recovery Specialist','system');
+      addLine('Clearance: '+(hacked?'ROOT':'Guest'),'system');
+    },
+    sudo:function(){
+      addLine('Password: ','prompt');
+      setTimeout(function(){
+        addLine('Nice try.','error');
+        addLine('Hint: Try "hack" instead.','system');
+      },800);
+    },
+    clear:function(){
+      var lines=body.querySelectorAll('.four04-terminal__line');
+      lines.forEach(function(l){l.remove()});
+    },
+    exit:function(){
+      addLine('Goodbye! Redirecting...','system');
+      setTimeout(function(){window.location.href='index.html'},1500);
+    },
+    break:function(){
+      if(broken){addLine('It is already broken. What more do you want?','error');return}
+      broken=true;
+      easterEggs++;
+      addLine('CRITICAL ERROR: Reality buffer overflow','error');
+      setTimeout(function(){
+        document.querySelector('.four04__code').style.animation='glitch-top .1s infinite';
+        addLine('The page is breaking apart...','error');
+        setTimeout(function(){
+          document.querySelector('.four04__code').style.animation='';
+          addLine('Just kidding. Everything is fine. Probably.','system');
+        },2000);
+      },500);
+    },
+    matrix:function(){
+      easterEggs++;
+      addLine('Entering the Matrix...','success');
+      document.body.style.filter='hue-rotate(90deg)';
+      setTimeout(function(){document.body.style.filter='';addLine('You took the red pill. Welcome back.','system')},3000);
+    },
+    alin:function(){
+      easterEggs++;
+      addLines([
+        '',
+        '    AAAAA  L      IIIII  N   N',
+        '   A   A  L        I    NN  N',
+        '   AAAAA  L        I    N N N',
+        '   A   A  L        I    N  NN',
+        '   A   A  LLLLL  IIIII  N   N',
+        '',
+        '   Advanced Linguistic Intelligence Network',
+        '   Built by Jacob // Powered by ambition',
+        ''
+      ],'success');
+    },
+    hi:function(){addLine('Hey! Lost? Type "help" to find your way.','system')},
+    hello:function(){commands.hi()},
+    secret:function(){
+      addLine('Easter eggs found: '+easterEggs+'/5','prompt');
+      addLine(easterEggs>=5?'You found them all! You are a true hacker.':'Keep exploring... try weird commands.','system');
+    },
+    '42':function(){addLine('The answer to life, the universe, and everything.','success');easterEggs++}
+  };
+
+  input.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      var cmd=input.value.trim().toLowerCase();
+      if(!cmd)return;
+      history.push(cmd);
+      histIdx=history.length;
+      addLine('> '+cmd,'prompt');
+      input.value='';
+      if(commands[cmd]){
+        commands[cmd]();
+      } else if(cmd.startsWith('cd ')){
+        addLine('Nice try, but there is nowhere to go.','error');
+      } else if(cmd.startsWith('cat ')){
+        addLine('File contents: [CLASSIFIED]','error');
+      } else if(cmd==='rm -rf /'){
+        addLine('You monster. Denied.','error');
+      } else if(cmd==='vim'||cmd==='nano'||cmd==='emacs'){
+        addLine('Opening '+cmd+'... just kidding, this is a fake terminal.','system');
+      } else if(cmd==='make me a sandwich'){
+        addLine('What? Make it yourself.','error');
+      } else if(cmd==='sudo make me a sandwich'){
+        addLine('Okay. Here is your sandwich.','success');easterEggs++;
+      } else {
+        addLine('Command not found: '+cmd+'. Try "help".','error');
+      }
+    }
+    if(e.key==='ArrowUp'){
+      e.preventDefault();
+      if(histIdx>0){histIdx--;input.value=history[histIdx]}
+    }
+    if(e.key==='ArrowDown'){
+      e.preventDefault();
+      if(histIdx<history.length-1){histIdx++;input.value=history[histIdx]}
+      else{histIdx=history.length;input.value=''}
+    }
+  });
+
+  // Click terminal to focus input
+  document.getElementById('terminal').addEventListener('click',function(){input.focus()});
+
+  // ===== CONFETTI =====
+  function fireConfetti(){
+    var canvas=document.getElementById('confettiCanvas');
+    var ctx=canvas.getContext('2d');
+    canvas.width=window.innerWidth;
+    canvas.height=window.innerHeight;
+    var particles=[];
+    var colors=['#10b981','#34d399','#06b6d4','#8b5cf6','#f59e0b','#ef4444'];
+    for(var i=0;i<150;i++){
+      particles.push({
+        x:canvas.width/2,y:canvas.height/2,
+        vx:(Math.random()-0.5)*15,vy:Math.random()*-12-4,
+        w:Math.random()*8+4,h:Math.random()*6+2,
+        color:colors[Math.floor(Math.random()*colors.length)],
+        rot:Math.random()*360,rotV:(Math.random()-0.5)*10,life:1
+      });
+    }
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      var alive=false;
+      particles.forEach(function(p){
+        if(p.life<=0)return;
+        alive=true;
+        p.x+=p.vx;p.y+=p.vy;p.vy+=0.3;p.rot+=p.rotV;p.life-=0.008;
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);
+        ctx.globalAlpha=p.life;ctx.fillStyle=p.color;
+        ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+      });
+      if(alive)requestAnimationFrame(draw);
+    }
+    draw();
+  }
+})();
+
+initPage();
+</script>
+</body>
+</html>

@@ -2,239 +2,524 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ALIN — Advanced Linguistic Intelligence Network</title>
-  <meta name="description" content="Six specialized AI stations working as one unified intelligence. Chat, code, research, create, and orchestrate from one powerful command center.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>ALIN — Your AI Command Center</title>
+  <meta name="description" content="ALIN is the AI platform that goes beyond chat. Build websites, run code, do research, generate images — and deploy everything to a live URL.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav(''));</script>
 
-  <!-- NAV -->
-  <nav class="nav" id="nav">
-    <div class="container nav__inner">
-      <a href="/m/index.html" class="nav__logo"><span>ALIN</span></a>
-      <div class="nav__links">
-        <a href="#features" class="nav__link">Features</a>
-        <a href="#stations" class="nav__link">Stations</a>
-        <a href="/m/pricing.html" class="nav__link">Pricing</a>
-        <a href="/m/docs.html" class="nav__link">Docs</a>
-        <a href="/m/about.html" class="nav__link">About</a>
-      </div>
-      <div class="nav__auth">
-        <a href="/m/login.html" class="nav__signin">Sign in</a>
-        <a href="/m/signup.html" class="nav__cta">Get Started</a>
-      </div>
-      <button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+<!-- HERO -->
+<section class="hero" id="heroSection">
+  <div class="hero__mesh"></div>
+  <div class="hero__grid"></div>
+  <div class="hero__orb hero__orb--1" data-parallax="0.03"></div>
+  <div class="hero__orb hero__orb--2" data-parallax="0.05"></div>
+  <div class="hero__orb hero__orb--3" data-parallax="0.04"></div>
+  <div class="hero__content">
+    <div class="hero__badge" style="animation:rise .6s var(--ease) both"><span class="hero__badge-dot"></span>Now in Early Access</div>
+    <h1 class="hero__title" style="animation:rise .7s var(--ease) .1s both" data-parallax="-0.02">Chat. Build.<br><span class="hero__title-em">Ship it live.</span></h1>
+    <p class="hero__sub" style="animation:rise .7s var(--ease) .2s both">The AI platform that goes beyond conversation. Tell ALIN what you need and it writes the code, generates assets, deploys to a live URL, and remembers everything for next time.</p>
+    <div class="hero__stats">
+      <span class="hero__stat"><strong>109K+</strong> lines of code</span>
+      <span class="hero__stat-dot"></span>
+      <span class="hero__stat"><strong>7</strong> AI models</span>
+      <span class="hero__stat-dot"></span>
+      <span class="hero__stat"><strong>20+</strong> built-in tools</span>
+      <span class="hero__stat-dot"></span>
+      <span class="hero__stat"><strong>1</strong> solo builder</span>
     </div>
-    <div class="nav__mobile" id="mobileMenu">
-      <div class="nav__mobile-inner">
-        <a href="#features" class="nav__mobile-link">Features</a>
-        <a href="#stations" class="nav__mobile-link">Stations</a>
-        <a href="/m/pricing.html" class="nav__mobile-link">Pricing</a>
-        <a href="/m/docs.html" class="nav__mobile-link">Docs</a>
-        <a href="/m/about.html" class="nav__mobile-link">About</a>
-        <a href="/m/login.html" class="nav__mobile-link">Sign In</a>
-        <a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a>
-      </div>
+    <div class="hero__actions" style="animation:rise .7s var(--ease) .3s both">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Start Building Free</a>
+      <a href="#features" class="btn btn--secondary btn--lg" data-magnetic>See What's Possible</a>
     </div>
-  </nav>
+    <div class="code-block code-block--hero" style="animation:rise .8s var(--ease) .45s both" id="codeBlock">
+      <div class="code-block__bar"><span class="code-block__dot code-block__dot--r"></span><span class="code-block__dot code-block__dot--y"></span><span class="code-block__dot code-block__dot--g"></span></div>
+      <div class="code-block__body" id="codeBody"></div>
+    </div>
+    <div class="hero__tags">
+      <span class="hero__tag" data-scramble>Anthropic</span>
+      <span class="hero__tag" data-scramble>OpenAI</span>
+      <span class="hero__tag" data-scramble>Cloudflare</span>
+      <span class="hero__tag" data-scramble>DALL-E</span>
+      <span class="hero__tag" data-scramble>Brave Search</span>
+      <span class="hero__tag" data-scramble>Git</span>
+      <span class="hero__tag" data-scramble>Memory</span>
+    </div>
+  </div>
+  <div class="hero__scroll"><div class="hero__scroll-line"></div><div class="hero__scroll-text">Scroll</div></div>
+</section>
 
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero__orb hero__orb--1"></div>
-    <div class="hero__orb hero__orb--2"></div>
-    <div class="hero__orb hero__orb--3"></div>
-    <div class="hero__content">
-      <div class="hero__badge"><span class="hero__badge-dot"></span>Now in Public Beta</div>
-      <h1 class="hero__title">Delegation,<br><span class="hero__title-gradient">Not Surrender.</span></h1>
-      <p class="hero__subtitle">Six specialized AI stations working as one unified intelligence. ALIN doesn't just chat — it plans, executes, delivers, and learns.</p>
-      <div class="hero__actions">
-        <a href="/m/signup.html" class="btn btn--primary btn--large">Start Building Free</a>
-        <a href="/m/features.html" class="btn btn--secondary btn--large">Explore Features</a>
+<div class="wave-divider"><svg viewBox="0 0 2400 60" preserveAspectRatio="none" style="height:60px"><path d="M0,30 C200,10 400,50 600,30 C800,10 1000,50 1200,30 C1400,10 1600,50 1800,30 C2000,10 2200,50 2400,30 L2400,60 L0,60 Z" fill="rgba(16,185,129,0.03)"/></svg></div>
+
+<!-- SIGNALS -->
+<section class="signals">
+  <div class="wrap">
+    <div class="signals__row stagger">
+      <div class="signal reveal" data-tilt-light><div class="signal__icon">🛠️</div><div class="signal__val"><span class="counter-eased" data-target="109" data-suffix="K+">0</span></div><div class="signal__label">Lines of production code</div></div>
+      <div class="signal reveal" data-tilt-light><div class="signal__icon">🔗</div><div class="signal__val"><span class="counter-eased" data-target="6">0</span></div><div class="signal__label">Cloudflare services integrated</div></div>
+      <div class="signal reveal" data-tilt-light><div class="signal__icon">🧰</div><div class="signal__val"><span class="counter-eased" data-target="20" data-suffix="+">0</span></div><div class="signal__label">Built-in AI tools</div></div>
+      <div class="signal reveal" data-tilt-light><div class="signal__icon">🗄️</div><div class="signal__val"><span class="counter-eased" data-target="27">0</span></div><div class="signal__label">Database tables</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section section--mesh" id="features">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">What ALIN Does</span>
+      <h2 class="section__title" data-scramble>Everything AI should be — in one place</h2>
+      <p class="section__desc">Stop switching between ChatGPT, Cursor, Midjourney, and a dozen browser tabs. ALIN combines them all with tools that actually execute.</p>
+    </div>
+    <div class="use-tabs reveal" id="useTabs">
+      <button class="use-tab active" data-filter="all">All</button>
+      <button class="use-tab" data-filter="build">Build</button>
+      <button class="use-tab" data-filter="think">Think</button>
+      <button class="use-tab" data-filter="create">Create</button>
+    </div>
+    <div class="features__grid stagger" id="featuresGrid">
+      <div class="f-card reveal" data-tilt data-cat="think"><div class="f-card__top"><div class="f-card__icon">💬</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Conversational AI</h3><p class="f-card__desc">Chat with Claude, GPT-4o, or switch models mid-conversation. Streaming responses, code highlighting, and branching threads.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>Under the hood:</strong><ul><li>Real-time SSE streaming for Anthropic and OpenAI</li><li>Conversation branching — fork into parallel threads</li><li>Thinking panel shows AI reasoning live</li><li>Tool activity panel displays every call</li><li>Full conversation search and persistence</li></ul></div></div><div class="f-card__progress"></div></div>
+
+      <div class="f-card reveal" data-tilt data-cat="build"><div class="f-card__top"><div class="f-card__icon">🌐</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Website Builder</h3><p class="f-card__desc">Describe a website and ALIN builds it — real HTML, CSS, and JavaScript. Deploy to yoursite.alinai.dev with one click.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>Full pipeline:</strong><ul><li>AI writes custom HTML, CSS, JS — not templates</li><li>Static build system compiles and optimizes</li><li>One-click deploy to Cloudflare R2 global CDN</li><li>Subdomain registration with SSL</li><li>Version history with instant rollback</li><li>DALL-E images built into the pipeline</li></ul></div></div><div class="f-card__progress"></div></div>
+
+      <div class="f-card reveal" data-tilt data-cat="build"><div class="f-card__top"><div class="f-card__icon">⚡</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Code Execution</h3><p class="f-card__desc">Write, run, and debug code in a sandboxed environment. Full file system, shell access, and git operations.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>Dev tools:</strong><ul><li>Python and JavaScript sandboxed execution</li><li>Full file system — read, write, edit, scan</li><li>Shell commands, npm, build scripts</li><li>Git: status, diff, log, commit, branch</li><li>Regex code search across workspaces</li></ul></div></div><div class="f-card__progress"></div></div>
+
+      <div class="f-card reveal" data-tilt data-cat="think"><div class="f-card__top"><div class="f-card__icon">🔍</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Deep Research</h3><p class="f-card__desc">Web search, full article reading, cross-referencing, and structured reports with inline citations.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>Research stack:</strong><ul><li>Brave Search API with source evaluation</li><li>Web fetch reads full page content</li><li>Cloudflare Vectorize for semantic search / RAG</li><li>Cross-reference multiple sources automatically</li></ul></div></div><div class="f-card__progress"></div></div>
+
+      <div class="f-card reveal" data-tilt data-cat="think"><div class="f-card__top"><div class="f-card__icon">🧠</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Persistent Memory</h3><p class="f-card__desc">ALIN remembers preferences, projects, and past conversations. Gets measurably smarter over time.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>8-layer memory:</strong><ul><li>User preferences and coding conventions</li><li>Project context and tech stack</li><li>Tool reliability tracking</li><li>Execution outcome learning</li><li>Correction history — same mistake never twice</li></ul></div></div><div class="f-card__progress"></div></div>
+
+      <div class="f-card reveal" data-tilt data-cat="create"><div class="f-card__top"><div class="f-card__icon">🎨</div><div class="f-card__expand-icon">▼</div></div><h3 class="f-card__title">Image Generation</h3><p class="f-card__desc">DALL-E images, style iteration, brand-aware generation, and direct website integration.</p><div class="f-card__detail"><div class="f-card__detail-inner"><strong>Visual pipeline:</strong><ul><li>DALL-E 3 with detailed prompt crafting</li><li>Cloudflare Images for CDN delivery</li><li>Direct website builder integration</li><li>Multiple size options (1024×1024, 1024×1792)</li></ul></div></div><div class="f-card__progress"></div></div>
+    </div>
+
+    <div class="more-abilities reveal">
+      <button class="btn btn--ghost" id="abilitiesBtn" data-magnetic>View More Capabilities ▼</button>
+      <div class="more-abilities__grid" id="abilitiesGrid">
+        <div class="ability" data-tilt-light><div class="ability__icon">📋</div><div class="ability__name">TBWO Orchestration</div><div class="ability__desc">Phased autonomous task execution with plans, checkpoints, and receipts.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">🤖</div><div class="ability__name">Sub-Agent Scanning</div><div class="ability__desc">Spawn Haiku agents to analyze codebases without burning context.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">🎙️</div><div class="ability__name">Voice Interaction</div><div class="ability__desc">Hands-free conversation with voice-optimized responses.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">📹</div><div class="ability__name">Video Streaming</div><div class="ability__desc">Cloudflare Stream for upload, transcode, and embed.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">🔐</div><div class="ability__name">Auth System</div><div class="ability__desc">Email verification, password management, access control.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">📊</div><div class="ability__name">Admin Dashboard</div><div class="ability__desc">User management, cost tracking, telemetry.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">🔀</div><div class="ability__name">Conversation Branching</div><div class="ability__desc">Fork any message into parallel exploration threads.</div></div>
+        <div class="ability" data-tilt-light><div class="ability__icon">📈</div><div class="ability__name">Cost Transparency</div><div class="ability__desc">Per-model token tracking and cost audit trail.</div></div>
       </div>
-      <div class="code-block" style="animation: fadeInUp 0.8s var(--ease-out) 0.5s both;">
-        <div class="code-block__header"><span class="code-block__dot code-block__dot--red"></span><span class="code-block__dot code-block__dot--yellow"></span><span class="code-block__dot code-block__dot--green"></span></div>
-        <div class="code-block__body">
-          <span class="cm">// Just tell ALIN what you want</span><br>
-          <span class="kw">await</span> alin.<span class="fn">execute</span>(<span class="str">"Build my portfolio site"</span>);<br><br>
-          <span class="cm">// ALIN plans → spawns pods → delivers files</span><br>
-          <span class="cm">// ✓ 7 phases · 5 pods · 23 min · receipt attached</span>
+    </div>
+  </div>
+</section>
+
+<div class="wave-divider" style="transform:scaleY(-1)"><svg viewBox="0 0 2400 60" preserveAspectRatio="none" style="height:60px"><path d="M0,30 C200,10 400,50 600,30 C800,10 1000,50 1200,30 C1400,10 1600,50 1800,30 C2000,10 2200,50 2400,30 L2400,60 L0,60 Z" fill="rgba(16,185,129,0.03)"/></svg></div>
+
+<!-- WHY ALIN: Terminal Demo -->
+<section class="section section--alt">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Why ALIN</span>
+      <h2 class="section__title">AI that ships, not just chats</h2>
+      <p class="section__desc">Other tools help you write. ALIN helps you ship.</p>
+    </div>
+    <div class="split">
+      <div class="reveal-left">
+        <h3 class="f-card__title" style="font-size:1.375rem;margin-bottom:1rem">From chat to deployed website in one conversation</h3>
+        <p class="section__desc" style="text-align:left;margin-bottom:1.25rem">Tell ALIN what you need. It generates code, builds pages, optimizes images, and deploys to Cloudflare's global edge — without you touching a terminal.</p>
+        <p class="section__desc" style="text-align:left;margin-bottom:1.5rem">Your site at <strong style="color:var(--text)">yourname.alinai.dev</strong> — version history, rollback, natural language editing.</p>
+        <a href="features.html" class="btn btn--outline" data-magnetic data-page="features.html">See the Full Pipeline →</a>
+      </div>
+      <div class="terminal reveal-right" id="terminalDemo">
+        <div class="terminal__bar"><span class="terminal__dot terminal__dot--r"></span><span class="terminal__dot terminal__dot--y"></span><span class="terminal__dot terminal__dot--g"></span><span class="terminal__title">alin deploy — portfolio.alinai.dev</span></div>
+        <div class="terminal__body" id="terminalBody"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how-it-works">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">How It Works</span>
+      <h2 class="section__title" data-scramble>Describe the outcome. ALIN handles the rest.</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal" data-tilt-light>
+        <div class="step__num">1</div>
+        <h3 class="step__title">Tell ALIN what you need</h3>
+        <p class="step__desc">Type naturally. "Build me a landing page for my coffee shop." ALIN figures out what tools to use.</p>
+      </div>
+      <div class="step reveal reveal--delay-1" data-tilt-light>
+        <div class="step__num">2</div>
+        <h3 class="step__title">ALIN plans and executes</h3>
+        <p class="step__desc">Execution plan with phases and time estimates. The right model, tools, and approach — chosen automatically.</p>
+      </div>
+      <div class="step reveal reveal--delay-2" data-tilt-light>
+        <div class="step__num">3</div>
+        <h3 class="step__title">Review, iterate, deploy</h3>
+        <p class="step__desc">Preview live. Edit through conversation. When you're happy, one click to deploy worldwide.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODELS -->
+<section class="section section--alt" id="models">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Multi-Model</span>
+      <h2 class="section__title">7 AI models. One interface.</h2>
+      <p class="section__desc">Switch between the world's best models without switching apps.</p>
+    </div>
+    <div class="models__grid stagger">
+      <div class="m-card reveal" data-tilt><div class="m-card__name">Claude Opus 4.6</div><div class="m-card__desc">Deep reasoning</div></div>
+      <div class="m-card reveal" data-tilt><div class="m-card__name">Claude Sonnet 4.5</div><div class="m-card__desc">Balanced power</div></div>
+      <div class="m-card reveal" data-tilt><div class="m-card__name">GPT-4o</div><div class="m-card__desc">Multimodal</div></div>
+      <div class="m-card m-card--expand reveal" data-tilt id="moreModelsBtn"><div class="m-card__name">+ 4 more</div><div class="m-card__desc">Click to explore ▼</div></div>
+    </div>
+    <div class="models__expanded" id="modelsExpanded">
+      <div class="m-card--sm reveal-scale"><div class="m-card__name">Claude Haiku 4.5</div><div class="m-card__desc">Speed-optimized</div></div>
+      <div class="m-card--sm reveal-scale"><div class="m-card__name">GPT-4o Mini</div><div class="m-card__desc">Lightweight tasks</div></div>
+      <div class="m-card--sm reveal-scale"><div class="m-card__name">GPT-4 Turbo</div><div class="m-card__desc">Extended context</div></div>
+      <div class="m-card--sm reveal-scale"><div class="m-card__name">o1-preview</div><div class="m-card__desc">Chain-of-thought</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="section" id="compare">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Compare</span>
+      <h2 class="section__title" data-scramble>ALIN vs. the alternatives</h2>
+      <p class="section__desc">You're already using AI tools. Here's what you get when you consolidate into one platform.</p>
+    </div>
+    <div class="compare-table reveal-scale" data-tilt-light>
+      <div class="ct-header"><div class="ct-cell ct-feature"></div><div class="ct-cell ct-brand">ALIN</div><div class="ct-cell">ChatGPT</div><div class="ct-cell">Claude.ai</div><div class="ct-cell">Cursor</div><div class="ct-cell">Lovable</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Chat with AI</div><div class="ct-cell ct-brand">✓</div><div class="ct-cell">✓</div><div class="ct-cell">✓</div><div class="ct-cell">—</div><div class="ct-cell">✓</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Multiple models</div><div class="ct-cell ct-brand">7 models</div><div class="ct-cell">GPT only</div><div class="ct-cell">Claude only</div><div class="ct-cell">Mix</div><div class="ct-cell">1 model</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Build websites</div><div class="ct-cell ct-brand">✓ Custom</div><div class="ct-cell">—</div><div class="ct-cell">Artifacts</div><div class="ct-cell">—</div><div class="ct-cell">Templates</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Deploy to live URL</div><div class="ct-cell ct-brand">✓ Edge CDN</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">✓</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Code execution</div><div class="ct-cell ct-brand">✓ Full env</div><div class="ct-cell">Python</div><div class="ct-cell">Sandbox</div><div class="ct-cell">✓</div><div class="ct-cell">—</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Persistent memory</div><div class="ct-cell ct-brand">8-layer</div><div class="ct-cell">Basic</div><div class="ct-cell">Limited</div><div class="ct-cell">—</div><div class="ct-cell">—</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">File system + Git</div><div class="ct-cell ct-brand">✓</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">✓</div><div class="ct-cell">—</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Image generation</div><div class="ct-cell ct-brand">✓ DALL-E</div><div class="ct-cell">✓</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">Stock</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Autonomous tasks</div><div class="ct-cell ct-brand">TBWO</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">—</div></div>
+      <div class="ct-row"><div class="ct-cell ct-feature">Code export</div><div class="ct-cell ct-brand">✓ Always</div><div class="ct-cell">—</div><div class="ct-cell">—</div><div class="ct-cell">✓</div><div class="ct-cell">Paid</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF -->
+<section class="proof">
+  <div class="wrap">
+    <div class="proof__row reveal">
+      <div class="proof__item"><div class="proof__val"><span class="counter-eased" data-target="109" data-suffix="K+">0</span></div><div class="proof__label">Lines of code</div></div>
+      <div class="proof__sep"></div>
+      <div class="proof__item"><div class="proof__val">1</div><div class="proof__label">Solo developer</div></div>
+      <div class="proof__sep"></div>
+      <div class="proof__item"><div class="proof__val"><span class="counter-eased" data-target="7">0</span></div><div class="proof__label">AI models</div></div>
+      <div class="proof__sep"></div>
+      <div class="proof__item"><div class="proof__val"><span class="counter-eased" data-target="6">0</span></div><div class="proof__label">Cloudflare services</div></div>
+      <div class="proof__sep"></div>
+      <div class="proof__item"><div class="proof__val">$29</div><div class="proof__label">Everything included</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAYGROUND -->
+<section class="section section--alt" id="playground">
+  <div class="wrap">
+    <div class="section__header reveal">
+      <span class="section__overline">Try It</span>
+      <h2 class="section__title">See what ALIN can do</h2>
+      <p class="section__desc">Type a prompt below. This is a simulation — sign up to use the real thing.</p>
+    </div>
+    <div class="playground reveal-scale" id="playgroundCard">
+      <div class="pg-header"><div class="pg-model"><span class="pg-model-dot"></span>Claude Sonnet 4.5</div><div class="pg-status" id="pgStatus">Ready</div></div>
+      <div class="pg-messages" id="pgMessages"><div class="pg-msg pg-msg--system">What would you like to build today?</div></div>
+      <div class="pg-input-row"><input type="text" class="pg-input" id="pgInput" placeholder='Try: "Build a landing page for a coffee shop"' autocomplete="off"><button class="pg-send" id="pgSend" data-magnetic>→</button></div>
+      <div class="pg-suggestions" id="pgSuggestions">
+        <button class="pg-chip" data-prompt="Build a portfolio site for a photographer">📸 Portfolio</button>
+        <button class="pg-chip" data-prompt="Create a landing page for a SaaS startup">🚀 SaaS landing</button>
+        <button class="pg-chip" data-prompt="Research the best AI coding tools in 2026">🔍 Research</button>
+        <button class="pg-chip" data-prompt="Write a Python script that analyzes CSV data">🐍 Python</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SELF-BUILT BANNER -->
+<section class="section section--mesh" id="selfBuilt">
+  <div class="wrap">
+    <div class="reveal-scale">
+      <div class="sb-card" id="selfBuiltCard">
+        <div class="sb-card__glow" id="selfBuiltGlow"></div>
+        <div class="sb-card__icon">🪞</div>
+        <h2 class="sb-card__title">You're looking at the proof.</h2>
+        <p class="sb-card__desc">This entire website — every page, every animation, every line of code — was designed and generated using ALIN's capabilities. The code rain, the orbital diagram, the interactive playground above. All of it.</p>
+        <div class="sb-stats" id="selfBuiltStats">
+          <div class="sb-stat sb-stat--brand"><span class="sb-stat__val" id="sbPages">0</span><span class="sb-stat__label">pages generated</span></div>
+          <div class="sb-stat sb-stat--accent"><span class="sb-stat__val" id="sbLines">0</span><span class="sb-stat__label">lines of HTML/CSS/JS</span></div>
+          <div class="sb-stat sb-stat--purple"><span class="sb-stat__val" id="sbFeatures">0</span><span class="sb-stat__label">interactive features</span></div>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- STATS -->
-  <section class="stats">
-    <div class="container">
-      <div class="stats__grid">
-        <div class="stat animate-on-scroll"><div class="stat__value">6</div><div class="stat__label">Specialized Stations</div></div>
-        <div class="stat animate-on-scroll" style="transition-delay:0.08s"><div class="stat__value">60K+</div><div class="stat__label">Lines of Architecture</div></div>
-        <div class="stat animate-on-scroll" style="transition-delay:0.16s"><div class="stat__value">8</div><div class="stat__label">Memory Layers</div></div>
-        <div class="stat animate-on-scroll" style="transition-delay:0.24s"><div class="stat__value">∞</div><div class="stat__label">Bounded Autonomy</div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FEATURES -->
-  <section class="section" id="features">
-    <div class="container">
-      <div class="section__header animate-on-scroll">
-        <span class="section__overline">Core Architecture</span>
-        <h2 class="section__title">Built Different, By Design</h2>
-        <p class="section__desc">Every system in ALIN exists for a reason. No feature bloat, no wrappers — purpose-built intelligence.</p>
-      </div>
-      <div class="features__grid">
-        <div class="feature-card animate-on-scroll"><div class="feature-card__icon">⚡</div><h3 class="feature-card__title">TBWO Orchestration</h3><p class="feature-card__desc">Time-Budgeted Work Orders break complex tasks into pods that execute autonomously with receipts, checkpoints, and bounded autonomy.</p></div>
-        <div class="feature-card animate-on-scroll" style="transition-delay:0.06s"><div class="feature-card__icon">🧠</div><h3 class="feature-card__title">8-Layer Memory</h3><p class="feature-card__desc">From immediate context to permanent self-model. ALIN remembers your preferences, learns from corrections, and gets better with every session.</p></div>
-        <div class="feature-card animate-on-scroll" style="transition-delay:0.12s"><div class="feature-card__icon">🎯</div><h3 class="feature-card__title">Intent Detection</h3><p class="feature-card__desc">No modes to switch. Say what you want and ALIN decides: quick answer, tool call, or full sprint. One input, infinite capability.</p></div>
-        <div class="feature-card animate-on-scroll" style="transition-delay:0.04s"><div class="feature-card__icon">📋</div><h3 class="feature-card__title">Receipt System</h3><p class="feature-card__desc">Every decision logged. Every assumption documented. Every file has provenance. Trust through transparency, not blind faith.</p></div>
-        <div class="feature-card animate-on-scroll" style="transition-delay:0.1s"><div class="feature-card__icon">🔄</div><h3 class="feature-card__title">Self-Learning</h3><p class="feature-card__desc">ALIN tracks its own performance, learns from failures, and rewrites its operational knowledge. Session 10 is measurably better than session 1.</p></div>
-        <div class="feature-card animate-on-scroll" style="transition-delay:0.16s"><div class="feature-card__icon">💻</div><h3 class="feature-card__title">Hardware-Aware</h3><p class="feature-card__desc">Pods schedule around your actual hardware — GPU for rendering, CPU for code, network for research. Never pegs your system at 100%.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- STATIONS -->
-  <section class="section section--alt" id="stations">
-    <div class="container">
-      <div class="section__header animate-on-scroll">
-        <span class="section__overline">The Six Stations</span>
-        <h2 class="section__title">One Network, Six Powerhouses</h2>
-        <p class="section__desc">Each station is purpose-built for a specific workflow — together they form a comprehensive AI command center.</p>
-      </div>
-      <div class="stations__grid">
-        <div class="station-card animate-on-scroll"><div class="station-card__emoji">💬</div><h3 class="station-card__title">Chat</h3><p class="station-card__desc">Natural conversation with persistent context. Multi-model streaming with Claude and OpenAI side by side.</p></div>
-        <div class="station-card animate-on-scroll" style="transition-delay:0.06s"><div class="station-card__emoji">🖥️</div><h3 class="station-card__title">Code Lab</h3><p class="station-card__desc">Full development environment with execution sandbox, file operations, and AI-powered code generation.</p></div>
-        <div class="station-card animate-on-scroll" style="transition-delay:0.12s"><div class="station-card__emoji">📋</div><h3 class="station-card__title">TBWO Command</h3><p class="station-card__desc">Orchestrate complex workflows with time-budgeted work orders. Pod-based execution with real-time monitoring.</p></div>
-        <div class="station-card animate-on-scroll" style="transition-delay:0.04s"><div class="station-card__emoji">🔬</div><h3 class="station-card__title">Research</h3><p class="station-card__desc">Deep web research with synthesis and citation. Turn queries into structured, sourced intelligence reports.</p></div>
-        <div class="station-card animate-on-scroll" style="transition-delay:0.1s"><div class="station-card__emoji">🎨</div><h3 class="station-card__title">Image Studio</h3><p class="station-card__desc">Create and iterate on visuals with DALL-E 3, style direction, and creative asset management.</p></div>
-        <div class="station-card animate-on-scroll" style="transition-delay:0.16s"><div class="station-card__emoji">🎙️</div><h3 class="station-card__title">Voice Room</h3><p class="station-card__desc">Hands-free interaction via Whisper STT and ElevenLabs TTS. Emotion-aware voice with adaptive modulation.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- HOW IT WORKS -->
-  <section class="section" id="how-it-works">
-    <div class="container">
-      <div class="section__header animate-on-scroll">
-        <span class="section__overline">How It Works</span>
-        <h2 class="section__title">Just Tell ALIN What You Want</h2>
-        <p class="section__desc">No template picking. No mode switching. Describe the outcome and ALIN handles the rest.</p>
-      </div>
-      <div class="steps">
-        <div class="step animate-on-scroll"><div class="step__number">1</div><h3 class="step__title">Describe Your Goal</h3><p class="step__desc">Type naturally in chat. ALIN detects whether you need a quick answer or a full autonomous sprint.</p></div>
-        <div class="step animate-on-scroll" style="transition-delay:0.1s"><div class="step__number">2</div><h3 class="step__title">ALIN Plans & Confirms</h3><p class="step__desc">A professional execution plan appears in seconds. Review it, approve it, or let auto-accept handle everything.</p></div>
-        <div class="step animate-on-scroll" style="transition-delay:0.2s"><div class="step__number">3</div><h3 class="step__title">Pods Execute & Deliver</h3><p class="step__desc">Specialized pods work in parallel. Files appear in chat. Receipts document every decision. You stay in control.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- TESTIMONIALS -->
-  <section class="section section--alt">
-    <div class="container">
-      <div class="section__header animate-on-scroll">
-        <span class="section__overline">Early Adopters</span>
-        <h2 class="section__title">Trusted by Builders</h2>
-        <p class="section__desc">Developers and creators are already transforming their workflows with ALIN's unified intelligence.</p>
-      </div>
-      <div class="testimonials__grid">
-        <div class="testimonial animate-on-scroll"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"The receipt system changed everything. I can actually see why ALIN made each decision. It's trust through transparency, not a black box."</p><div class="testimonial__author"><div class="testimonial__avatar">MR</div><div><div class="testimonial__name">Marcus Rivera</div><div class="testimonial__role">Full-Stack Developer</div></div></div></div>
-        <div class="testimonial animate-on-scroll" style="transition-delay:0.08s"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"TBWO is what AI agents should have been from the start. Bounded autonomy with real accountability. I set up a sprint and ALIN just delivers."</p><div class="testimonial__author"><div class="testimonial__avatar">SK</div><div><div class="testimonial__name">Sarah Kim</div><div class="testimonial__role">Product Manager</div></div></div></div>
-        <div class="testimonial animate-on-scroll" style="transition-delay:0.16s"><div class="testimonial__stars">★★★★★</div><p class="testimonial__quote">"The 8-layer memory is unreal. By session 5, ALIN knew my preferences better than most human collaborators. It genuinely gets smarter."</p><div class="testimonial__author"><div class="testimonial__avatar">JT</div><div><div class="testimonial__name">James Tanaka</div><div class="testimonial__role">AI Researcher</div></div></div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- DOWNLOAD -->
-  <section class="section" id="download">
-    <div class="container">
-      <div class="section__header animate-on-scroll">
-        <span class="section__overline">Download</span>
-        <h2 class="section__title">Get the Desktop App</h2>
-        <p class="section__desc">Full power: file system access, code execution, hardware monitoring, Blender integration, and offline mode. Everything the web app does, plus everything it can't.</p>
-      </div>
-      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;" class="animate-on-scroll">
-        <a href="/download?platform=windows" class="btn btn--primary btn--large" style="min-width:200px;">⊞ Download for Windows</a>
-        <a href="/download?platform=mac" class="btn btn--secondary btn--large" style="min-width:200px;"> Download for Mac</a>
-        <a href="/download?platform=linux" class="btn btn--secondary btn--large" style="min-width:200px;">⊕ Download for Linux</a>
-      </div>
-      <p style="text-align:center;margin-top:1.5rem;font-size:0.8125rem;color:var(--color-text-muted);" class="animate-on-scroll">v1.1 · ~85MB · Requires 64-bit OS · <a href="/m/changelog.html" style="color:var(--color-primary-400);">Release notes</a></p>
-    </div>
-  </section>
-
-  <!-- CTA -->
-  <section class="cta">
-    <div class="container">
-      <div class="cta__content animate-on-scroll">
-        <h2 class="cta__title">Ready to Orchestrate<br>Your AI Workflow?</h2>
-        <p class="cta__desc">Join the beta and experience bounded autonomy. Six stations. One intelligence. Receipts for everything.</p>
-        <div class="cta__actions">
-          <a href="/m/signup.html" class="btn btn--primary btn--large">Get Started Free</a>
-          <a href="/m/docs.html" class="btn btn--secondary btn--large">View Documentation</a>
+        <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn--outline" id="inspectBtn" data-magnetic>🔍 Inspect this page</button>
+          <a href="signup.html" class="btn btn--primary" data-magnetic data-page="signup.html">Build yours →</a>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER -->
-  <footer class="footer">
-    <div class="container">
-      <div class="footer__grid">
-        <div>
-          <div class="footer__brand-name">ALIN</div>
-          <p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p>
-          <div class="footer__social">
-            <a href="#" class="footer__social-link" aria-label="GitHub">GH</a>
-            <a href="#" class="footer__social-link" aria-label="Twitter">X</a>
-            <a href="#" class="footer__social-link" aria-label="Discord">DC</a>
+        <div class="sb-inspect" id="inspectResult">
+          <div class="sb-inspect__inner">
+            <div class="sb-inspect__header">// Page breakdown generated by ALIN</div>
+            <div class="sb-inspect__lines" id="inspectLines"></div>
           </div>
         </div>
-        <div>
-          <h4 class="footer__col-title">Product</h4>
-          <a href="/m/features.html" class="footer__link">Features</a>
-          <a href="/m/stations.html" class="footer__link">Stations</a>
-          <a href="/m/pricing.html" class="footer__link">Pricing</a>
-          <a href="/m/changelog.html" class="footer__link">Changelog</a>
-        </div>
-        <div>
-          <h4 class="footer__col-title">Resources</h4>
-          <a href="/m/docs.html" class="footer__link">Documentation</a>
-          <a href="/m/api.html" class="footer__link">API Reference</a>
-          <a href="/m/guides.html" class="footer__link">Guides</a>
-          <a href="/m/blog.html" class="footer__link">Blog</a>
-        </div>
-        <div>
-          <h4 class="footer__col-title">Company</h4>
-          <a href="/m/about.html" class="footer__link">About</a>
-          <a href="/m/careers.html" class="footer__link">Careers</a>
-          <a href="/m/contact.html" class="footer__link">Contact</a>
-          <a href="/m/support.html" class="footer__link">Support</a>
-        </div>
-      </div>
-      <div class="footer__bottom">
-        <span>&copy; 2026 ALIN. All rights reserved.</span>
-        <div class="footer__bottom-links">
-          <a href="/m/privacy.html" class="footer__bottom-link">Privacy</a>
-          <a href="/m/terms.html" class="footer__bottom-link">Terms</a>
-          <a href="/m/cookies.html" class="footer__bottom-link">Cookies</a>
-        </div>
       </div>
     </div>
-  </footer>
+  </div>
+</section>
 
-  <script>
-    const nav = document.getElementById('nav');
-    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 16));
-    const toggle = document.getElementById('navToggle'), mobileMenu = document.getElementById('mobileMenu');
-    toggle.addEventListener('click', () => { toggle.classList.toggle('active'); mobileMenu.classList.toggle('open'); });
-    mobileMenu.querySelectorAll('.nav__mobile-link').forEach(l => l.addEventListener('click', () => { toggle.classList.remove('active'); mobileMenu.classList.remove('open'); }));
-    const obs = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }), { threshold: 0.08, rootMargin: '0px 0px -32px 0px' });
-    document.querySelectorAll('.animate-on-scroll').forEach(el => obs.observe(el));
-    document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => { const t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }));
-  </script>
+<div class="grad-line"></div>
+
+<!-- STILL SKEPTICAL? -->
+<section class="skeptical" id="skeptical">
+  <div class="wrap">
+    <div class="skeptical__card reveal-scale">
+      <div class="skeptical__badge"><span class="skeptical__badge-dot"></span>100% real — nothing faked</div>
+      <h2 class="skeptical__title">Still skeptical?</h2>
+      <p class="skeptical__desc">This entire marketing site was generated by ALIN. Not designed in Figma. Not hand-coded. Described in plain English, built by AI, deployed to a live URL. Take a look around.</p>
+
+      <div class="skeptical__grid stagger">
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">🎨</div>
+          <div class="skeptical__proof-title">Design System</div>
+          <div class="skeptical__proof-desc"><span class="counter-eased text-brand fw-bold" data-target="103" data-suffix=" sections">0</span> of CSS. Custom tokens, animations, responsive breakpoints — all generated.</div>
+        </div>
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">⚡</div>
+          <div class="skeptical__proof-title">Interactivity</div>
+          <div class="skeptical__proof-desc"><span class="counter-eased text-brand fw-bold" data-target="45" data-suffix=" systems">0</span> in shared.js. Tilt, particles, spotlight, parallax, counters, scramble — all wired.</div>
+        </div>
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">📄</div>
+          <div class="skeptical__proof-title">8 Unique Pages</div>
+          <div class="skeptical__proof-desc">Homepage, features, pricing, stations, docs, about, 404 — each with unique layouts and interactions.</div>
+        </div>
+      </div>
+
+      <div class="skeptical__grid stagger" style="margin-top:1rem">
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">🧭</div>
+          <div class="skeptical__proof-title">Orbital Diagrams</div>
+          <div class="skeptical__proof-desc">The stations page features an animated orbital system with 6 rotating nodes and interactive detail panels.</div>
+        </div>
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">⌨️</div>
+          <div class="skeptical__proof-title">Command Palette</div>
+          <div class="skeptical__proof-desc">Press <kbd style="font-family:var(--f-mono);font-size:.625rem;padding:.1rem .35rem;background:var(--n-700);border-radius:3px">⌘K</kbd> anywhere. Fuzzy search across every page and section.</div>
+        </div>
+        <div class="skeptical__proof reveal" data-tilt-light>
+          <div class="skeptical__proof-icon">🌊</div>
+          <div class="skeptical__proof-title">Canvas Particles</div>
+          <div class="skeptical__proof-desc">60fps floating particle system with reduced-motion support and automatic performance throttling.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:2.5rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
+        <a href="features.html" class="btn btn--outline" data-magnetic data-page="features.html">Explore Features →</a>
+        <a href="stations.html" class="btn btn--outline" data-magnetic data-page="stations.html">See Stations →</a>
+        <a href="docs.html" class="btn btn--outline" data-magnetic data-page="docs.html">Read Docs →</a>
+      </div>
+
+      <a href="https://github.com" class="skeptical__source" target="_blank" rel="noopener">📂 View source on GitHub (coming soon)</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Ready to build something?</h2>
+    <p class="cta__desc">Free to start. No credit card. No setup. Just tell ALIN what you need.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Get Started Free →</a>
+      <a href="pricing.html" class="btn btn--secondary btn--lg" data-magnetic data-page="pricing.html">View Pricing</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== TYPING ANIMATION =====
+(function(){
+  const lines=[
+    {text:'// Tell ALIN what you want',cls:'cm'},
+    {text:'> "Build me a portfolio for a photographer"',parts:[{t:'> ',c:'kw'},{t:'"Build me a portfolio for a photographer"',c:'str'}]},
+    {text:'',cls:'br'},
+    {text:'// ALIN plans → generates → deploys',cls:'cm'},
+    {text:'✓ Planned  ✓ Built  ✓ Deployed',parts:[{t:'✓ Planned',c:'fn'},{t:'  ',c:''},{t:'✓ Built',c:'fn'},{t:'  ',c:''},{t:'✓ Deployed',c:'fn'}]},
+    {text:'→ photos.alinai.dev',parts:[{t:'→ ',c:'kw'},{t:'photos.alinai.dev',c:'str'}]}
+  ];
+  const body=document.getElementById('codeBody');if(!body)return;let idx=0;
+  function typeLine(){
+    if(idx>=lines.length)return;const line=lines[idx];
+    if(line.cls==='br'){body.appendChild(document.createElement('br'));idx++;setTimeout(typeLine,150);return}
+    const div=document.createElement('div');div.classList.add('typed-line');
+    if(line.parts){line.parts.forEach(p=>{const s=document.createElement('span');if(p.c)s.className=p.c;s.textContent=p.t;div.appendChild(s)})}
+    else{const s=document.createElement('span');s.className=line.cls;s.textContent=line.text;div.appendChild(s)}
+    body.appendChild(div);const fw=div.scrollWidth;div.style.width='0';div.style.animation='none';
+    const dur=Math.min(line.text.length*22,1000);div.style.transition='width '+dur+'ms var(--ease)';
+    requestAnimationFrame(()=>{div.style.width=fw+'px'});
+    setTimeout(()=>{div.classList.add('done');div.style.width='auto';idx++;typeLine()},dur+250);
+  }
+  setTimeout(typeLine,1200);
+})();
+
+// ===== ANIMATED TERMINAL =====
+(function(){
+  const tLines=[
+    {text:'$ alin deploy --site portfolio',cls:'prompt'},
+    {text:''},
+    {text:'⠋ Analyzing project structure...',cls:'info',delay:400},
+    {text:'  Found: index.html, style.css, gallery.js',cls:'file',delay:300},
+    {text:'  Found: 12 images (4.2MB total)',cls:'file',delay:200},
+    {text:''},
+    {text:'⠋ Optimizing assets...',cls:'info',delay:500},
+    {text:'  Images compressed: 4.2MB → 1.1MB (-74%)',cls:'success',delay:400},
+    {text:'  CSS minified: 8.4KB → 3.1KB',cls:'file',delay:200},
+    {text:'  JS bundled: 2 files → 1 file (2.8KB)',cls:'file',delay:200},
+    {text:''},
+    {text:'⠋ Deploying to Cloudflare R2...',cls:'info',delay:600},
+    {text:'  Uploaded 15 files to edge storage',cls:'file',delay:300},
+    {text:'  SSL certificate provisioned',cls:'success',delay:300},
+    {text:'  DNS propagated (28 PoPs)',cls:'success',delay:200},
+    {text:''},
+    {text:'✓ Live at https://portfolio.alinai.dev',cls:'success',delay:500},
+    {text:'  Build time: 12.4s | Size: 6.2KB gzip',cls:'time',delay:0}
+  ];
+  const body=document.getElementById('terminalBody'),el=document.getElementById('terminalDemo');
+  if(!body||!el)return;let started=false;
+  const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting&&!started){started=true;run()}})},{threshold:.3});
+  obs.observe(el);
+  function run(){
+    let d=0;tLines.forEach((line,i)=>{d+=line.delay||150;
+      setTimeout(()=>{
+        const div=document.createElement('div');div.className='terminal__line';
+        if(!line.text){div.innerHTML='&nbsp;'}
+        else{div.innerHTML='<span class="'+(line.cls||'')+'">'+line.text+'</span>'}
+        body.appendChild(div);requestAnimationFrame(()=>div.classList.add('visible'));
+        if(i===tLines.length-1)setTimeout(()=>{const c=document.createElement('span');c.className='terminal__cursor';body.lastChild.appendChild(c)},100);
+      },d);
+    });
+  }
+})();
+
+// ===== USE-CASE FILTER TABS =====
+(function(){
+  const tabs=document.querySelectorAll('.use-tab'),cards=document.querySelectorAll('#featuresGrid .f-card');
+  tabs.forEach(tab=>tab.addEventListener('click',()=>{
+    tabs.forEach(t=>t.classList.remove('active'));tab.classList.add('active');
+    const f=tab.dataset.filter;
+    cards.forEach(c=>{
+      if(f==='all'||c.dataset.cat===f){c.style.opacity='';c.style.pointerEvents='';c.style.transform=''}
+      else{c.style.opacity='.12';c.style.pointerEvents='none';c.style.transform='scale(0.97)'}
+    });
+  }));
+})();
+
+// ===== FEATURE CARD TOGGLE =====
+document.querySelectorAll('.f-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const wasOpen = card.classList.contains('open');
+    document.querySelectorAll('.f-card.open').forEach(c => c.classList.remove('open'));
+    if (!wasOpen) card.classList.add('open');
+  });
+});
+
+// ===== MODELS EXPAND =====
+document.getElementById('moreModelsBtn').addEventListener('click', function(){
+  const grid = document.getElementById('modelsExpanded');
+  const isOpen = grid.style.maxHeight && grid.style.maxHeight !== '0px';
+  grid.style.maxHeight = isOpen ? '0px' : '300px';
+  grid.style.opacity = isOpen ? '0' : '1';
+  this.querySelector('.m-card__desc').textContent = isOpen ? 'Click to explore ▼' : 'Click to collapse ▲';
+});
+
+// ===== ABILITIES EXPAND =====
+document.getElementById('abilitiesBtn').addEventListener('click', function(){
+  toggleAbilities(this);
+});
+
+// ===== HERO TAG SPOTLIGHT =====
+document.querySelectorAll('.hero__tag').forEach(t=>t.addEventListener('mousemove',e=>{const r=t.getBoundingClientRect();t.style.setProperty('--mx',(e.clientX-r.left)+'px');t.style.setProperty('--my',(e.clientY-r.top)+'px')}));
+
+// ===== TERMINAL SPOTLIGHT =====
+document.querySelectorAll('.terminal').forEach(t=>t.addEventListener('mousemove',e=>{const r=t.getBoundingClientRect();t.style.setProperty('--mx',(e.clientX-r.left)+'px');t.style.setProperty('--my',(e.clientY-r.top)+'px')}));
+
+// ===== SCROLL INDICATOR FADE =====
+(function(){const s=document.querySelector('.hero__scroll');if(!s)return;addEventListener('scroll',()=>{s.style.opacity=scrollY>100?'0':'1';s.style.transition='opacity .3s'},{passive:true})})();
+
+// ===== SELF-BUILT SECTION =====
+const sbc=document.getElementById('selfBuiltCard');
+if(sbc){
+  sbc.addEventListener('mousemove',e=>{
+    const r=sbc.getBoundingClientRect();
+    const glow=document.getElementById('selfBuiltGlow');
+    if(glow){glow.style.setProperty('--mx',(e.clientX-r.left)+'px');glow.style.setProperty('--my',(e.clientY-r.top)+'px');glow.style.opacity='1'}
+  });
+  sbc.addEventListener('mouseleave',()=>{const glow=document.getElementById('selfBuiltGlow');if(glow)glow.style.opacity='0'});
+}
+
+// Animate stats
+const sbObs=new IntersectionObserver(es=>{es.forEach(e=>{
+  if(!e.isIntersecting)return;
+  [{el:'sbPages',target:8},{el:'sbLines',target:5800},{el:'sbFeatures',target:45}].forEach(s=>{
+    const el=document.getElementById(s.el);if(!el)return;
+    let cur=0;const step=Math.max(1,Math.ceil(s.target/40));
+    const t=setInterval(()=>{cur+=step;if(cur>=s.target){cur=s.target;clearInterval(t)}el.textContent=cur.toLocaleString()},25);
+  });
+  sbObs.unobserve(e.target);
+})},{threshold:.5});
+const sbSection=document.getElementById('selfBuilt');
+if(sbSection)sbObs.observe(sbSection);
+
+// Inspect page breakdown
+let inspected=false;
+document.getElementById('inspectBtn').addEventListener('click',function(){
+  if(inspected)return;inspected=true;
+  const result=document.getElementById('inspectResult');
+  const lines=document.getElementById('inspectLines');
+  if(!result||!lines)return;
+  result.classList.add('open');
+  const pageData=[
+    {file:'index.html',lines:580,color:'var(--brand-400)',note:'Homepage — hero, terminal, playground, skeptical proof'},
+    {file:'features.html',lines:464,color:'var(--accent-400)',note:'Station switcher + code rain effect'},
+    {file:'pricing.html',lines:509,color:'var(--warm-400)',note:'Calculator, 14 tooltips, billing toggle, VS rotator'},
+    {file:'stations.html',lines:378,color:'var(--purple-400)',note:'Orbital diagram + 6 detail panels'},
+    {file:'docs.html',lines:893,color:'var(--brand-400)',note:'Command palette + keyboard shortcuts + 22 sections'},
+    {file:'about.html',lines:357,color:'var(--accent-400)',note:'Git log timeline + founder card + tech stack'},
+    {file:'styles.css',lines:920,color:'var(--text-3)',note:'103-section design system (720+ rules)'},
+    {file:'shared.js',lines:640,color:'var(--text-3)',note:'45 interactive systems (tilt, particles, spotlight…)'},
+  ];
+  pageData.forEach((p,i)=>{
+    setTimeout(()=>{
+      const d=document.createElement('div');d.style.cssText='opacity:0;transform:translateX(-8px);transition:all .3s var(--ease)';
+      d.innerHTML='<span style="color:'+p.color+'">'+p.file+'</span> <span style="color:var(--text-faint)">—</span> <span style="color:var(--text-4)">'+p.lines+' lines</span> <span style="color:var(--text-faint)">// '+p.note+'</span>';
+      lines.appendChild(d);
+      requestAnimationFrame(()=>{d.style.opacity='1';d.style.transform='translateX(0)'});
+    },i*120);
+  });
+});
+
+// ===== COMPARISON TABLE ROW HOVER =====
+document.querySelectorAll('.ct-row').forEach(row => {
+  row.addEventListener('mouseenter', () => row.style.background = 'rgba(16,185,129,0.02)');
+  row.addEventListener('mouseleave', () => row.style.background = '');
+});
+
+initPage();
+</script>
 </body>
 </html>

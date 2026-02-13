@@ -1,84 +1,844 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Documentation — ALIN</title>
-  <meta name="description" content="Complete documentation for ALIN — architecture, setup, stations, TBWO system, memory, and API reference.">
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="description" content="ALIN documentation: getting started, stations, tools, API reference, deployment, memory system, and more.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link">Features</a><a href="/m/stations.html" class="nav__link">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/docs.html" class="nav__mobile-link">Docs</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-<section class="page-hero"><div class="container"><span class="page-hero__overline">Documentation</span><h1 class="page-hero__title">ALIN Docs</h1><p class="page-hero__desc">Everything you need to get started and master the ALIN platform.</p></div></section>
+<body>
+<div class="reading-progress" id="readingProgress"></div>
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('docs'));</script>
 
-<section class="section"><div class="container"><div class="prose animate-on-scroll">
+<!-- Command Palette Overlay -->
+<div class="cmd-overlay" id="cmdOverlay">
+  <div class="cmd-modal">
+    <div class="cmd-input-row">
+      <span class="cmd-input-row__icon">🔍</span>
+      <input class="cmd-input" id="cmdInput" type="text" placeholder="Search documentation..." autocomplete="off">
+      <span class="cmd-input-row__esc" id="cmdEsc">ESC</span>
+    </div>
+    <div class="cmd-results" id="cmdResults"></div>
+    <div class="cmd-footer">
+      <span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+      <span><kbd>↵</kbd> Open</span>
+      <span><kbd>esc</kbd> Close</span>
+    </div>
+  </div>
+</div>
 
-<h2>Getting Started</h2>
-<p>ALIN is available as a desktop application (full feature set with file system access, code execution, and hardware monitoring) and as a web application (chat, research, image generation, and TBWO planning). To get started with the desktop app, download the installer for your platform from the <a href="/m/index.html#download">download page</a>, run it, and sign in with your account. The web app is accessible at your ALIN instance URL after signing in.</p>
-<p>On first launch, ALIN will walk you through initial setup: connecting your API keys (if self-hosted), choosing your default model, and optionally importing existing conversations. The Home Dashboard shows all six stations with live status previews — click any station card to enter that workspace.</p>
+<!-- PAGE HERO -->
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">Documentation</span>
+      <h1 class="page-hero__title" data-scramble>Learn ALIN inside out</h1>
+      <p class="page-hero__desc">Guides, references, and examples for every station, tool, and API.</p>
+    </div>
+    <div style="margin-top:2rem;animation:rise .6s var(--ease) .15s both">
+      <div class="cmd-trigger" id="cmdTrigger">
+        <span class="cmd-trigger__icon">🔍</span>
+        <span class="cmd-trigger__text">Search docs...</span>
+        <span class="cmd-trigger__kbd"><span class="cmd-trigger__key">⌘</span><span class="cmd-trigger__key">K</span></span>
+      </div>
+    </div>
+  </div>
+</section>
 
-<h2>Architecture Overview</h2>
-<p>ALIN uses a <strong>hub-and-spoke architecture</strong>. The Intelligence Hub (center) maintains shared state: conversations, the 8-layer memory system, user preferences, the self-model, and the Canon governance rules. Six specialized stations orbit this hub, each with its own UI and interaction model but sharing the same context layer.</p>
-<p>On the backend, ALIN runs a Node.js/Express server with SQLite for persistence. All AI API calls route through server-side proxy endpoints (<code>/api/chat/stream</code> and <code>/api/chat/continue</code>) — API keys never touch the browser. The server handles authentication via JWT tokens, plan enforcement via middleware, and rate limiting per user tier.</p>
-<p>On the frontend, ALIN is built with React + TypeScript + Zustand for state management. The component architecture follows the station model: each station has its own view component, but shares common UI primitives (InputArea, MessageBubble, Sidebar, etc.) through the design system.</p>
+<!-- DOCS BODY -->
+<section class="section">
+  <div class="wrap">
+    <div class="docs-layout">
 
-<h2>Stations</h2>
-<h3>Chat Station</h3>
-<p>The primary interface for conversational AI. Supports multi-model streaming (Claude and OpenAI), file uploads with preview, code blocks with syntax highlighting, markdown rendering, message branching, conversation pinning, and response regeneration. Chat operates in two modes: <strong>Direct Mode</strong> (fast tool-assisted responses where the model chains tool calls freely) and <strong>Sprint Mode</strong> (full TBWO execution for complex tasks). The intent detector automatically classifies incoming messages, or you can override manually.</p>
+      <!-- SIDEBAR -->
+      <nav class="docs-sidebar" id="docsSidebar">
+        <div class="docs-nav__section">
+          <button class="docs-nav__title" id="navGettingStarted">Getting Started</button>
+          <div class="docs-nav__links">
+            <a href="#quickstart" class="docs-nav__link active">Quick Start</a>
+            <a href="#concepts" class="docs-nav__link">Core Concepts</a>
+            <a href="#first-chat" class="docs-nav__link">Your First Chat</a>
+            <a href="#first-site" class="docs-nav__link">Your First Website</a>
+          </div>
+        </div>
+        <div class="docs-nav__section">
+          <button class="docs-nav__title" id="navStations">Stations</button>
+          <div class="docs-nav__links">
+            <a href="#station-chat" class="docs-nav__link">Chat Station</a>
+            <a href="#station-website" class="docs-nav__link">Website Sprint</a>
+            <a href="#station-code" class="docs-nav__link">Code Lab</a>
+            <a href="#station-research" class="docs-nav__link">Research Hub</a>
+            <a href="#station-memory" class="docs-nav__link">Memory System</a>
+            <a href="#station-image" class="docs-nav__link">Image Studio</a>
+          </div>
+        </div>
+        <div class="docs-nav__section">
+          <button class="docs-nav__title" id="navTools">Tools</button>
+          <div class="docs-nav__links">
+            <a href="#tools-overview" class="docs-nav__link">Tool Overview</a>
+            <a href="#tools-web" class="docs-nav__link">Web Search & Fetch</a>
+            <a href="#tools-file" class="docs-nav__link">File Operations</a>
+            <a href="#tools-shell" class="docs-nav__link">Shell & Git</a>
+            <a href="#tools-deploy" class="docs-nav__link">Deploy Pipeline</a>
+          </div>
+        </div>
+        <div class="docs-nav__section">
+          <button class="docs-nav__title" id="navAdvanced">Advanced</button>
+          <div class="docs-nav__links">
+            <a href="#tbwo" class="docs-nav__link">TBWO System</a>
+            <a href="#models" class="docs-nav__link">AI Models</a>
+            <a href="#memory-deep" class="docs-nav__link">Memory Deep Dive</a>
+            <a href="#branching" class="docs-nav__link">Conversation Branching</a>
+          </div>
+        </div>
+        <div class="docs-nav__section">
+          <button class="docs-nav__title" id="navReference">Reference</button>
+          <div class="docs-nav__links">
+            <a href="#api" class="docs-nav__link">API Reference</a>
+            <a href="#limits" class="docs-nav__link">Limits & Quotas</a>
+            <a href="#shortcuts" class="docs-nav__link">Keyboard Shortcuts</a>
+            <a href="#changelog" class="docs-nav__link">Changelog</a>
+          </div>
+        </div>
+      </nav>
 
-<h3>Code Lab</h3>
-<p>A development environment with sandboxed code execution (Node.js, Python, shell), file system browsing, syntax highlighting, and AI-powered code generation. Code Lab integrates with the file system through the server's <code>/api/files/*</code> and <code>/api/code/execute</code> endpoints. Git operations are available through <code>/api/git/execute</code>. Desktop app only — requires local file system access.</p>
+      <!-- MAIN CONTENT -->
+      <div class="docs-content">
+        <button class="docs-mobile-toggle" id="mobileToggle">☰ Navigation</button>
+        <div class="breadcrumb"><a href="index.html" data-page="index.html">Home</a><span class="breadcrumb__sep">/</span><span class="breadcrumb__current">Documentation</span></div>
 
-<h3>TBWO Command</h3>
-<p>The orchestration center for Time-Budgeted Work Orders. See the TBWO System section below for full documentation. Pro plan and above.</p>
+        <!-- ==================== GETTING STARTED ==================== -->
 
-<h3>Research Hub</h3>
-<p>Deep web research powered by Brave Search (via server proxy at <code>/api/search/brave</code>) with DuckDuckGo fallback. The research station synthesizes results, tracks citations, evaluates source quality, and can generate structured intelligence reports from 20+ sources. Results are stored in the memory system for cross-session reference.</p>
+        <!-- Quick Start -->
+        <div id="quickstart" class="docs-section">
+          <h2 class="docs-h2">Quick Start</h2>
+          <p class="docs-p">Go from zero to deployed website in under 5 minutes. No installation, no configuration.</p>
 
-<h3>Image Studio</h3>
-<p>Visual creation with DALL-E 3 integration. Supports prompt refinement, style direction, image gallery management, and iterative generation. Generated images are stored as artifacts and can be referenced in other stations. Pro plan and above.</p>
+          <div class="qs-steps">
+            <div class="qs-step reveal"><div class="qs-step__num">1</div><div class="qs-step__content"><div class="qs-step__title">Create your account</div><div class="qs-step__desc">Sign up at <a href="signup.html" class="link-brand" data-page="signup.html">alinai.dev/signup</a>. Email verification, then you're in. No credit card required for Free tier.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">2</div><div class="qs-step__content"><div class="qs-step__title">Choose your station</div><div class="qs-step__desc">Start in <strong class="text-hi">Chat</strong> for general AI conversations, or jump directly to <strong class="text-hi">Website Sprint</strong> to build something. The mode auto-detects based on what you ask.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">3</div><div class="qs-step__content"><div class="qs-step__title">Tell ALIN what you want</div><div class="qs-step__desc">Type naturally. ALIN understands intent and routes to the right tools automatically. Try: <code>Build a portfolio site for a photographer named Alex</code></div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">4</div><div class="qs-step__content"><div class="qs-step__title">Watch it work</div><div class="qs-step__desc">The Thinking Panel shows AI reasoning. The Tool Activity panel shows every file write, search, and API call in real time. You can intervene at any point.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">5</div><div class="qs-step__content"><div class="qs-step__title">Deploy</div><div class="qs-step__desc">Click <strong class="text-hi">Deploy</strong> to push your site to <code>yourname.alinai.dev</code>. It's live on Cloudflare's global CDN in under 30 seconds.</div></div></div>
+          </div>
 
-<h3>Voice Room</h3>
-<p>Hands-free interaction through Whisper speech-to-text and ElevenLabs text-to-speech. Supports emotion-aware voice synthesis with adaptive modulation based on conversation context. Voice commands can control any station. Desktop app recommended for best microphone access.</p>
+          <div class="callout callout--tip"><span class="callout__icon">💡</span><div><strong class="text-hi">Pro tip:</strong> The first user to sign up gets an automatic admin + Pro upgrade. If that's you, you'll have full access to all models and unlimited usage from day one.</div></div>
+        </div>
 
-<h2>TBWO System</h2>
-<p>Time-Budgeted Work Orders are ALIN's framework for autonomous task execution. A TBWO consists of:</p>
-<p><strong>Objective:</strong> What you want built or accomplished, described in natural language.</p>
-<p><strong>Time Budget:</strong> How long ALIN should spend. This directly controls complexity — a 10-minute budget produces a quick result, a 45-minute budget produces a comprehensive one with more phases, more polish iterations, and higher quality output.</p>
-<p><strong>Quality Target:</strong> The quality level you expect (draft, standard, polished, production). This affects how many review passes and refinement cycles are included in the plan.</p>
-<p><strong>Plan:</strong> ALIN generates an execution plan with phases, tasks, role assignments, and time estimates. The plan is domain-aware — a website sprint follows a different phase structure than a research report or a codebase audit. You review and approve the plan before execution begins.</p>
-<p><strong>Agent Pods:</strong> Specialized AI agents assigned to specific roles (Design, Frontend, Backend, QA, Copy, Research, Orchestrator). Pods execute in parallel where possible, pass artifacts to each other through the artifact bus, and communicate through a pub/sub message system with priority levels and correlation IDs.</p>
-<p><strong>Checkpoints:</strong> At defined intervals, execution pauses for progress review. Checkpoints show what's been completed, what's next, and any decisions that were made autonomously. You can adjust the plan, add instructions, or abort.</p>
-<p><strong>Receipts:</strong> After completion, a detailed receipt documents every decision, assumption, file produced, tool called, time spent, and quality assessment. Receipts are the foundation of ALIN's trust model — you can always see exactly what happened and why.</p>
+        <!-- Core Concepts -->
+        <div id="concepts" class="docs-section">
+          <h2 class="docs-h2">Core Concepts</h2>
+          <p class="docs-p">Four ideas that make ALIN different from other AI tools.</p>
 
-<h2>8-Layer Memory System</h2>
-<p>ALIN's memory is structured into 8 layers with different retention policies and purposes:</p>
-<p><strong>Layer 0 — Immediate:</strong> Current session context. Volatile, cleared when the session ends. This is the conversation you're having right now.</p>
-<p><strong>Layer 1 — Short-Term:</strong> 24-hour working memory. Auto-expires. Stores recent decisions, tool results, and temporary notes that are useful for follow-up but don't need permanent storage.</p>
-<p><strong>Layer 2 — Working:</strong> Project-scoped memory. Persists for 7 days or until the project closes. Stores project-specific context like file structures, naming conventions, and in-progress decisions.</p>
-<p><strong>Layer 3 — Episodic:</strong> Permanent, timestamped experiences. Stores what happened in each session — not the full conversation, but structured summaries of actions taken, decisions made, and outcomes achieved.</p>
-<p><strong>Layer 4 — Semantic:</strong> Permanent factual knowledge. Stores learned facts about your codebase, your organization, technical details, and domain knowledge that ALIN has accumulated across sessions.</p>
-<p><strong>Layer 5 — Relational:</strong> User model and preference graph. Stores your communication style, technical skill level, preferred frameworks, formatting preferences, and interaction patterns.</p>
-<p><strong>Layer 6 — Notes:</strong> User-created explicit memories. Things you've told ALIN to remember permanently — API keys (encrypted), project specifications, team member names, recurring instructions.</p>
-<p><strong>Layer 7 — Self-Model:</strong> ALIN's model of its own behavior. Stores execution outcome patterns, tool reliability data, promoted correction patterns, and operational insights. This layer is what makes ALIN improve over time.</p>
+          <div class="docs-cards">
+            <div class="docs-card reveal" data-tilt-light data-goto="station-chat"><span class="docs-card__arrow">→</span><div class="docs-card__icon">🏢</div><div class="docs-card__title">Stations</div><div class="docs-card__desc">Six purpose-built workspaces — Chat, Website, Code, Research, Memory, Image — each with specialized tools and UI optimized for the task.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="tools-overview"><span class="docs-card__arrow">→</span><div class="docs-card__icon">🔧</div><div class="docs-card__title">Tools</div><div class="docs-card__desc">20+ capabilities the AI invokes autonomously: web search, file ops, shell commands, git, deploy, and image generation.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="memory-deep"><span class="docs-card__arrow">→</span><div class="docs-card__icon">🧠</div><div class="docs-card__title">Memory</div><div class="docs-card__desc">Multi-layer persistence that remembers your preferences, projects, corrections, and tool reliability across sessions.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="tbwo"><span class="docs-card__arrow">→</span><div class="docs-card__icon">📋</div><div class="docs-card__title">TBWO</div><div class="docs-card__desc">Time-Budgeted Work Orders let ALIN autonomously plan, execute, and deliver complex multi-step tasks.</div></div>
+          </div>
+        </div>
 
-<h2>Self-Model and Training</h2>
-<p>ALIN has two training systems that can be independently enabled in Settings:</p>
-<p><strong>Personal Learning</strong> tracks your corrections and ALIN's execution outcomes. When you override ALIN's choices 3+ times in the same direction, the pattern is promoted to the self-model (Layer 7) and ALIN adjusts its behavior permanently. Tool reliability is tracked per-tool — if a tool fails frequently, ALIN learns to use alternatives or add error handling. Execution outcomes (quality scores, user edit counts, phase success rates) are aggregated by task type so ALIN knows which types of work it handles well and which need more caution.</p>
-<p><strong>Community Learning</strong> (opt-in) anonymizes execution traces and uploads them to help all ALIN users. When enabled, ALIN strips personal content from execution data and shares the structural patterns — tool sequences, timing, retry counts, quality scores — so the planner can learn from the collective experience of all users running similar tasks. Users who contribute get access to the collective intelligence; users who opt out still get personal learning but not community insights.</p>
+        <!-- Your First Chat -->
+        <div id="first-chat" class="docs-section">
+          <h2 class="docs-h2">Your First Chat</h2>
+          <p class="docs-p">ALIN's Chat Station is the starting point for most interactions. Here's how to get the most out of it from the first message.</p>
+          <p class="docs-p">After signing in, you'll land in the Chat Station with Claude Sonnet 4.5 as the default model. Type any question, request, or task. ALIN will automatically detect whether you need a simple answer, code execution, research, or something more complex — and engage the right tools without you asking.</p>
 
-<h2>Authentication and Plans</h2>
-<p>ALIN uses JWT-based authentication. Tokens expire after 7 days and are refreshed on each session start. Passwords are hashed with bcrypt (10 rounds). The first user to sign up on a new instance automatically receives the Pro plan.</p>
-<p>Plan enforcement happens at two levels: server-side middleware rejects unauthorized requests (model access, rate limits, feature gating), and client-side capability detection hides UI elements that aren't available on the user's plan. The server is always the authority — client-side gating is purely for UX.</p>
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Example Prompts</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="cm">// Simple question</span>
+<span class="str">"What's the difference between REST and GraphQL?"</span>
 
-<h2>Configuration</h2>
-<p>Server configuration is handled through environment variables in <code>.env</code>:</p>
-<p><code>ANTHROPIC_API_KEY</code> — Your Anthropic API key (required for Claude models)<br>
-<code>OPENAI_API_KEY</code> — Your OpenAI API key (required for GPT models)<br>
-<code>BRAVE_API_KEY</code> — Your Brave Search API key (required for Research station)<br>
-<code>JWT_SECRET</code> — Secret key for signing JWT tokens (change in production)<br>
-<code>PORT</code> — Server port (default: 3002)<br>
-<code>DOWNLOAD_URL_WIN</code> / <code>DOWNLOAD_URL_MAC</code> / <code>DOWNLOAD_URL_LINUX</code> — Desktop app download URLs</p>
+<span class="cm">// Code task (auto-activates Code Lab)</span>
+<span class="str">"Write a Python script that reads a CSV and generates a bar chart"</span>
 
-</div></div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>
+<span class="cm">// Research task (auto-activates Research Hub)</span>
+<span class="str">"Compare the top 5 headless CMS platforms in 2026"</span>
+
+<span class="cm">// Website task (auto-activates Website Sprint)</span>
+<span class="str">"Build me a landing page for my coffee shop called Bean & Bloom"</span></div>
+          </div>
+
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">Auto-detection:</strong> ALIN's mode detector analyzes your prompt and routes to the best station. You can also manually switch using the station selector in the sidebar, or type <code>/station website</code> to force a specific mode.</div></div>
+        </div>
+
+        <!-- Your First Website -->
+        <div id="first-site" class="docs-section">
+          <h2 class="docs-h2">Your First Website</h2>
+          <p class="docs-p">Building and deploying a website with ALIN takes one conversation. Here's the full workflow.</p>
+
+          <div class="qs-steps">
+            <div class="qs-step reveal"><div class="qs-step__num">1</div><div class="qs-step__content"><div class="qs-step__title">Describe what you want</div><div class="qs-step__desc">Be as specific or vague as you like. <code>"A dark-themed portfolio for a photographer with a masonry gallery and contact form"</code> gives great results. So does <code>"Make me a website for my bakery"</code>.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">2</div><div class="qs-step__content"><div class="qs-step__title">ALIN plans the structure</div><div class="qs-step__desc">You'll see a plan appear: page count, layout approach, color scheme, features. Review and approve, or adjust before code generation starts.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">3</div><div class="qs-step__content"><div class="qs-step__title">Code generation</div><div class="qs-step__desc">ALIN writes custom HTML, CSS, and JavaScript. Not templates — real code tailored to your description. The Tool Activity panel shows every file being created in real time.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">4</div><div class="qs-step__content"><div class="qs-step__title">Preview and iterate</div><div class="qs-step__desc">A live preview renders in the workspace. Say <code>"Make the hero text bigger"</code> or <code>"Add a testimonials section"</code> and ALIN edits the existing code surgically — no full rewrites.</div></div></div>
+            <div class="qs-step reveal"><div class="qs-step__num">5</div><div class="qs-step__content"><div class="qs-step__title">Deploy</div><div class="qs-step__desc">Click Deploy (or say <code>"deploy this"</code>). ALIN uploads to Cloudflare R2, registers your subdomain, provisions SSL, and gives you the live URL. The whole deploy takes under 30 seconds.</div></div></div>
+          </div>
+
+          <div class="callout callout--tip"><span class="callout__icon">💡</span><div><strong class="text-hi">After deployment:</strong> Your site is editable forever. Return to the same conversation and say <code>"Change the background to navy blue"</code> — ALIN edits the code and redeploys automatically.</div></div>
+        </div>
+
+        <!-- ==================== STATIONS ==================== -->
+
+        <div class="feedback"><span>Was this section helpful?</span><button class="feedback__btn" data-vote="up">👍 Yes</button><button class="feedback__btn" data-vote="down">👎 No</button><span class="feedback__thanks">Thanks for the feedback!</span></div>
+
+        <!-- Chat Station -->
+        <div id="station-chat" class="docs-section">
+          <h2 class="docs-h2">Chat Station</h2>
+          <p class="docs-p">Your primary interface for interacting with any AI model. Streaming responses, conversation branching, reasoning transparency, and full tool access.</p>
+          <p class="docs-p">The Chat Station supports real-time Server-Sent Event (SSE) streaming, so tokens appear as they're generated. The <strong class="text-hi">Thinking Panel</strong> (expandable sidebar) shows the model's internal reasoning chain, and the <strong class="text-hi">Tool Activity</strong> panel logs every tool call with full input/output details.</p>
+          <p class="docs-p">Key capabilities: model switching mid-conversation, conversation search across your entire history, code syntax highlighting with 50+ language grammars, and conversation branching to fork into parallel exploration threads.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Slash Commands</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="kw">/model</span> <span class="str">claude-opus</span>      <span class="cm">→ Switch to Claude Opus</span>
+<span class="kw">/model</span> <span class="str">gpt-4o</span>           <span class="cm">→ Switch to GPT-4o</span>
+<span class="kw">/station</span> <span class="str">website</span>        <span class="cm">→ Switch to Website Sprint</span>
+<span class="kw">/branch</span>                   <span class="cm">→ Fork current conversation</span>
+<span class="kw">/clear</span>                    <span class="cm">→ Clear conversation context</span>
+<span class="kw">/export</span>                   <span class="cm">→ Export conversation as Markdown</span></div>
+          </div>
+        </div>
+
+        <!-- Website Sprint -->
+        <div id="station-website" class="docs-section">
+          <h2 class="docs-h2">Website Sprint</h2>
+          <p class="docs-p">Describe a website and get custom HTML, CSS, and JavaScript deployed to a live URL. Not templates — real code written specifically for your description.</p>
+          <p class="docs-p">The Website Sprint station activates an enhanced prompt system optimized for web development. ALIN plans the site structure, generates all files, optionally creates images with DALL-E, optimizes for performance and mobile, then deploys to Cloudflare R2 with a <code>yourname.alinai.dev</code> subdomain and automatic SSL.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Deploy Pipeline</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="cm">// Internal deploy sequence:</span>
+<span class="kw">1.</span> <span class="fn">plan()</span>       <span class="cm">→ Structure pages, choose layout approach</span>
+<span class="kw">2.</span> <span class="fn">generate()</span>   <span class="cm">→ Write HTML, CSS, JS files</span>
+<span class="kw">3.</span> <span class="fn">image()</span>      <span class="cm">→ DALL-E hero/assets if requested</span>
+<span class="kw">4.</span> <span class="fn">optimize()</span>   <span class="cm">→ Minify, compress, responsive checks</span>
+<span class="kw">5.</span> <span class="fn">deploy()</span>     <span class="cm">→ Upload to Cloudflare R2 CDN</span>
+<span class="kw">6.</span> <span class="fn">register()</span>   <span class="cm">→ yourname.alinai.dev + SSL cert</span></div>
+          </div>
+
+          <div class="callout callout--tip"><span class="callout__icon">💡</span><div><strong class="text-hi">Iterative editing:</strong> After deployment, say <code>"Change the hero background to dark blue"</code> and ALIN surgically edits the relevant CSS, redeploys, and confirms the change — without regenerating the entire site.</div></div>
+        </div>
+
+        <!-- Code Lab -->
+        <div id="station-code" class="docs-section">
+          <h2 class="docs-h2">Code Lab</h2>
+          <p class="docs-p">A full development environment inside your chat. Write, execute, and debug code with file system access, shell commands, and git integration.</p>
+          <p class="docs-p">Code Lab supports Python and JavaScript execution in sandboxed environments. You get a complete file system (read, write, edit, scan), shell access for running build scripts and npm commands, and git operations for version control. ALIN uses surgical <code>find-and-replace</code> editing rather than rewriting entire files, preserving your existing code structure.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Available Operations</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="cm">// File system</span>
+<span class="fn">file_read</span>(<span class="str">"src/auth.ts"</span>)              <span class="cm">→ Read file contents</span>
+<span class="fn">file_write</span>(<span class="str">"src/utils.ts"</span>, code)      <span class="cm">→ Create or overwrite</span>
+<span class="fn">file_edit</span>(<span class="str">"src/auth.ts"</span>, old, new)    <span class="cm">→ Surgical find-replace</span>
+<span class="fn">file_scan</span>(<span class="str">"src/"</span>, <span class="str">/pattern/</span>)         <span class="cm">→ Regex search across files</span>
+
+<span class="cm">// Execution</span>
+<span class="fn">code_execute</span>(<span class="str">"python"</span>, script)       <span class="cm">→ Run Python in sandbox</span>
+<span class="fn">shell_exec</span>(<span class="str">"npm run build"</span>)           <span class="cm">→ Shell commands</span>
+
+<span class="cm">// Git</span>
+<span class="fn">git_status</span>()  <span class="fn">git_diff</span>()  <span class="fn">git_commit</span>(msg)  <span class="fn">git_log</span>(n)</div>
+          </div>
+        </div>
+
+        <!-- Research Hub -->
+        <div id="station-research" class="docs-section">
+          <h2 class="docs-h2">Research Hub</h2>
+          <p class="docs-p">Web search, full article reading, cross-referencing, and structured reports with citations. Powered by Brave Search API and Cloudflare Vectorize for semantic retrieval.</p>
+          <p class="docs-p">When you ask ALIN to research a topic, it searches the web with multiple queries, reads full article content (not just snippets), evaluates source credibility, cross-references claims across sources, and assembles a structured report with inline citations. For recurring research, Cloudflare Vectorize stores embeddings for semantic recall in future conversations.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Research Flow</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="kw">You:</span> <span class="str">"Compare React, Vue, and Svelte for a dashboard project"</span>
+
+<span class="cm">// ALIN's research sequence:</span>
+<span class="fn">web_search</span>(<span class="str">"React vs Vue vs Svelte 2026 comparison"</span>)
+<span class="fn">web_search</span>(<span class="str">"Svelte dashboard performance benchmarks"</span>)
+<span class="fn">web_fetch</span>(<span class="str">"https://stateofjs.com/2025/frameworks"</span>)
+<span class="fn">web_fetch</span>(<span class="str">"https://..."</span>) <span class="cm">× 4 more sources</span>
+
+<span class="cm">→ Structured report with 8 citations</span>
+<span class="cm">→ Comparison table with scoring</span>
+<span class="cm">→ Recommendation with rationale</span></div>
+          </div>
+        </div>
+
+        <!-- Memory System -->
+        <div id="station-memory" class="docs-section">
+          <h2 class="docs-h2">Memory System</h2>
+          <p class="docs-p">ALIN remembers your preferences, projects, and past interactions across sessions. The memory system operates across multiple layers that build up over time.</p>
+          <p class="docs-p">Unlike most AI tools that reset every conversation, ALIN accumulates context about how you work. Your third session is noticeably better than your first, and by session ten, ALIN anticipates your conventions, avoids known failure patterns, and applies your preferences automatically. See <a href="#memory-deep" class="link-brand">Memory Deep Dive</a> for the full 8-layer architecture.</p>
+
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">What gets remembered:</strong> coding conventions (indent style, semicolons, import patterns), project context (tech stack, file structure), tool preferences (which models you use most), and explicit corrections you make.</div></div>
+        </div>
+
+        <!-- Image Studio -->
+        <div id="station-image" class="docs-section">
+          <h2 class="docs-h2">Image Studio</h2>
+          <p class="docs-p">Generate images with DALL-E 3, store them on Cloudflare Images CDN, and integrate directly into websites built in the Website Sprint station.</p>
+          <p class="docs-p">ALIN crafts detailed prompts from your natural language descriptions, generates images in multiple size options (1024×1024, 1024×1792, 1792×1024), uploads to Cloudflare Images for global CDN delivery, and can embed the results directly into any website project. Useful for hero images, product mockups, illustrations, and brand assets.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Example</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="kw">You:</span> <span class="str">"Generate a hero image for a coffee shop — warm tones, minimalist, overhead shot of latte art"</span>
+
+<span class="cm">// ALIN crafts an optimized DALL-E prompt, generates the image,</span>
+<span class="cm">// uploads to Cloudflare Images, and returns the CDN URL.</span>
+<span class="cm">// If you're in Website Sprint, it auto-embeds into your site.</span></div>
+          </div>
+        </div>
+
+        <!-- ==================== TOOLS ==================== -->
+
+        <div class="feedback"><span>Was this section helpful?</span><button class="feedback__btn" data-vote="up">👍 Yes</button><button class="feedback__btn" data-vote="down">👎 No</button><span class="feedback__thanks">Thanks for the feedback!</span></div>
+
+        <!-- Tool Overview -->
+        <div id="tools-overview" class="docs-section">
+          <h2 class="docs-h2">Tool Overview</h2>
+          <p class="docs-p">ALIN has 20+ built-in tools the AI invokes autonomously based on what you ask. You never need to call them manually — but understanding what's available helps you ask better questions.</p>
+
+          <div class="docs-cards">
+            <div class="docs-card reveal" data-tilt-light data-goto="tools-web"><span class="docs-card__arrow">→</span><div class="docs-card__icon">🌐</div><div class="docs-card__title">Web Tools</div><div class="docs-card__desc"><code>web_search</code>, <code>web_fetch</code> — Search the internet and read full web page content.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="tools-file"><span class="docs-card__arrow">→</span><div class="docs-card__icon">📁</div><div class="docs-card__title">File Operations</div><div class="docs-card__desc"><code>file_read</code>, <code>file_write</code>, <code>file_edit</code>, <code>file_scan</code> — Full workspace file system.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="tools-shell"><span class="docs-card__arrow">→</span><div class="docs-card__icon">💻</div><div class="docs-card__title">Shell & Execution</div><div class="docs-card__desc"><code>code_execute</code>, <code>shell_exec</code> — Run code and commands in sandboxed environments.</div></div>
+            <div class="docs-card reveal" data-tilt-light data-goto="tools-deploy"><span class="docs-card__arrow">→</span><div class="docs-card__icon">🚀</div><div class="docs-card__title">Deploy & Media</div><div class="docs-card__desc"><code>static_build</code>, <code>deploy_site</code>, <code>image_generate</code> — Build, deploy, and create.</div></div>
+          </div>
+        </div>
+
+        <!-- Web Search & Fetch -->
+        <div id="tools-web" class="docs-section">
+          <h2 class="docs-h2">Web Search & Fetch</h2>
+          <p class="docs-p">Two tools power ALIN's web intelligence: <code>web_search</code> queries Brave Search API for relevant results, and <code>web_fetch</code> reads full page content from any URL.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Tool Signatures</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="fn">web_search</span>(query: <span class="kw">string</span>, count?: <span class="kw">number</span>)
+<span class="cm">  → Returns: title, url, snippet for top results</span>
+<span class="cm">  → Source: Brave Search API</span>
+
+<span class="fn">web_fetch</span>(url: <span class="kw">string</span>)
+<span class="cm">  → Returns: full page text content (HTML stripped)</span>
+<span class="cm">  → Useful for reading articles, documentation, specs</span></div>
+          </div>
+
+          <p class="docs-p">ALIN uses these tools together in research flows: search for relevant sources, then fetch and read the full content of the best results. Source credibility is evaluated automatically, and claims are cross-referenced across multiple sources.</p>
+        </div>
+
+        <!-- File Operations -->
+        <div id="tools-file" class="docs-section">
+          <h2 class="docs-h2">File Operations</h2>
+          <p class="docs-p">Full workspace file system access. ALIN can create, read, edit, and search files within your project workspace.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">File Tools</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="fn">file_read</span>(path)          <span class="cm">→ Read file contents</span>
+<span class="fn">file_write</span>(path, content)  <span class="cm">→ Create or overwrite file</span>
+<span class="fn">file_edit</span>(path, old, new)  <span class="cm">→ Surgical find-and-replace</span>
+<span class="fn">file_scan</span>(dir, pattern)    <span class="cm">→ Regex search across files</span>
+<span class="fn">file_list</span>(dir)             <span class="cm">→ Directory listing</span></div>
+          </div>
+
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">Surgical editing:</strong> <code>file_edit</code> uses precise find-and-replace rather than rewriting entire files. This preserves formatting, comments, and unrelated code. ALIN identifies the exact lines to change and makes minimal, targeted modifications.</div></div>
+        </div>
+
+        <!-- Shell & Git -->
+        <div id="tools-shell" class="docs-section">
+          <h2 class="docs-h2">Shell & Git</h2>
+          <p class="docs-p">Execute shell commands and manage version control directly from conversation. Sandboxed for safety — no access to the host system.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Shell & Git</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="cm">// Shell execution</span>
+<span class="fn">shell_exec</span>(<span class="str">"npm install express"</span>)
+<span class="fn">shell_exec</span>(<span class="str">"python analyze.py --input data.csv"</span>)
+<span class="fn">shell_exec</span>(<span class="str">"npm run build && npm run test"</span>)
+
+<span class="cm">// Git operations</span>
+<span class="fn">git_status</span>()                        <span class="cm">→ Working tree status</span>
+<span class="fn">git_diff</span>()                          <span class="cm">→ Unstaged changes</span>
+<span class="fn">git_commit</span>(<span class="str">"fix: resolve auth bug"</span>)  <span class="cm">→ Stage all + commit</span>
+<span class="fn">git_log</span>(<span class="num">10</span>)                         <span class="cm">→ Last 10 commits</span>
+<span class="fn">git_branch</span>(<span class="str">"feature/new-ui"</span>)        <span class="cm">→ Create + switch branch</span></div>
+          </div>
+        </div>
+
+        <!-- Deploy Pipeline -->
+        <div id="tools-deploy" class="docs-section">
+          <h2 class="docs-h2">Deploy Pipeline</h2>
+          <p class="docs-p">ALIN's deploy system takes your workspace files, builds a static site, and pushes to Cloudflare R2 with a registered subdomain — all in one step.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Deploy Tools</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="fn">static_build</span>(workspace)
+<span class="cm">  → Compiles workspace files into a deployable bundle</span>
+<span class="cm">  → Minifies HTML/CSS/JS, optimizes images</span>
+<span class="cm">  → Validates responsive behavior</span>
+
+<span class="fn">deploy_site</span>(bundle, subdomain)
+<span class="cm">  → Uploads to Cloudflare R2 (global CDN, 300+ edge locations)</span>
+<span class="cm">  → Registers subdomain.alinai.dev</span>
+<span class="cm">  → Provisions SSL certificate</span>
+<span class="cm">  → Adds to version history for rollback</span></div>
+          </div>
+
+          <div class="callout callout--warn"><span class="callout__icon">⚠️</span><div><strong class="text-hi">Hosting:</strong> Every plan includes 1 free hosted site on <code>yourname.alinai.dev</code>. Need more sites or custom domains? Add managed hosting starting at $3/month. See <a href="pricing.html" class="link-brand" data-page="pricing.html">pricing</a> for details.</div></div>
+        </div>
+
+        <!-- ==================== ADVANCED ==================== -->
+
+        <div class="feedback"><span>Was this section helpful?</span><button class="feedback__btn" data-vote="up">👍 Yes</button><button class="feedback__btn" data-vote="down">👎 No</button><span class="feedback__thanks">Thanks for the feedback!</span></div>
+
+        <!-- TBWO System -->
+        <div id="tbwo" class="docs-section">
+          <h2 class="docs-h2">TBWO System</h2>
+          <p class="docs-p">Time-Budgeted Work Orders handle complex, multi-step tasks autonomously. Describe the outcome — ALIN generates a plan, executes it phase by phase, and delivers a structured completion receipt.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">TBWO Lifecycle</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="kw">Trigger:</span> <span class="str">"Refactor the auth module to use JWT tokens"</span>
+
+<span class="kw">Phase 1 — Analyze</span>   <span class="cm">Scan codebase, map current auth flow</span>
+<span class="kw">Phase 2 — Plan</span>      <span class="cm">Strategy document, file list, risk assessment</span>
+<span class="kw">Phase 3 — Execute</span>   <span class="cm">Apply changes with surgical file edits</span>
+<span class="kw">Phase 4 — Verify</span>    <span class="cm">Run test suite, validate no regressions</span>
+<span class="kw">Phase 5 — Receipt</span>   <span class="cm">Structured summary: files changed, tests passed</span>
+
+<span class="cm">Time budget: ~5 minutes | Files touched: 8 | Tests: 47/47 ✓</span></div>
+          </div>
+
+          <p class="docs-p">TBWO tasks can also spawn <strong class="text-hi">sub-agents</strong> — lightweight Claude Haiku instances that scan large codebases or perform repetitive analysis without consuming the main model's context window. This is how ALIN handles "read the entire codebase and find all security issues" without running out of context.</p>
+
+          <div class="callout callout--warn"><span class="callout__icon">⚠️</span><div><strong class="text-hi">Pro only:</strong> TBWO execution requires Pro ($29/mo) or Elite ($79/mo) plan. Free users get 0 TBWO runs. Pro users get 50 runs/month. Elite users get unlimited.</div></div>
+        </div>
+
+        <!-- AI Models -->
+        <div id="models" class="docs-section">
+          <h2 class="docs-h2">AI Models</h2>
+          <p class="docs-p">ALIN routes to the optimal model automatically, but you can choose manually. All models share the same tool system and memory layer.</p>
+
+          <div style="overflow-x:auto">
+            <table class="docs-table">
+              <thead><tr>
+                <th>Model</th>
+                <th>Best For</th>
+                <th>Context</th>
+                <th>Tier</th>
+              </tr></thead>
+              <tbody>
+                <tr><td>Claude Sonnet 4.5</td><td>Balanced daily driver</td><td>200K</td><td><span class="tag tag--brand">Free</span></td></tr>
+                <tr><td>Claude Opus 4.6</td><td>Deep reasoning, complex analysis</td><td>200K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+                <tr><td>Claude Haiku 4.5</td><td>Speed-optimized, sub-agents</td><td>200K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+                <tr><td>GPT-4o</td><td>Multimodal, creative tasks</td><td>128K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+                <tr><td>GPT-4o Mini</td><td>Fast iteration, lightweight</td><td>128K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+                <tr><td>GPT-4 Turbo</td><td>Extended context tasks</td><td>128K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+                <tr><td>o1-preview</td><td>Chain-of-thought reasoning</td><td>128K</td><td><span class="tag tag--purple">Pro</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Memory Deep Dive -->
+        <div id="memory-deep" class="docs-section">
+          <h2 class="docs-h2">Memory Deep Dive</h2>
+          <p class="docs-p">ALIN's memory operates across 8 layers, each capturing a different type of persistent information. Together they create an AI that genuinely improves with use.</p>
+
+          <div class="docs-cards">
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">1️⃣</div><div class="docs-card__title">User Preferences</div><div class="docs-card__desc">Coding style, language preferences, formatting conventions. Learned from corrections and explicit settings.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">2️⃣</div><div class="docs-card__title">Project Context</div><div class="docs-card__desc">Tech stack, file structure, architecture decisions. Built from workspace analysis and conversation history.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">3️⃣</div><div class="docs-card__title">Tool Reliability</div><div class="docs-card__desc">Success/failure rates for each tool. ALIN adjusts strategy based on what's been working.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">4️⃣</div><div class="docs-card__title">Execution Outcomes</div><div class="docs-card__desc">Results of past code runs, deploys, and research. Patterns of what approaches succeed.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">5️⃣</div><div class="docs-card__title">Correction History</div><div class="docs-card__desc">Every time you correct ALIN, it's permanently stored. The same mistake won't happen twice.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">6️⃣</div><div class="docs-card__title">Session Context</div><div class="docs-card__desc">Current conversation state, active files, recent decisions. Resets per session.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">7️⃣</div><div class="docs-card__title">Semantic Index</div><div class="docs-card__desc">Vectorized embeddings via Cloudflare Vectorize. Enables meaning-based recall across conversations.</div></div>
+            <div class="docs-card reveal" data-tilt-light><div class="docs-card__icon">8️⃣</div><div class="docs-card__title">Tag System</div><div class="docs-card__desc">Categorized memory entries: facts, preferences, projects, corrections. Queryable and manageable.</div></div>
+          </div>
+        </div>
+
+        <!-- Conversation Branching -->
+        <div id="branching" class="docs-section">
+          <h2 class="docs-h2">Conversation Branching</h2>
+          <p class="docs-p">Fork any conversation into parallel threads to explore different approaches without losing your original context.</p>
+          <p class="docs-p">Branching is useful when you want to test two different implementation approaches, compare model responses, or explore a tangent without derailing your main conversation. Each branch is a full conversation with its own history, and you can switch between them or merge insights back.</p>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Branching</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="cm">// You're discussing a React dashboard architecture...</span>
+
+<span class="kw">You:</span> <span class="str">"Let's branch here — try approach A with Redux and approach B with Zustand"</span>
+
+<span class="cm">// ALIN creates two branches from this point:</span>
+<span class="fn">Branch A:</span> <span class="str">Redux implementation →</span> continues independently
+<span class="fn">Branch B:</span> <span class="str">Zustand implementation →</span> continues independently
+
+<span class="cm">// Switch between branches in the sidebar</span>
+<span class="cm">// Both branches share memory from before the fork point</span></div>
+          </div>
+        </div>
+
+        <!-- ==================== REFERENCE ==================== -->
+
+        <div class="feedback"><span>Was this section helpful?</span><button class="feedback__btn" data-vote="up">👍 Yes</button><button class="feedback__btn" data-vote="down">👎 No</button><span class="feedback__thanks">Thanks for the feedback!</span></div>
+
+        <!-- API Reference -->
+        <div id="api" class="docs-section">
+          <h2 class="docs-h2">API Reference</h2>
+          <p class="docs-p">The ALIN API is currently in development. Pro and Elite users will get early access when it launches.</p>
+          <p class="docs-p">The planned API will expose conversation creation, message sending with streaming, tool execution, memory read/write, and deploy triggers. Authentication will use API keys with scoped permissions.</p>
+
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">Coming soon:</strong> The API is on the roadmap for Q2 2026. Pro users will get access first. <a href="signup.html" class="link-brand" data-page="signup.html">Sign up</a> to be notified when it's available.</div></div>
+
+          <div class="docs-code">
+            <div class="docs-code__header"><span class="docs-code__lang">Planned API (Preview)</span><button class="docs-code__copy">Copy</button></div>
+            <div class="docs-code__body"><span class="kw">POST</span> <span class="fn">/api/v1/conversations</span>       <span class="cm">→ Create conversation</span>
+<span class="kw">POST</span> <span class="fn">/api/v1/messages</span>            <span class="cm">→ Send message (SSE stream)</span>
+<span class="kw">POST</span> <span class="fn">/api/v1/deploy</span>              <span class="cm">→ Deploy workspace</span>
+<span class="kw">GET</span>  <span class="fn">/api/v1/memory</span>              <span class="cm">→ Read memory entries</span>
+<span class="kw">POST</span> <span class="fn">/api/v1/memory</span>              <span class="cm">→ Write memory entry</span>
+<span class="kw">GET</span>  <span class="fn">/api/v1/sites</span>               <span class="cm">→ List deployed sites</span></div>
+          </div>
+        </div>
+
+        <!-- Limits & Quotas -->
+        <div id="limits" class="docs-section">
+          <h2 class="docs-h2">Limits & Quotas</h2>
+          <p class="docs-p">Resource limits by plan tier. Daily limits reset at midnight UTC. Monthly quotas reset on the 1st of each month.</p>
+
+          <div style="overflow-x:auto">
+            <table class="docs-table">
+              <thead><tr>
+                <th>Resource</th>
+                <th>Free</th>
+                <th class="hi">Pro $29/mo</th>
+                <th>Elite $79/mo</th>
+              </tr></thead>
+              <tbody>
+                <tr><td>Messages</td><td>100/day, 25/hr burst</td><td>1,000/day soft cap</td><td>Unlimited</td></tr>
+                <tr><td>AI Models</td><td>Sonnet + GPT-4o-mini</td><td>+Haiku, GPT-4o, GPT-4T, 100 Opus/mo</td><td>All + Unlimited Opus + o1</td></tr>
+                <tr><td>TBWO runs</td><td>—</td><td>50/month</td><td>Unlimited</td></tr>
+                <tr><td>Image generation</td><td>5/month</td><td>50/month</td><td>500/month</td></tr>
+                <tr><td>Video uploads</td><td>—</td><td>20/month</td><td>100/month</td></tr>
+                <tr><td>Hosted sites (included)</td><td>1 (subdomain)</td><td>1 (subdomain)</td><td>1 (subdomain)</td></tr>
+                <tr><td>Memory</td><td>3 layers, 30-day</td><td>8 layers, permanent</td><td>8 layers, permanent</td></tr>
+                <tr><td>Self-learning</td><td>—</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Computer Use</td><td>—</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Max tokens</td><td>16K</td><td>32K</td><td>64K</td></tr>
+                <tr><td>Code export</td><td>✓ Always free</td><td>✓ Always free</td><td>✓ Always free</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout callout--info"><span class="callout__icon">ℹ️</span><div><strong class="text-hi">Hosting add-ons:</strong> Need more than 1 hosted site? Add managed hosting starting at $3/month for 3 sites. See <a href="pricing.html" class="link-brand" data-page="pricing.html">pricing</a> for full hosting tier details.</div></div>
+        </div>
+
+        <!-- Keyboard Shortcuts -->
+        <div id="shortcuts" class="docs-section">
+          <h2 class="docs-h2">Keyboard Shortcuts</h2>
+          <p class="docs-p">Power-user shortcuts for navigating ALIN faster. Click any shortcut below to see what it does.</p>
+
+          <div id="shortcutGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">
+            <div class="sc-card" data-key="⌘K" data-desc="Open the command palette to search docs, jump to sections, and navigate quickly.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>K</kbd></div>
+              <div class="sc-card__name">Command Palette</div>
+            </div>
+            <div class="sc-card" data-key="⌘/" data-desc="Toggle the sidebar visibility for more reading space.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>/</kbd></div>
+              <div class="sc-card__name">Toggle Sidebar</div>
+            </div>
+            <div class="sc-card" data-key="⌘Enter" data-desc="Send your current message to ALIN. Works in all stations.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>⏎</kbd></div>
+              <div class="sc-card__name">Send Message</div>
+            </div>
+            <div class="sc-card" data-key="⌘⇧N" data-desc="Start a new conversation. Your current conversation is saved automatically.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>N</kbd></div>
+              <div class="sc-card__name">New Conversation</div>
+            </div>
+            <div class="sc-card" data-key="⌘." data-desc="Stop ALIN's current response mid-generation. Useful for long responses you don't need.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>.</kbd></div>
+              <div class="sc-card__name">Stop Generation</div>
+            </div>
+            <div class="sc-card" data-key="⌘⇧E" data-desc="Toggle the code editor panel alongside the chat view.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>E</kbd></div>
+              <div class="sc-card__name">Toggle Editor</div>
+            </div>
+            <div class="sc-card" data-key="⌘⇧D" data-desc="Deploy your current workspace to your hosted site with one keystroke.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>D</kbd></div>
+              <div class="sc-card__name">Quick Deploy</div>
+            </div>
+            <div class="sc-card" data-key="⌘⇧M" data-desc="Switch between AI models. Cycle through Sonnet, Haiku, GPT-4o, and more.">
+              <div class="sc-card__keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>M</kbd></div>
+              <div class="sc-card__name">Switch Model</div>
+            </div>
+            <div class="sc-card" data-key="Esc" data-desc="Close any open modal, panel, or overlay. Also cancels the command palette.">
+              <div class="sc-card__keys"><kbd>Esc</kbd></div>
+              <div class="sc-card__name">Close / Cancel</div>
+            </div>
+          </div>
+          <div class="sc-preview" id="scPreview">
+            <div class="sc-preview__row">
+              <div class="sc-preview__keys" id="scPreviewKeys"></div>
+              <div class="sc-preview__desc" id="scPreviewDesc"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Changelog -->
+        <div id="changelog" class="docs-section" style="padding-bottom:4rem">
+          <h2 class="docs-h2">Changelog</h2>
+          <p class="docs-p">Recent updates and improvements to ALIN.</p>
+
+          <div class="changelog-timeline">
+            <div class="changelog-entry reveal"><div class="changelog-entry__dot changelog-entry__dot--latest"></div><div class="changelog-entry__date">v0.9.4 — Feb 13, 2026</div><div class="changelog-entry__title">Marketing site v6 rebuild</div><div class="changelog-entry__desc">Complete rebuild of all marketing pages. 103-section design system, 45 interactive JS systems, pricing calculator with 14 tooltips, skeptical proof section, reading progress bar, enhanced command palette.</div></div>
+            <div class="changelog-entry reveal"><div class="changelog-entry__dot changelog-entry__dot--recent"></div><div class="changelog-entry__date">v0.9.3 — Feb 12, 2026</div><div class="changelog-entry__title">Marketing site launch</div><div class="changelog-entry__desc">New marketing website with interactive demos, station switcher, cost calculator, and command palette documentation. 8 pages covering all features.</div></div>
+            <div class="changelog-entry reveal"><div class="changelog-entry__dot changelog-entry__dot--older"></div><div class="changelog-entry__date">v0.9.2 — Feb 10, 2026</div><div class="changelog-entry__title">Modular prompt system</div><div class="changelog-entry__desc">Replaced monolithic system prompt with 10-file modular architecture. Mode-specific prompts load dynamically, reducing token usage by ~60%.</div></div>
+            <div class="changelog-entry reveal"><div class="changelog-entry__dot changelog-entry__dot--older"></div><div class="changelog-entry__date">v0.9.1 — Feb 9, 2026</div><div class="changelog-entry__title">Patch v3 — Auth & web_fetch</div><div class="changelog-entry__desc">Added email verification, web_fetch tool for full-page reading, model defaults, anti-verbosity tuning, and frontend UI polish.</div></div>
+            <div class="changelog-entry"><div class="changelog-entry__dot changelog-entry__dot--old"></div><div class="changelog-entry__date">v0.9.0 — Feb 8, 2026</div><div class="changelog-entry__title">Initial deployment</div><div class="changelog-entry__desc">First production deployment to Railway. 109K+ lines of code, 27 database tables, 6 Cloudflare services, 20+ tools.</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Ready to start building?</h2>
+    <p class="cta__desc">Free tier, no credit card, instant access to all documentation examples.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Get Started Free →</a>
+      <a href="pricing.html" class="btn btn--secondary btn--lg" data-magnetic data-page="pricing.html">View Pricing</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== READING PROGRESS BAR =====
+(function(){
+  const bar=document.getElementById('readingProgress');
+  if(!bar)return;
+  window.addEventListener('scroll',function(){
+    const h=document.documentElement.scrollHeight-window.innerHeight;
+    bar.style.width=(h>0?(scrollY/h)*100:0)+'%';
+  },{passive:true});
+})();
+
+// ===== COMMAND PALETTE =====
+const docIndex=[
+  {title:'Quick Start',section:'Getting Started',icon:'🚀',id:'quickstart',hint:'5-minute guide'},
+  {title:'Core Concepts',section:'Getting Started',icon:'💡',id:'concepts',hint:'Stations, Tools, Memory, TBWO'},
+  {title:'Your First Chat',section:'Getting Started',icon:'💬',id:'first-chat',hint:'Send your first message'},
+  {title:'Your First Website',section:'Getting Started',icon:'🌐',id:'first-site',hint:'Build and deploy'},
+  {title:'Chat Station',section:'Stations',icon:'💬',id:'station-chat',hint:'Conversational AI'},
+  {title:'Website Sprint',section:'Stations',icon:'🌐',id:'station-website',hint:'Build & deploy sites'},
+  {title:'Code Lab',section:'Stations',icon:'⚡',id:'station-code',hint:'Execute & debug'},
+  {title:'Research Hub',section:'Stations',icon:'🔍',id:'station-research',hint:'Search & analyze'},
+  {title:'Memory System',section:'Stations',icon:'🧠',id:'station-memory',hint:'Persistent context'},
+  {title:'Image Studio',section:'Stations',icon:'🎨',id:'station-image',hint:'DALL-E generation'},
+  {title:'Tool Overview',section:'Tools',icon:'🔧',id:'tools-overview',hint:'20+ built-in tools'},
+  {title:'Web Search & Fetch',section:'Tools',icon:'🌐',id:'tools-web',hint:'Brave Search, web_fetch'},
+  {title:'File Operations',section:'Tools',icon:'📁',id:'tools-file',hint:'Read, write, edit, scan'},
+  {title:'Shell & Git',section:'Tools',icon:'💻',id:'tools-shell',hint:'Commands & version control'},
+  {title:'Deploy Pipeline',section:'Tools',icon:'🚀',id:'tools-deploy',hint:'Cloudflare R2 CDN'},
+  {title:'TBWO System',section:'Advanced',icon:'📋',id:'tbwo',hint:'Autonomous task execution'},
+  {title:'AI Models',section:'Advanced',icon:'🤖',id:'models',hint:'7 models, one interface'},
+  {title:'Memory Deep Dive',section:'Advanced',icon:'🧠',id:'memory-deep',hint:'8-layer architecture'},
+  {title:'Conversation Branching',section:'Advanced',icon:'🔀',id:'branching',hint:'Fork parallel threads'},
+  {title:'API Reference',section:'Reference',icon:'📡',id:'api',hint:'Coming soon'},
+  {title:'Limits & Quotas',section:'Reference',icon:'📊',id:'limits',hint:'Plan comparison'},
+  {title:'Keyboard Shortcuts',section:'Reference',icon:'⌨️',id:'shortcuts',hint:'Power-user keys'},
+  {title:'Changelog',section:'Reference',icon:'📝',id:'changelog',hint:'Version history'},
+];
+
+let cmdOpen=false,cmdSelectedIdx=0;
+
+function openCmd(){
+  cmdOpen=true;
+  document.getElementById('cmdOverlay').classList.add('open');
+  const input=document.getElementById('cmdInput');
+  input.value='';input.focus();
+  renderResults('');
+}
+function closeCmd(){
+  cmdOpen=false;
+  document.getElementById('cmdOverlay').classList.remove('open');
+}
+
+function renderResults(query){
+  const results=document.getElementById('cmdResults');
+  const q=query.toLowerCase().trim();
+  let filtered=q?docIndex.filter(d=>d.title.toLowerCase().includes(q)||d.hint.toLowerCase().includes(q)||d.section.toLowerCase().includes(q)):docIndex;
+
+  if(!filtered.length){results.innerHTML='<div class="cmd-empty">No results for "'+query+'"</div>';return}
+
+  const groups={};
+  filtered.forEach(d=>{if(!groups[d.section])groups[d.section]=[];groups[d.section].push(d)});
+
+  let html='';let idx=0;
+  Object.keys(groups).forEach(section=>{
+    html+='<div class="cmd-group"><div class="cmd-group__label">'+section+'</div>';
+    groups[section].forEach(d=>{
+      html+='<div class="cmd-item'+(idx===cmdSelectedIdx?' selected':'')+'" data-idx="'+idx+'" data-id="'+d.id+'"><div class="cmd-item__icon">'+d.icon+'</div><div class="cmd-item__text">'+d.title+'</div><div class="cmd-item__hint">'+d.hint+'</div></div>';
+      idx++;
+    });
+    html+='</div>';
+  });
+  results.innerHTML=html;
+
+  // Re-bind click/hover on results
+  results.querySelectorAll('.cmd-item').forEach(el=>{
+    el.addEventListener('mouseenter',()=>{cmdSelectedIdx=parseInt(el.dataset.idx);results.querySelectorAll('.cmd-item').forEach((e,i)=>e.classList.toggle('selected',i===cmdSelectedIdx))});
+    el.addEventListener('click',()=>cmdGo(el.dataset.id));
+  });
+}
+
+function cmdGo(id){
+  closeCmd();
+  scrollToSection(id);
+}
+
+// Command palette overlay close on background click
+document.getElementById('cmdOverlay').addEventListener('click',function(e){if(e.target===this)closeCmd()});
+document.getElementById('cmdEsc').addEventListener('click',closeCmd);
+
+// Command palette trigger
+document.getElementById('cmdTrigger').addEventListener('click',openCmd);
+
+// Keyboard shortcuts
+document.addEventListener('keydown',function(e){
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();cmdOpen?closeCmd():openCmd();return}
+  if(!cmdOpen)return;
+  if(e.key==='Escape'){closeCmd();return}
+  var items=document.querySelectorAll('.cmd-item');
+  if(e.key==='ArrowDown'){e.preventDefault();cmdSelectedIdx=Math.min(cmdSelectedIdx+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('selected',i===cmdSelectedIdx)});if(items[cmdSelectedIdx])items[cmdSelectedIdx].scrollIntoView({block:'nearest'})}
+  if(e.key==='ArrowUp'){e.preventDefault();cmdSelectedIdx=Math.max(cmdSelectedIdx-1,0);items.forEach(function(el,i){el.classList.toggle('selected',i===cmdSelectedIdx)});if(items[cmdSelectedIdx])items[cmdSelectedIdx].scrollIntoView({block:'nearest'})}
+  if(e.key==='Enter'){e.preventDefault();var sel=items[cmdSelectedIdx];if(sel)cmdGo(sel.dataset.id)}
+});
+
+document.getElementById('cmdInput').addEventListener('input',function(e){cmdSelectedIdx=0;renderResults(e.target.value)});
+
+// Spotlight on trigger
+var trig=document.getElementById('cmdTrigger');
+if(trig)trig.addEventListener('mousemove',function(e){var r=trig.getBoundingClientRect();trig.style.setProperty('--mx',(e.clientX-r.left)+'px');trig.style.setProperty('--my',(e.clientY-r.top)+'px')});
+
+// ===== COPY CODE BUTTON =====
+document.querySelectorAll('.docs-code__copy').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var code=btn.closest('.docs-code').querySelector('.docs-code__body').textContent;
+    navigator.clipboard.writeText(code).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy'},1500)});
+  });
+});
+
+// ===== SCROLL TO SECTION =====
+function scrollToSection(id){
+  var el=document.getElementById(id);
+  if(el){
+    var offset=80;
+    var top=el.getBoundingClientRect().top+window.scrollY-offset;
+    window.scrollTo({top:top,behavior:'smooth'});
+  }
+  document.querySelectorAll('.docs-nav__link').forEach(function(l){l.classList.toggle('active',l.getAttribute('href')==='#'+id)});
+}
+
+// ===== DOCS CARD NAVIGATION =====
+document.querySelectorAll('.docs-card[data-goto]').forEach(function(card){
+  card.addEventListener('click',function(){scrollToSection(card.dataset.goto)});
+});
+
+// ===== SIDEBAR NAV COLLAPSE =====
+document.querySelectorAll('.docs-nav__title').forEach(function(btn){
+  btn.addEventListener('click',function(){btn.parentElement.classList.toggle('collapsed')});
+});
+
+// ===== SIDEBAR SCROLL SPY =====
+(function(){
+  var sections=document.querySelectorAll('.docs-section[id]');
+  var observer=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        document.querySelectorAll('.docs-nav__link').forEach(function(l){
+          l.classList.toggle('active',l.getAttribute('href')==='#'+e.target.id);
+        });
+      }
+    });
+  },{threshold:0.1,rootMargin:'-80px 0px -60% 0px'});
+  sections.forEach(function(el){observer.observe(el)});
+})();
+
+// ===== SIDEBAR LINK CLICKS =====
+document.querySelectorAll('.docs-nav__link').forEach(function(l){
+  l.addEventListener('click',function(e){
+    e.preventDefault();
+    scrollToSection(l.getAttribute('href').replace('#',''));
+    var sb=document.getElementById('docsSidebar');
+    if(sb.classList.contains('docs-sidebar--mobile'))sb.classList.remove('docs-sidebar--mobile');
+  });
+});
+
+// ===== MOBILE SIDEBAR TOGGLE =====
+document.getElementById('mobileToggle').addEventListener('click',function(){
+  document.getElementById('docsSidebar').classList.toggle('docs-sidebar--mobile');
+});
+
+// ===== KEYBOARD SHORTCUT PREVIEW =====
+document.querySelectorAll('.sc-card').forEach(function(card){
+  card.addEventListener('click',function(){
+    document.querySelectorAll('.sc-card').forEach(function(c){c.classList.remove('active')});
+    card.classList.add('active');
+    var preview=document.getElementById('scPreview');
+    var keys=card.dataset.key;
+    var desc=card.dataset.desc;
+    var keysHtml=keys.split('').filter(function(k){return k!==' '}).map(function(k){
+      if(k==='⌘')return '<kbd class="brand">⌘</kbd>';
+      return '<kbd class="default">'+k+'</kbd>';
+    }).join('');
+    document.getElementById('scPreviewKeys').innerHTML=keysHtml;
+    document.getElementById('scPreviewDesc').textContent=desc;
+    preview.classList.add('visible');
+  });
+});
+
+// ===== FEEDBACK BUTTONS =====
+document.querySelectorAll('.feedback__btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var fb=btn.closest('.feedback');
+    fb.querySelectorAll('.feedback__btn').forEach(function(b){b.style.display='none'});
+    fb.querySelector('.feedback__thanks').style.display='inline';
+  });
+});
+
+// ===== ANCHOR LINK COPY ON HEADING HOVER =====
+document.querySelectorAll('.docs-section[id]').forEach(function(section){
+  var h2=section.querySelector('.docs-h2');
+  if(!h2)return;
+  var anchor=document.createElement('a');
+  anchor.href='#'+section.id;
+  anchor.className='docs-anchor';
+  anchor.textContent='#';
+  anchor.title='Copy link to section';
+  anchor.style.cssText='margin-left:.5rem;font-family:var(--f-mono);font-size:.875rem;color:var(--text-4);opacity:0;transition:opacity .2s;text-decoration:none';
+  anchor.addEventListener('click',function(e){
+    e.preventDefault();
+    var url=window.location.origin+window.location.pathname+'#'+section.id;
+    navigator.clipboard.writeText(url);
+    anchor.textContent='✓';
+    setTimeout(function(){anchor.textContent='#'},1200);
+  });
+  h2.appendChild(anchor);
+  h2.addEventListener('mouseenter',function(){anchor.style.opacity='1'});
+  h2.addEventListener('mouseleave',function(){anchor.style.opacity='0'});
+});
+
+initPage();
+</script>
+</body>
+</html>

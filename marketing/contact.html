@@ -1,21 +1,178 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Contact — ALIN</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/m/styles.css">
+  <meta name="description" content="Get in touch with ALIN. Questions, partnerships, bug reports, or feature requests.">
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body><nav class="nav" id="nav"><div class="container nav__inner"><a href="/m/index.html" class="nav__logo"><span>ALIN</span></a><div class="nav__links"><a href="/m/features.html" class="nav__link">Features</a><a href="/m/stations.html" class="nav__link">Stations</a><a href="/m/pricing.html" class="nav__link">Pricing</a><a href="/m/docs.html" class="nav__link">Docs</a><a href="/m/about.html" class="nav__link">About</a></div><div class="nav__auth"><a href="/m/login.html" class="nav__signin">Sign in</a><a href="/m/signup.html" class="nav__cta">Get Started</a></div><button class="nav__toggle" id="navToggle" aria-label="Toggle menu"><span></span><span></span><span></span></button></div><div class="nav__mobile" id="mobileMenu"><div class="nav__mobile-inner"><a href="/m/features.html" class="nav__mobile-link">Features</a><a href="/m/stations.html" class="nav__mobile-link">Stations</a><a href="/m/pricing.html" class="nav__mobile-link">Pricing</a><a href="/m/about.html" class="nav__mobile-link">About</a><a href="/m/login.html" class="nav__mobile-link">Sign In</a><a href="/m/signup.html" class="nav__mobile-link" style="color:var(--color-primary-400);font-weight:600;">Get Started →</a></div></div></nav>
-  <section class="page-hero"><div class="container"><span class="page-hero__overline">Contact</span><h1 class="page-hero__title">Get in Touch</h1><p class="page-hero__desc">Questions, partnerships, or just want to say hello? We'd love to hear from you.</p></div></section>
-  
-<section class="section"><div class="container">
-  <div class="form animate-on-scroll">
-    <div class="form__row"><div class="form__group"><label class="form__label" for="name">Name</label><input class="form__input" type="text" id="name" placeholder="Your name"></div><div class="form__group"><label class="form__label" for="email">Email</label><input class="form__input" type="email" id="email" placeholder="you@example.com"></div></div>
-    <div class="form__group"><label class="form__label" for="subject">Subject</label><select class="form__select" id="subject"><option>General inquiry</option><option>Partnership</option><option>Bug report</option><option>Feature request</option><option>Enterprise sales</option></select></div>
-    <div class="form__group"><label class="form__label" for="message">Message</label><textarea class="form__textarea" id="message" placeholder="Tell us more..."></textarea></div>
-    <button class="btn btn--primary btn--full btn--large" onclick="alert('Message sent! (Demo)')">Send Message</button>
+<body>
+
+<script src="shared.js"></script>
+<script>document.body.insertAdjacentHTML('afterbegin',getNav('contact'));</script>
+
+<section class="page-hero">
+  <div class="wrap">
+    <div style="animation:rise .6s var(--ease) both">
+      <span class="page-hero__overline">Contact</span>
+      <h1 class="page-hero__title" data-scramble>Get in Touch</h1>
+      <p class="page-hero__desc">Questions, partnerships, or just want to say hello? We'd love to hear from you.</p>
+    </div>
   </div>
-</div></section>
-<footer class="footer"><div class="container"><div class="footer__grid"><div><div class="footer__brand-name">ALIN</div><p class="footer__brand-desc">Advanced Linguistic Intelligence Network — six specialized AI stations working as one unified intelligence.</p><div class="footer__social"><a href="#" class="footer__social-link">GH</a><a href="#" class="footer__social-link">X</a><a href="#" class="footer__social-link">DC</a></div></div><div><h4 class="footer__col-title">Product</h4><a href="/m/features.html" class="footer__link">Features</a><a href="/m/stations.html" class="footer__link">Stations</a><a href="/m/pricing.html" class="footer__link">Pricing</a><a href="/m/changelog.html" class="footer__link">Changelog</a></div><div><h4 class="footer__col-title">Resources</h4><a href="/m/docs.html" class="footer__link">Documentation</a><a href="/m/api.html" class="footer__link">API Reference</a><a href="/m/guides.html" class="footer__link">Guides</a><a href="/m/blog.html" class="footer__link">Blog</a></div><div><h4 class="footer__col-title">Company</h4><a href="/m/about.html" class="footer__link">About</a><a href="/m/careers.html" class="footer__link">Careers</a><a href="/m/contact.html" class="footer__link">Contact</a><a href="/m/support.html" class="footer__link">Support</a></div></div><div class="footer__bottom"><span>&copy; 2026 ALIN. All rights reserved.</span><div class="footer__bottom-links"><a href="/m/privacy.html" class="footer__bottom-link">Privacy</a><a href="/m/terms.html" class="footer__bottom-link">Terms</a><a href="/m/cookies.html" class="footer__bottom-link">Cookies</a></div></div></div></footer><script>const n=document.getElementById("nav");window.addEventListener("scroll",()=>n.classList.toggle("scrolled",window.scrollY>16));const t=document.getElementById("navToggle"),m=document.getElementById("mobileMenu");t&&t.addEventListener("click",()=>{t.classList.toggle("active");m.classList.toggle("open")});m&&m.querySelectorAll(".nav__mobile-link").forEach(l=>l.addEventListener("click",()=>{t.classList.remove("active");m.classList.remove("open")}));const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible")}),{threshold:0.08,rootMargin:"0px 0px -32px 0px"});document.querySelectorAll(".animate-on-scroll").forEach(el=>obs.observe(el));document.querySelectorAll(".faq__q").forEach(b=>b.addEventListener("click",()=>b.closest(".faq__item").classList.toggle("open")));</script></body></html>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="contact-grid">
+
+      <!-- FORM -->
+      <div class="auth-card reveal-left">
+        <div class="form__alert form__alert--error" id="error"></div>
+        <div class="form__alert form__alert--success" id="success"></div>
+
+        <div class="form__row">
+          <div class="form__group">
+            <label class="form__label" for="name">Name</label>
+            <input class="form__input" type="text" id="name" placeholder="Your name" autocomplete="name">
+          </div>
+          <div class="form__group">
+            <label class="form__label" for="email">Email</label>
+            <input class="form__input" type="email" id="email" placeholder="you@example.com" autocomplete="email">
+          </div>
+        </div>
+
+        <div class="form__group">
+          <label class="form__label" for="subject">Subject</label>
+          <select class="form__select" id="subject">
+            <option value="general">General inquiry</option>
+            <option value="partnership">Partnership</option>
+            <option value="bug">Bug report</option>
+            <option value="feature">Feature request</option>
+            <option value="enterprise">Enterprise sales</option>
+          </select>
+        </div>
+
+        <div class="form__group">
+          <label class="form__label" for="message">Message</label>
+          <textarea class="form__textarea" id="message" placeholder="Tell us more..." rows="5"></textarea>
+        </div>
+
+        <button class="btn btn--primary btn--lg btn--full" id="sendBtn">Send Message</button>
+      </div>
+
+      <!-- INFO SIDEBAR -->
+      <div class="contact-info reveal-right">
+        <div class="contact-item" data-tilt-light>
+          <div class="contact-item__icon">✉</div>
+          <div>
+            <div class="contact-item__label">Email</div>
+            <div class="contact-item__val"><a href="mailto:help@alinai.dev">help@alinai.dev</a></div>
+          </div>
+        </div>
+        <div class="contact-item" data-tilt-light>
+          <div class="contact-item__icon">💬</div>
+          <div>
+            <div class="contact-item__label">Response Time</div>
+            <div class="contact-item__val">Usually within 24 hours</div>
+          </div>
+        </div>
+        <div class="contact-item" data-tilt-light>
+          <div class="contact-item__icon">🐛</div>
+          <div>
+            <div class="contact-item__label">Bug Reports</div>
+            <div class="contact-item__val">Include steps to reproduce, browser, and any error messages.</div>
+          </div>
+        </div>
+        <div class="contact-item" data-tilt-light>
+          <div class="contact-item__icon">🤝</div>
+          <div>
+            <div class="contact-item__label">Partnerships</div>
+            <div class="contact-item__val">Open to integrations, reseller agreements, and API collaborations.</div>
+          </div>
+        </div>
+        <div class="contact-item" data-tilt-light>
+          <div class="contact-item__icon">𝕏</div>
+          <div>
+            <div class="contact-item__label">Social</div>
+            <div class="contact-item__val"><a href="#">@aaborni on X</a> · <a href="#">GitHub</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta cta--pricing">
+  <div class="wrap"><div class="reveal-scale">
+    <h2 class="cta__title">Rather just try it?</h2>
+    <p class="cta__desc">Skip the form. Create a free account and see ALIN in action.</p>
+    <div class="cta__actions">
+      <a href="signup.html" class="btn btn--primary btn--lg" data-magnetic data-page="signup.html">Get Started Free →</a>
+      <a href="docs.html" class="btn btn--secondary btn--lg" data-magnetic data-page="docs.html">Read the Docs</a>
+    </div>
+  </div></div>
+</section>
+
+<script>
+document.body.insertAdjacentHTML('beforeend',getFooter());
+
+// ===== CONTACT FORM HANDLER =====
+var sendBtn=document.getElementById('sendBtn');
+var errorEl=document.getElementById('error');
+var successEl=document.getElementById('success');
+
+function showError(msg){errorEl.textContent=msg;errorEl.classList.add('visible');successEl.classList.remove('visible')}
+function showSuccess(msg){successEl.textContent=msg;successEl.classList.add('visible');errorEl.classList.remove('visible')}
+function hideAlerts(){errorEl.classList.remove('visible');successEl.classList.remove('visible')}
+
+sendBtn.addEventListener('click',function(){handleContact()});
+
+async function handleContact(){
+  var name=document.getElementById('name').value.trim();
+  var email=document.getElementById('email').value.trim();
+  var subject=document.getElementById('subject').value;
+  var message=document.getElementById('message').value.trim();
+  hideAlerts();
+
+  if(!name||!email){showError('Name and email are required.');return}
+  if(!message){showError('Please enter a message.');return}
+  // Basic email validation
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showError('Please enter a valid email address.');return}
+
+  sendBtn.textContent='Sending...';sendBtn.disabled=true;
+
+  try{
+    var res=await fetch('/api/contact',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name,email:email,subject:subject,message:message})
+    });
+    var data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Failed to send message');
+    showSuccess('Message sent! We will get back to you shortly.');
+    document.getElementById('name').value='';
+    document.getElementById('email').value='';
+    document.getElementById('message').value='';
+    document.getElementById('subject').selectedIndex=0;
+    sendBtn.textContent='Send Message';sendBtn.disabled=false;
+  }catch(err){
+    showError(err.message);
+    sendBtn.textContent='Send Message';sendBtn.disabled=false;
+  }
+}
+
+// Enter key on textarea does NOT submit (allows multiline)
+// But we could add Ctrl+Enter if desired
+document.getElementById('message').addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))handleContact();
+});
+
+initPage();
+</script>
+</body>
+</html>
