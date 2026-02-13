@@ -165,16 +165,8 @@ app.get('/download', (req, res) => {
   res.redirect(DOWNLOAD_URLS[platform] || DOWNLOAD_URLS.windows);
 });
 
-// Root route — serve marketing or redirect to app based on auth
+// Root route — always serve marketing site (users go to /app explicitly)
 app.get('/', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-    || req.query.token;
-  if (token) {
-    try {
-      jwt.verify(token, JWT_SECRET);
-      return res.redirect('/app');
-    } catch { /* invalid token, show marketing */ }
-  }
   res.sendFile(path.join(__dirname, 'marketing', 'index.html'));
 });
 
