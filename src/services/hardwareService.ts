@@ -43,6 +43,18 @@ class HardwareService {
     this.backendUrl = import.meta.env['VITE_BACKEND_URL'] || '';
   }
 
+  private getAuthHeaders(): Record<string, string> {
+    try {
+      const raw = localStorage.getItem('alin-auth-storage');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const token = parsed?.state?.token;
+        if (token) return { Authorization: `Bearer ${token}` };
+      }
+    } catch {}
+    return {};
+  }
+
   /**
    * Start polling for metrics
    */
@@ -102,6 +114,7 @@ class HardwareService {
     try {
       const response = await fetch(`${this.backendUrl}/api/system/metrics`, {
         signal: AbortSignal.timeout(3000),
+        headers: this.getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -129,6 +142,7 @@ class HardwareService {
 
   /**
    * Browser-based metrics fallback (limited)
+   * Returns only what the browser can actually report — no fake/random values.
    */
   private getBrowserMetrics(): SystemMetrics {
     const nav = navigator as any;
@@ -138,17 +152,17 @@ class HardwareService {
     return {
       timestamp: Date.now(),
       cpu: {
-        usage: Math.random() * 30 + 10, // Estimated from browser
-        cores: nav.hardwareConcurrency || 4,
+        usage: 0, // Not available in browser — 0 means "not measured"
+        cores: nav.hardwareConcurrency || 0,
       },
       memory: {
-        total: memory?.jsHeapSizeLimit || 4 * 1024 * 1024 * 1024,
+        total: memory?.jsHeapSizeLimit || 0,
         used: memory?.usedJSHeapSize || 0,
         free: (memory?.jsHeapSizeLimit || 0) - (memory?.usedJSHeapSize || 0),
         usagePercent: memory ? (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100 : 0,
       },
       uptime: performance.now() / 1000,
-      platform: nav.platform || 'unknown',
+      platform: nav.platform || 'browser',
     };
   }
 }

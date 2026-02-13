@@ -5,119 +5,54 @@
  * Includes real-time pod visualization, progress tracking, and checkpoint approval.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PlusIcon,
-  FunnelIcon,
   MagnifyingGlassIcon,
   ClockIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
   PauseCircleIcon,
   PlayCircleIcon,
   XCircleIcon,
-  ChevronRightIcon,
   EllipsisHorizontalIcon,
-  DocumentDuplicateIcon,
   TrashIcon,
   ArrowPathIcon,
-  SparklesIcon,
   CpuChipIcon,
   RocketLaunchIcon,
+  ArrowDownTrayIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
-import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 
 // Store
 import { useTBWOStore } from '@store/tbwoStore';
 import { useUIStore } from '@store/uiStore';
+import { useSitesStore } from '@store/sitesStore';
+import { usePodPoolStore } from '@store/podPoolStore';
 
 // Components
 import { Button } from '@components/ui/Button';
-import { Input } from '@components/ui/Input';
 import { PodVisualization } from './PodVisualization';
-import { ExecutionTimeline } from './ExecutionTimeline';
 import { CheckpointPanel } from './CheckpointPanel';
-import { TBWOMetrics } from './TBWOMetrics';
-import { TBWOChatTab } from './TBWOChatTab';
+import { PodActivityTabs } from './PodActivityTabs';
+
+// Extracted tabs
+import { OverviewTab } from './tabs/OverviewTab';
+import { PlanTab } from './tabs/PlanTab';
+import { PauseAskTab } from './tabs/PauseAskTab';
+import { BuildTab } from './tabs/BuildTab';
+import { ReceiptsTab } from './tabs/ReceiptsTab';
+
+// Extracted utils
+import { STATUS_CONFIG, QUALITY_BADGES } from './utils/tbwoDashboardConstants';
+import { ActionButton, QuickStat, EmptyDetailView, formatTimeAgo, formatDateTime } from './utils/tbwoDashboardHelpers';
+import type { TabId } from './utils/tbwoDashboardHelpers';
 
 // Types
-import type { TBWO, TBWOStatus, TBWOType } from '../../types/tbwo';
+import type { TBWO } from '../../types/tbwo';
 import { QualityTarget } from '../../types/tbwo';
 
-// ============================================================================
-// STATUS COLORS & ICONS
-// ============================================================================
-
-const STATUS_CONFIG: Record<string, { color: string; bgColor: string; icon: React.ReactNode; label: string }> = {
-  draft: {
-    color: 'text-text-tertiary',
-    bgColor: 'bg-background-tertiary',
-    icon: <DocumentDuplicateIcon className="h-4 w-4" />,
-    label: 'Draft',
-  },
-  planning: {
-    color: 'text-brand-secondary',
-    bgColor: 'bg-brand-secondary/10',
-    icon: <SparklesIcon className="h-4 w-4" />,
-    label: 'Planning',
-  },
-  awaiting_approval: {
-    color: 'text-semantic-warning',
-    bgColor: 'bg-semantic-warning/10',
-    icon: <ClockIcon className="h-4 w-4" />,
-    label: 'Awaiting Approval',
-  },
-  executing: {
-    color: 'text-brand-primary',
-    bgColor: 'bg-brand-primary/10',
-    icon: <PlayCircleIcon className="h-4 w-4" />,
-    label: 'Executing',
-  },
-  checkpoint: {
-    color: 'text-semantic-warning',
-    bgColor: 'bg-semantic-warning/10',
-    icon: <ExclamationTriangleIcon className="h-4 w-4" />,
-    label: 'Checkpoint',
-  },
-  paused: {
-    color: 'text-text-tertiary',
-    bgColor: 'bg-background-tertiary',
-    icon: <PauseCircleIcon className="h-4 w-4" />,
-    label: 'Paused',
-  },
-  completing: {
-    color: 'text-semantic-success',
-    bgColor: 'bg-semantic-success/10',
-    icon: <ArrowPathIcon className="h-4 w-4 animate-spin" />,
-    label: 'Completing',
-  },
-  completed: {
-    color: 'text-semantic-success',
-    bgColor: 'bg-semantic-success/10',
-    icon: <CheckCircleSolid className="h-4 w-4" />,
-    label: 'Completed',
-  },
-  cancelled: {
-    color: 'text-semantic-error',
-    bgColor: 'bg-semantic-error/10',
-    icon: <XCircleIcon className="h-4 w-4" />,
-    label: 'Cancelled',
-  },
-  failed: {
-    color: 'text-semantic-error',
-    bgColor: 'bg-semantic-error/10',
-    icon: <ExclamationTriangleIcon className="h-4 w-4" />,
-    label: 'Failed',
-  },
-};
-
-const QUALITY_BADGES: Record<QualityTarget, { color: string; label: string }> = {
-  [QualityTarget.DRAFT]: { color: 'bg-gray-500', label: 'Draft' },
-  [QualityTarget.STANDARD]: { color: 'bg-blue-500', label: 'Standard' },
-  [QualityTarget.PREMIUM]: { color: 'bg-purple-500', label: 'Premium' },
-  [QualityTarget.APPLE_LEVEL]: { color: 'bg-gradient-to-r from-pink-500 to-orange-500', label: 'Apple-Level' },
-};
+// Services
+import { downloadTBWOZip, countDownloadableArtifacts } from '../../services/tbwo/zipService';
 
 // ============================================================================
 // TBWO DASHBOARD COMPONENT
@@ -350,8 +285,18 @@ function TBWOCard({
 }: TBWOCardProps) {
   const statusConfig = STATUS_CONFIG[tbwo.status] || STATUS_CONFIG.draft;
   const qualityBadge = QUALITY_BADGES[tbwo.qualityTarget];
-  const podsCount = tbwo.pods?.size || 0;
-  const timeRemaining = tbwo.timeBudget.remaining;
+  // Show runtime pod count during/after execution, plan count otherwise
+  const isRunOrDone = !['draft', 'planning', 'awaiting_approval'].includes(tbwo.status);
+  const runtimePodCount = usePodPoolStore((s) => {
+    if (!isRunOrDone) return 0;
+    let count = 0;
+    for (const pod of s.pool.values()) {
+      if (pod.activeTBWOId === tbwo.id) count++;
+    }
+    return count;
+  });
+  const podsCount = isRunOrDone && runtimePodCount > 0 ? runtimePodCount : (tbwo.pods?.size || 0);
+  const timeRemaining = tbwo.timeBudget.remaining ?? Math.max(0, (tbwo.timeBudget.total ?? 60) - (tbwo.timeBudget.elapsed ?? 0));
   const progress = tbwo.progress || 0;
 
   return (
@@ -367,18 +312,18 @@ function TBWOCard({
       onClick={onSelect}
     >
       {/* Header */}
-      <div className="mb-3 flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${statusConfig.bgColor} ${statusConfig.color}`}>
               {statusConfig.icon}
               {statusConfig.label}
             </span>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium text-white ${qualityBadge.color}`}>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium text-white whitespace-nowrap ${qualityBadge.color}`}>
               {qualityBadge.label}
             </span>
           </div>
-          <h3 className="mt-2 line-clamp-2 font-semibold text-text-primary">
+          <h3 className="mt-2 line-clamp-2 font-semibold text-text-primary break-words">
             {tbwo.objective || 'Untitled TBWO'}
           </h3>
         </div>
@@ -446,7 +391,7 @@ function TBWOCard({
         </div>
         <div className="flex items-center gap-1">
           <ClockIcon className="h-3.5 w-3.5" />
-          <span>{Math.round(timeRemaining)}m left</span>
+          <span>{isNaN(timeRemaining) ? '\u2014' : `${Math.round(timeRemaining)}m`} left</span>
         </div>
         <div className="flex-1 text-right">
           {formatTimeAgo(tbwo.updatedAt)}
@@ -465,7 +410,7 @@ interface TBWODetailViewProps {
 }
 
 function TBWODetailView({ tbwo }: TBWODetailViewProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'pods' | 'timeline' | 'receipts' | 'chat'>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
 
   const generateExecutionPlan = useTBWOStore((state) => state.generateExecutionPlan);
   const approvePlan = useTBWOStore((state) => state.approvePlan);
@@ -476,6 +421,58 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
   const [isStarting, setIsStarting] = useState(false);
 
   const [isPlanning, setIsPlanning] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const fileCount = countDownloadableArtifacts(tbwo);
+
+  // Conditional tab visibility
+  const hasPauseRequests = (tbwo.pauseRequests?.length || 0) > 0 || tbwo.status === 'paused_waiting_for_user';
+  const hasStartedExecution = !['draft', 'planning', 'awaiting_approval'].includes(tbwo.status);
+  const isWebsiteSprint = tbwo.type === 'website_sprint';
+  const showPreview = isWebsiteSprint && hasStartedExecution;
+  const artifactCount = tbwo.artifacts?.length || 0;
+
+  // Auto-switch to Build tab when execution starts (website sprints get live preview)
+  useEffect(() => {
+    if (tbwo.status === 'executing' && isWebsiteSprint && activeTab === 'overview') {
+      setActiveTab('artifacts');
+    }
+    // Auto-switch to Pause & Ask when paused
+    if (tbwo.status === 'paused_waiting_for_user') {
+      setActiveTab('pause_ask');
+    }
+  }, [tbwo.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build visible tabs
+  const tabs = useMemo(() => {
+    const t: Array<{ id: TabId; label: string; badge?: number }> = [
+      { id: 'overview', label: 'Overview' },
+    ];
+    if (tbwo.plan) {
+      t.push({ id: 'plan', label: 'Plan' });
+    }
+    t.push({ id: 'pods', label: 'Pods' });
+    t.push({ id: 'activity', label: 'Activity' });
+    if (hasPauseRequests) {
+      const pendingCount = tbwo.pauseRequests?.filter(p => p.status === 'pending').length || 0;
+      t.push({ id: 'pause_ask', label: 'Pause & Ask', badge: pendingCount > 0 ? pendingCount : undefined });
+    }
+    if (hasStartedExecution || showPreview) {
+      t.push({ id: 'artifacts', label: 'Build', badge: artifactCount > 0 ? artifactCount : undefined });
+    }
+    t.push({ id: 'receipts', label: 'Receipts' });
+    return t;
+  }, [tbwo.plan, hasPauseRequests, hasStartedExecution, showPreview, artifactCount, tbwo.pauseRequests, isWebsiteSprint, tbwo.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDownloadZip = async () => {
+    setIsDownloading(true);
+    try {
+      await downloadTBWOZip(tbwo, tbwo.receipts);
+    } catch (e) {
+      console.error('[TBWO] ZIP download failed:', e);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleGeneratePlan = async () => {
     setIsPlanning(true);
@@ -491,10 +488,24 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
   const handleApproveAndStart = async () => {
     setIsStarting(true);
     approvePlan(tbwo.id);
-    setActiveTab('chat'); // Switch to chat tab to see live execution
+    setActiveTab('activity');
     await startExecution(tbwo.id);
     setIsStarting(false);
   };
+
+  // Auto-switch to Pause & Ask tab when there are pending questions
+  useEffect(() => {
+    if (tbwo.status === 'paused_waiting_for_user') {
+      setActiveTab('pause_ask');
+    }
+    // Also auto-switch when TBWO is awaiting approval and has pre-exec questions
+    if (tbwo.status === 'awaiting_approval') {
+      const pendingPreExec = tbwo.pauseRequests?.filter(p => p.phase === 'pre-execution' && p.status === 'pending') || [];
+      if (pendingPreExec.length > 0) {
+        setActiveTab('pause_ask');
+      }
+    }
+  }, [tbwo.status, tbwo.pauseRequests?.length]);
 
   const statusConfig = STATUS_CONFIG[tbwo.status] || STATUS_CONFIG.draft;
   const qualityBadge = QUALITY_BADGES[tbwo.qualityTarget];
@@ -503,31 +514,31 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
     <div className="flex h-full flex-col">
       {/* Detail Header */}
       <div className="border-b border-border-primary bg-background-secondary px-8 py-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="mb-2 flex items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap ${statusConfig.bgColor} ${statusConfig.color}`}>
                 {statusConfig.icon}
                 {statusConfig.label}
               </span>
-              <span className={`rounded-full px-3 py-1 text-sm font-medium text-white ${qualityBadge.color}`}>
+              <span className={`rounded-full px-3 py-1 text-sm font-medium text-white whitespace-nowrap ${qualityBadge.color}`}>
                 {qualityBadge.label}
               </span>
-              <span className="rounded-full bg-background-tertiary px-3 py-1 text-sm text-text-secondary">
+              <span className="rounded-full bg-background-tertiary px-3 py-1 text-sm text-text-secondary whitespace-nowrap">
                 {tbwo.type.replace('_', ' ')}
               </span>
             </div>
-            <h1 className="mb-2 text-2xl font-bold text-text-primary">
+            <h1 className="mb-2 text-2xl font-bold text-text-primary line-clamp-2 break-words" title={tbwo.objective || 'Untitled Work Order'}>
               {tbwo.objective || 'Untitled Work Order'}
             </h1>
-            <p className="text-text-tertiary">
+            <p className="text-sm text-text-tertiary">
               Created {formatDateTime(tbwo.createdAt)}
-              {tbwo.startedAt && ` · Started ${formatDateTime(tbwo.startedAt)}`}
+              {tbwo.startedAt && ` \u00b7 Started ${formatDateTime(tbwo.startedAt)}`}
             </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
             {tbwo.status === 'draft' && (
               <Button variant="primary" size="sm" onClick={handleGeneratePlan} disabled={isPlanning} leftIcon={isPlanning ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <SparklesIcon className="h-4 w-4" />}>
                 {isPlanning ? 'Generating...' : 'Generate Plan'}
@@ -538,16 +549,33 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
                 Planning...
               </Button>
             )}
-            {tbwo.status === 'awaiting_approval' && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => setActiveTab('timeline')}>
-                  View Plan
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleApproveAndStart} loading={isStarting} leftIcon={<PlayCircleIcon className="h-4 w-4" />}>
-                  Approve & Start
-                </Button>
-              </>
-            )}
+            {tbwo.status === 'awaiting_approval' && (() => {
+              const pendingPreExec = tbwo.pauseRequests?.filter(p => p.phase === 'pre-execution' && p.status === 'pending') || [];
+              const hasPendingQuestions = pendingPreExec.length > 0;
+              return (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab('plan')}>
+                    View Plan
+                  </Button>
+                  {hasPendingQuestions && (
+                    <Button variant="ghost" size="sm" onClick={() => setActiveTab('pause_ask')}>
+                      Answer Questions ({pendingPreExec.length})
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApproveAndStart}
+                    loading={isStarting}
+                    disabled={hasPendingQuestions}
+                    leftIcon={<PlayCircleIcon className="h-4 w-4" />}
+                    title={hasPendingQuestions ? `Answer ${pendingPreExec.length} question(s) first` : undefined}
+                  >
+                    Approve & Start
+                  </Button>
+                </>
+              );
+            })()}
             {tbwo.status === 'executing' && (
               <>
                 <Button variant="secondary" size="sm" leftIcon={<PauseCircleIcon className="h-4 w-4" />} onClick={() => pauseExecution(tbwo.id)}>
@@ -558,7 +586,7 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
                 </Button>
               </>
             )}
-            {tbwo.status === 'paused' && (
+            {(tbwo.status === 'paused' || tbwo.status === 'paused_waiting_for_user') && (
               <>
                 <Button variant="primary" size="sm" leftIcon={<PlayCircleIcon className="h-4 w-4" />} onClick={() => resumeExecution(tbwo.id)}>
                   Resume
@@ -569,26 +597,65 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
               </>
             )}
             {tbwo.status === 'completed' && (
-              <Button variant="primary" size="sm" onClick={() => setActiveTab('receipts')}>
-                View Receipts
-              </Button>
+              <>
+                {fileCount > 0 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDownloadZip}
+                    disabled={isDownloading}
+                    leftIcon={isDownloading ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <ArrowDownTrayIcon className="h-4 w-4" />}
+                  >
+                    {isDownloading ? 'Zipping...' : `Download ZIP (${fileCount})`}
+                  </Button>
+                )}
+                {isWebsiteSprint && (
+                  <>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<RocketLaunchIcon className="h-4 w-4" />}
+                      onClick={async () => {
+                        try {
+                          const site = await useSitesStore.getState().createSite(
+                            tbwo.objective || 'Untitled Site',
+                            tbwo.id,
+                          );
+                          window.location.href = `/sites/${site.id}`;
+                        } catch (e) {
+                          console.error('[TBWO] Create site failed:', e);
+                        }
+                      }}
+                    >
+                      Create Site
+                    </Button>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="mt-6 flex gap-1">
-          {(['overview', 'pods', 'timeline', 'chat', 'receipts'] as const).map((tab) => (
+        <div className="mt-6 flex gap-1 overflow-x-auto">
+          {tabs.map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                activeTab === tab.id
                   ? 'bg-brand-primary text-white'
                   : 'text-text-secondary hover:bg-background-tertiary hover:text-text-primary'
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab.label}
+              {tab.badge != null && (
+                <span className={`ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-xs font-bold ${
+                  activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-brand-primary/20 text-brand-primary'
+                }`}>
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -598,52 +665,37 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
       <div className="flex-1 overflow-y-auto p-8">
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
-            <motion.div
-              key="overview"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
-              <OverviewTab tbwo={tbwo} />
+            <motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <OverviewTab tbwo={tbwo} onNavigate={setActiveTab} />
+            </motion.div>
+          )}
+          {activeTab === 'plan' && (
+            <motion.div key="plan" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <PlanTab tbwo={tbwo} />
             </motion.div>
           )}
           {activeTab === 'pods' && (
-            <motion.div
-              key="pods"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
+            <motion.div key="pods" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <PodVisualization tbwo={tbwo} />
             </motion.div>
           )}
-          {activeTab === 'timeline' && (
-            <motion.div
-              key="timeline"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
-              <ExecutionTimeline tbwo={tbwo} />
+          {activeTab === 'activity' && (
+            <motion.div key="activity" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <PodActivityTabs tbwo={tbwo} />
             </motion.div>
           )}
-          {activeTab === 'chat' && (
-            <motion.div
-              key="chat"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
-              <TBWOChatTab tbwo={tbwo} />
+          {activeTab === 'pause_ask' && (
+            <motion.div key="pause_ask" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <PauseAskTab tbwo={tbwo} />
+            </motion.div>
+          )}
+          {activeTab === 'artifacts' && (
+            <motion.div key="artifacts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <BuildTab tbwo={tbwo} isWebsiteSprint={isWebsiteSprint} />
             </motion.div>
           )}
           {activeTab === 'receipts' && (
-            <motion.div
-              key="receipts"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
+            <motion.div key="receipts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <ReceiptsTab tbwo={tbwo} />
             </motion.div>
           )}
@@ -656,331 +708,6 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
       )}
     </div>
   );
-}
-
-// ============================================================================
-// OVERVIEW TAB
-// ============================================================================
-
-function OverviewTab({ tbwo }: { tbwo: TBWO }) {
-  const podsArray = Array.from(tbwo.pods?.values() || []);
-
-  return (
-    <div className="space-y-8">
-      {/* Metrics Grid */}
-      <TBWOMetrics tbwo={tbwo} />
-
-      {/* Time Budget */}
-      <div className="rounded-xl border border-border-primary bg-background-secondary p-6">
-        <h3 className="mb-4 font-semibold text-text-primary">Time Budget</h3>
-        <div className="grid grid-cols-3 gap-6">
-          <div>
-            <p className="text-2xl font-bold text-text-primary">
-              {tbwo.timeBudget.total}
-              <span className="text-base font-normal text-text-tertiary"> min</span>
-            </p>
-            <p className="text-sm text-text-tertiary">Total Budget</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-brand-primary">
-              {Math.round(tbwo.timeBudget.elapsed)}
-              <span className="text-base font-normal text-text-tertiary"> min</span>
-            </p>
-            <p className="text-sm text-text-tertiary">Time Elapsed</p>
-          </div>
-          <div>
-            <p className={`text-2xl font-bold ${
-              tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.1
-                ? 'text-semantic-error'
-                : tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.25
-                ? 'text-semantic-warning'
-                : 'text-semantic-success'
-            }`}>
-              {Math.round(tbwo.timeBudget.remaining)}
-              <span className="text-base font-normal text-text-tertiary"> min</span>
-            </p>
-            <p className="text-sm text-text-tertiary">Time Remaining</p>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <div className="h-3 overflow-hidden rounded-full bg-background-tertiary">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-accent"
-              initial={{ width: 0 }}
-              animate={{ width: `${(tbwo.timeBudget.elapsed / tbwo.timeBudget.total) * 100}%` }}
-              transition={{ duration: 0.5 }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Active Pods Summary */}
-      <div className="rounded-xl border border-border-primary bg-background-secondary p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-text-primary">Active Pods</h3>
-          <span className="text-sm text-text-tertiary">{podsArray.length} total</span>
-        </div>
-
-        {podsArray.length === 0 ? (
-          <p className="text-sm text-text-tertiary">No pods spawned yet</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            {podsArray.slice(0, 4).map((pod) => (
-              <div
-                key={pod.id}
-                className="flex items-center gap-3 rounded-lg bg-background-tertiary p-3"
-              >
-                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                  pod.status === 'working'
-                    ? 'bg-brand-primary/20 text-brand-primary'
-                    : pod.status === 'idle'
-                    ? 'bg-semantic-success/20 text-semantic-success'
-                    : 'bg-background-elevated text-text-tertiary'
-                }`}>
-                  <CpuChipIcon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-text-primary">{pod.name}</p>
-                  <p className="text-xs text-text-tertiary">{pod.role} · {pod.status}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Execution Plan */}
-      {tbwo.plan && (
-        <div className="rounded-xl border border-border-primary bg-background-secondary p-6">
-          <h3 className="mb-4 font-semibold text-text-primary">Execution Plan</h3>
-          <div className="space-y-3">
-            {tbwo.plan.phases.map((phase, index) => (
-              <div
-                key={phase.id}
-                className="flex items-center gap-4 rounded-lg bg-background-tertiary p-4"
-              >
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                  phase.status === 'complete'
-                    ? 'bg-semantic-success text-white'
-                    : phase.status === 'in_progress'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-background-elevated text-text-tertiary'
-                }`}>
-                  {phase.status === 'complete' ? <CheckCircleSolid className="h-5 w-5" /> : index + 1}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-text-primary">{phase.name}</p>
-                  <p className="text-sm text-text-tertiary">{phase.description}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium text-text-primary">{Math.round(phase.progress)}%</p>
-                  <p className="text-xs text-text-tertiary">{phase.estimatedDuration} min</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
-// RECEIPTS TAB
-// ============================================================================
-
-function ReceiptsTab({ tbwo }: { tbwo: TBWO }) {
-  if (!tbwo.receipts) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <DocumentDuplicateIcon className="mb-4 h-12 w-12 text-text-tertiary" />
-        <h3 className="mb-2 font-semibold text-text-primary">No Receipts Yet</h3>
-        <p className="text-sm text-text-tertiary">
-          Receipts will be generated when the TBWO completes
-        </p>
-      </div>
-    );
-  }
-
-  const { executive, technical } = tbwo.receipts;
-
-  return (
-    <div className="space-y-6">
-      {/* Executive Summary */}
-      <div className="rounded-xl border border-border-primary bg-background-secondary p-6">
-        <h3 className="mb-4 flex items-center gap-2 font-semibold text-text-primary">
-          <SparklesIcon className="h-5 w-5 text-brand-primary" />
-          Executive Summary
-        </h3>
-        <p className="mb-4 text-text-secondary">{executive.summary}</p>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-lg bg-background-tertiary p-4">
-            <p className="text-2xl font-bold text-text-primary">{executive.filesCreated}</p>
-            <p className="text-sm text-text-tertiary">Files Created</p>
-          </div>
-          <div className="rounded-lg bg-background-tertiary p-4">
-            <p className="text-2xl font-bold text-text-primary">{executive.linesOfCode}</p>
-            <p className="text-sm text-text-tertiary">Lines of Code</p>
-          </div>
-          <div className="rounded-lg bg-background-tertiary p-4">
-            <p className="text-2xl font-bold text-semantic-success">{executive.qualityScore}%</p>
-            <p className="text-sm text-text-tertiary">Quality Score</p>
-          </div>
-        </div>
-
-        {executive.accomplishments.length > 0 && (
-          <div className="mt-4">
-            <h4 className="mb-2 text-sm font-medium text-text-primary">Accomplishments</h4>
-            <ul className="space-y-1">
-              {executive.accomplishments.map((item, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm text-text-secondary">
-                  <CheckCircleSolid className="h-4 w-4 text-semantic-success" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* Technical Details */}
-      <div className="rounded-xl border border-border-primary bg-background-secondary p-6">
-        <h3 className="mb-4 flex items-center gap-2 font-semibold text-text-primary">
-          <CpuChipIcon className="h-5 w-5 text-brand-secondary" />
-          Technical Details
-        </h3>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg bg-background-tertiary px-4 py-3">
-            <span className="text-text-secondary">Build Status</span>
-            <span className={`font-medium ${
-              technical.buildStatus === 'success'
-                ? 'text-semantic-success'
-                : technical.buildStatus === 'failed'
-                ? 'text-semantic-error'
-                : 'text-semantic-warning'
-            }`}>
-              {technical.buildStatus}
-            </span>
-          </div>
-          {technical.dependencies?.length > 0 && (
-            <div className="rounded-lg bg-background-tertiary p-4">
-              <p className="mb-2 text-sm font-medium text-text-primary">Dependencies</p>
-              <div className="flex flex-wrap gap-2">
-                {technical.dependencies.map((dep, i) => (
-                  <span key={i} className="rounded-full bg-background-elevated px-3 py-1 text-xs text-text-secondary">
-                    {typeof dep === 'string' ? dep : `${dep.name}@${dep.version}`}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// EMPTY STATE
-// ============================================================================
-
-function EmptyDetailView({ onCreateNew }: { onCreateNew: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary"
-      >
-        <RocketLaunchIcon className="h-12 w-12 text-white" />
-      </motion.div>
-      <h2 className="mb-2 text-2xl font-bold text-text-primary">
-        Select a Work Order
-      </h2>
-      <p className="mb-6 max-w-md text-text-tertiary">
-        Choose a TBWO from the list to view details, monitor progress, and manage execution.
-        Or create a new one to get started.
-      </p>
-      <Button variant="primary" onClick={onCreateNew} leftIcon={<PlusIcon className="h-4 w-4" />}>
-        Create New TBWO
-      </Button>
-    </div>
-  );
-}
-
-// ============================================================================
-// HELPER COMPONENTS
-// ============================================================================
-
-function ActionButton({
-  icon,
-  label,
-  onClick,
-  danger,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${
-        danger
-          ? 'text-semantic-error hover:bg-semantic-error/10'
-          : 'text-text-primary hover:bg-background-hover'
-      }`}
-    >
-      <span className="h-4 w-4">{icon}</span>
-      {label}
-    </button>
-  );
-}
-
-function QuickStat({
-  label,
-  value,
-  color = 'text-text-primary',
-}: {
-  label: string;
-  value: number;
-  color?: string;
-}) {
-  return (
-    <div className="text-center">
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-text-tertiary">{label}</p>
-    </div>
-  );
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-function formatTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return 'Just now';
-}
-
-function formatDateTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 export default TBWODashboard;

@@ -35,8 +35,8 @@ export function LoadingScreen({ message = 'Loading...' }: LoadingScreenProps) {
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
           />
           {/* Icon */}
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-primary/10">
-            <SparklesIcon className="h-6 w-6 text-brand-primary" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20">
+            <SparklesIcon className="h-6 w-6 text-indigo-400" />
           </div>
         </motion.div>
         

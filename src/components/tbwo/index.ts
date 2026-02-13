@@ -7,9 +7,6 @@
 // Main Dashboard
 export { TBWODashboard } from './TBWODashboard';
 
-// Wizard
-export { WebsiteSprintWizard } from './WebsiteSprintWizard';
-
 // Visualization Components
 export { PodVisualization } from './PodVisualization';
 export { ExecutionTimeline } from './ExecutionTimeline';

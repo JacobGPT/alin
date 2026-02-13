@@ -44,8 +44,12 @@ class ProactiveService {
       useProactiveStore.getState().clearExpired();
     }, 15000); // Check every 15 seconds
 
-    // Start file watching for the ALIN project
-    this.startFileWatcher('C:/Users/jacob/Downloads/ALIN');
+    // Start file watching (only on localhost — deployed version doesn't have local files)
+    const isLocal = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if (isLocal) {
+      this.startFileWatcher('.');
+    }
   }
 
   /**

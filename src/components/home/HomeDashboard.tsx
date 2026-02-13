@@ -16,22 +16,22 @@ import {
   MagnifyingGlassCircleIcon,
   PaintBrushIcon,
   MicrophoneIcon,
+  GlobeAltIcon,
   Cog6ToothIcon,
   SparklesIcon,
   ArrowRightIcon,
-  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import {
   ChatBubbleLeftRightIcon as ChatSolid,
   CodeBracketSquareIcon as CodeSolid,
   CommandLineIcon as CommandSolid,
-  SparklesIcon as SparklesSolid,
 } from '@heroicons/react/24/solid';
 
 import { useChatStore } from '@store/chatStore';
 import { useTBWOStore } from '@store/tbwoStore';
 import { useMemoryStore } from '@store/memoryStore';
 import { useSettingsStore } from '@store/settingsStore';
+import { useAuthStore } from '@store/authStore';
 import { useUIStore } from '@store/uiStore';
 
 // ============================================================================
@@ -145,6 +145,20 @@ const STATIONS: StationConfig[] = [
     statusDot: 'bg-cyan-400',
     preview: VoicePreview,
     shortcut: '⌘ 6',
+  },
+  {
+    id: 'sites',
+    name: 'Sites',
+    subtitle: 'Deploy & Manage',
+    description: 'AI-generated websites deployed to the edge',
+    icon: GlobeAltIcon,
+    route: '/sites',
+    gradient: 'from-teal-500/10 via-transparent to-transparent',
+    glowColor: 'rgba(20, 184, 166, 0.15)',
+    accentBorder: 'border-teal-500/20 hover:border-teal-500/40',
+    statusDot: 'bg-teal-400',
+    preview: SitesPreview,
+    shortcut: '⌘ 7',
   },
 ];
 
@@ -303,7 +317,7 @@ export default function HomeDashboard() {
               onClick={() => useUIStore.getState().openModal({ type: 'settings' })}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-border-primary bg-background-secondary text-text-tertiary transition-all hover:border-border-secondary hover:bg-background-tertiary hover:text-text-secondary"
             >
-              <Cog6ToothIcon className="h-4.5 w-4.5" />
+              <Cog6ToothIcon className="h-5 w-5" />
             </button>
           </div>
         </motion.header>
@@ -391,7 +405,7 @@ function StationCard({
             background: isHovered ? station.glowColor : 'rgba(255,255,255,0.03)',
           }}
         >
-          <Icon className="h-5.5 w-5.5 text-text-secondary transition-colors duration-300 group-hover:text-text-primary" />
+          <Icon className="h-5 w-5 text-text-secondary transition-colors duration-300 group-hover:text-text-primary" />
         </div>
         <span className="rounded-md bg-background-tertiary/80 px-2 py-1 font-mono text-[10px] text-text-quaternary opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           {station.shortcut}
@@ -585,14 +599,51 @@ function VoicePreview() {
   );
 }
 
+function SitesPreview() {
+  const user = useAuthStore((s) => s.user);
+  const isFree = !user?.plan || user.plan === 'free';
+
+  if (isFree) {
+    return (
+      <div className="text-[11px] text-text-quaternary">
+        <span className="text-amber-400">Upgrade to Pro</span> to deploy sites
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <div className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
+        <span className="text-[11px] text-text-quaternary">Edge deploy ready</span>
+      </div>
+      <div className="text-[11px] text-text-quaternary">
+        R2 + Workers + KV
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // FOOTER COMPONENTS
 // ============================================================================
 
 function SystemStatus() {
-  const settings = useSettingsStore.getState();
-  const hasAnthropic = !!settings?.apiKeys?.anthropic;
-  const hasOpenAI = !!settings?.apiKeys?.openai;
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    fetch('/api/keys/status', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.keys) setKeyStatus(data.keys); })
+      .catch(() => {});
+  }, []);
+
+  const hasAnthropic = !!keyStatus['ANTHROPIC_API_KEY'];
+  const hasOpenAI = !!keyStatus['OPENAI_API_KEY'];
 
   return (
     <div className="flex items-center gap-3">
@@ -601,7 +652,7 @@ function SystemStatus() {
           className={`h-1.5 w-1.5 rounded-full ${hasAnthropic || hasOpenAI ? 'bg-semantic-success' : 'bg-semantic-warning'}`}
         />
         <span className="text-xs text-text-quaternary">
-          {hasAnthropic || hasOpenAI ? 'Systems online' : 'No API keys configured'}
+          {hasAnthropic || hasOpenAI ? 'Systems online' : 'Checking API keys...'}
         </span>
       </div>
       {hasAnthropic && (

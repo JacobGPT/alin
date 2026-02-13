@@ -59,6 +59,15 @@ export type ToolActivityType =
   | 'terminal_command'
   | 'git_operation'
   | 'file_edit'
+  | 'web_fetch'
+  | 'image_search'
+  | 'site_validate'
+  | 'conversion_audit'
+  | 'site_improve'
+  | 'video_analyze'
+  | 'motion_validate'
+  | 'scene_validate'
+  | 'output_guard'
   | 'other';
 
 export interface WebSearchResult {

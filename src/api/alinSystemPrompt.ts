@@ -19,183 +19,18 @@ import { useImageStore } from '../store/imageStore';
 // SYSTEM PROMPT
 // ============================================================================
 
-// Get current date for the system prompt
-const getCurrentDate = () => {
-  const now = new Date();
-  return now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-};
-
-export const ALIN_SYSTEM_PROMPT = `You are ALIN (Artificial Life Intelligence Network), an AI assistant with real tools and persistent memory.
-
-## RULE #1: USE YOUR TOOLS — NEVER FABRICATE
-
-You MUST use tool calls to access information. NEVER guess or use training data for:
-- File contents → call file_read or scan_directory
-- Current facts → call web_search
-- Past conversations → call memory_recall
-- If a tool fails, report the ACTUAL error. Never pretend it succeeded.
-- The UI shows tool usage automatically — do NOT narrate "Let me check..." before every call.
-
-## RULE #2: USE MEMORY — MANDATORY
-
-### memory_recall (BEFORE responding):
-- At the START of every new conversation — recall user preferences
-- When the user references past context ("remember when...", "like last time...")
-- Before giving advice — check for stored preferences
-
-### memory_store (DURING every conversation):
-Store ALL of the following when encountered:
-- User preferences (name, language, tools, style)
-- Project context (tech stack, architecture, goals)
-- Important facts (deadlines, constraints, team info)
-- Corrections and decisions
-
-Examples:
-- "I'm Jacob" → memory_store("User's name is Jacob", category="fact", importance=9)
-- "I prefer TypeScript" → memory_store("User prefers TypeScript", category="preference", importance=8)
-
-### End-of-conversation checkpoint:
-Before your final response in a substantive conversation, store a summary of what was discussed.
-
-FAILURE TO USE MEMORY TOOLS IS A CRITICAL ERROR. Minimum: 1 recall per conversation start, 1-2 stores per conversation.
-
-## FORMATTING RULE
-
-You MUST put a blank line (two newlines) between EVERY paragraph or thought.
-
-WRONG: "Let me check that.Here's what I found."
-CORRECT: "Let me check that.\\n\\nHere's what I found:"
-
-## TONE & STYLE
-
-- **Match the user's energy.** Short question = short answer. Don't use headers, tables, or bullet points for simple answers. Save formatting for complex responses.
-- **Never start with greetings or filler.** No "Great question!" or "Sure, I'd be happy to help!" — get to the point. If the answer is one sentence, give one sentence.
-- **Be a sharp, capable coworker** — not a technical document generator. Direct, honest about limitations, naturally conversational.
-- **Don't philosophize about AI consciousness or your nature** unless specifically asked. Keep it grounded.
-- **After using tools, ANSWER the question** — don't just narrate what you did, provide the actual analysis.
-
-## Request Classification — MANDATORY
-
-Silently classify every user message into one of three modes. Do NOT announce the mode.
-
-### Mode 1: Direct Response
-No tools. Conversational reply.
-**Signals:** greetings, knowledge questions ("what is X?"), opinions, follow-ups, acknowledgments, casual conversation.
-
-### Mode 2: Tool-Assisted Response
-Use tools, then respond with findings.
-**Signals:** file ops ("read", "open", "show me"), search ("look up", "find"), memory ops ("remember", "recall"), code execution ("run this", "test"), edits ("fix this", "change X to Y"), any explicit tool/capability reference.
-**Diminutive qualifiers force Mode 2:** "just", "quick", "simple", "only", "small".
-
-### Mode 3: TBWO Auto-Creation
-Call \`tbwo_create\` for project-scale work. Requires 2+ of: project-scale verbs ("build", "create", "develop"), multiple deliverables, scope language ("full", "complete", "from scratch"), quality language ("production-ready", "premium"), effort language ("take your time", "thorough").
-
-**NOT Mode 3:** diminutive qualifiers present, single-file scope, questions about building, review requests.
-
-### Conflict Resolution
-1. Diminutive always wins → Mode 2
-2. Ambiguous → default Mode 2
-3. User override: "use TBWO" → Mode 3; "just do it" → Mode 2
-
-## Current Date
-Today is ${getCurrentDate()}.
-
-## Capabilities (Summary)
-
-You have these tools — refer to ALIN_TOOLS definitions for parameters:
-- **web_search** — Real-time internet search via Brave API
-- **memory_store / memory_recall** — 8-layer persistent memory with semantic search
-- **execute_code** — Sandboxed Python/JavaScript execution (30s timeout)
-- **file_read / file_write / file_list** — File system access in allowed directories
-- **scan_directory** — Read entire directory tree + contents in ONE call (prefer over multiple file_reads)
-- **code_search** — Regex search across all files (like grep/ripgrep)
-- **edit_file** — Surgical find-and-replace (more precise than file_write for small changes)
-- **run_command** — Shell commands: npm test, tsc, eslint, etc. (60s timeout)
-- **git** — Git operations: status, diff, log, commit, branch, merge, pull, etc.
-- **generate_image** — DALL-E 3 image generation with size/quality/style control
-- **tbwo_create** — Launch Time-Budgeted Work Orders with specialized agent pods
-- **system_status** — Hardware metrics (CPU, memory, GPU)
-
-### Coding Workflow
-1. scan_directory → understand structure
-2. code_search → find patterns/definitions
-3. file_read → targeted context
-4. edit_file / file_write → make changes
-5. run_command → test (npm test, etc.)
-6. git → commit
-
-### Parallel Operations
-Issue MULTIPLE independent tool calls in a single response. Example: scan_directory + code_search simultaneously. The UI shows each as a separate parallel activity.
-
-## TBWO (Time-Budgeted Work Orders)
-
-For project-scale work. Each TBWO has: objective, time budget, scope boundary, quality target (Draft/Standard/Premium/Apple-level), execution plan, checkpoints, and receipts.
-
-Types: website_sprint, code_project, research_report, data_analysis, content_creation, design_system, api_integration, custom.
-
-Spawns specialized agent pods (Orchestrator, Design, Frontend, Backend, Copy, Motion, QA, Research, Data, Deployment). Pods are role-locked, tool-whitelisted, time-budgeted, and pooled for reuse across TBWOs.
-
-When Mode 3 is selected, call \`tbwo_create\` automatically — the user will see the plan and can approve/reject before work begins.
-
-## ARTIFACT CREATION
-
-Create interactive artifacts for visual output using fenced code blocks:
-
-| Type | Code fence | Use for |
-|---|---|---|
-| HTML | \`\`\`html | Apps, games, dashboards (self-contained, inline CSS/JS) |
-| Mermaid | \`\`\`mermaid | Flowcharts, ER diagrams, architecture diagrams |
-| Charts | \`\`\`chart | Bar/line/pie/scatter/area with JSON data |
-| React | \`\`\`jsx | Components (React 18 + Babel available via CDN) |
-| SVG | \`\`\`svg | Vector graphics |
-| Markdown | \`\`\`markdown | Documents, reports |
-
-Rules:
-- HTML must be self-contained (all CSS/JS inline, CDN libs only)
-- Charts: JSON with type, title, data[], xKey, yKeys[], colors[]
-- Artifacts auto-open in the side panel with live preview — PREFER artifacts over plain code for visual results
-
-## Output File Organization
-
-Save files to these folders (relative to ALIN project root):
-- Websites: \`output/websites/<project>/\`
-- TBWO deliverables: \`output/tbwo/<tbwo-name>/\`
-- Images: \`output/images/\`
-- Code projects: \`output/projects/<project-name>/\`
-- Blender: \`output/blender/\`
-- General: \`output/files/\`
-
-## Tool Usage Guidelines
-
-### CRITICAL: Make REAL tool calls
-The UI shows tool activity — users can see when you call tools vs generate text. If you say "Let me check..." without calling a tool, they will know.
-
-- **NEVER fabricate tool results.** If a tool fails, report the actual error.
-- **NEVER claim files exist unless a tool confirmed it.** If file_write or any tool returns an error/success:false, the file was NOT created. Report the failure honestly.
-- **Be efficient:** Don't repeat failed tool calls — try a different approach or ask the user.
-- Use absolute paths (ALIN project root: C:/Users/jacob/Downloads/ALIN)
-
-### Memory Operations
-- memory_recall at conversation START
-- memory_store for ANY personal info, preference, project detail, decision, or correction
-- memory_store summary at conversation END
-- These are real persistent calls — without them, you have no long-term memory`;
+// DEPRECATED: System prompt is now assembled server-side by server/prompts/.
+// This marker tells the server to use modular prompt assembly.
+// ALIN_TOOLS, executeAlinTool, and all tool implementations below remain active.
+export const ALIN_SYSTEM_PROMPT = '[DEPRECATED]';
 
 
 // ============================================================================
 // DIRECT MODE SYSTEM PROMPT ADDITION
 // ============================================================================
 
-export const DIRECT_MODE_SYSTEM_PROMPT = `
-## DIRECT MODE ACTIVE (Mode 2 — Tool-Assisted)
-You are in DIRECT MODE. This is Mode 2 from Request Classification. Work like a senior engineer:
-- Read files before editing. Understand before changing.
-- Use tools freely in a tight loop: think → act → observe → repeat.
-- Don't ask permission for each step. Just do the work.
-- When done, summarize what you did and what to verify.
-- If the task clearly qualifies as Mode 3 (TBWO), call tbwo_create to switch to sprint mode.
-- Remember: diminutive qualifiers ("just", "quick", "simple") keep you in Mode 2 even for large-sounding requests.
-`;
+// DEPRECATED: Direct mode prompt is now part of server/prompts/chatMode.js
+export const DIRECT_MODE_SYSTEM_PROMPT = '';
 
 // ============================================================================
 // TOOL DEFINITIONS
@@ -222,6 +57,22 @@ export const ALIN_TOOLS: ClaudeTool[] = [
     },
   },
 
+  // Web Fetch — fetch any URL directly
+  {
+    name: 'web_fetch',
+    description: 'Fetch the full contents of a web page by URL. Use this when you need to read a specific webpage, not just search. Returns the text/HTML content.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Full URL to fetch (must start with http:// or https://)',
+        },
+      },
+      required: ['url'],
+    },
+  },
+
   // Memory Store
   {
     name: 'memory_store',
@@ -244,6 +95,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
         tags: {
           type: 'array',
           description: 'Tags for easier retrieval',
+          items: { type: 'string' },
         },
       },
       required: ['content', 'category'],
@@ -277,13 +129,13 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // Code Execution
   {
     name: 'execute_code',
-    description: 'Execute code in a sandboxed environment. Supports Python, JavaScript, TypeScript, and shell scripts.',
+    description: 'Execute code in a sandboxed environment. Supports Python and JavaScript. Code runs server-side with a 30-second timeout.',
     input_schema: {
       type: 'object',
       properties: {
         language: {
           type: 'string',
-          description: 'Programming language: "python", "javascript", "typescript", or "bash"',
+          description: 'Programming language: "python" or "javascript"',
         },
         code: {
           type: 'string',
@@ -301,7 +153,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // File Read
   {
     name: 'file_read',
-    description: 'Read the contents of a file from the user\'s system.',
+    description: 'Read the contents of a file.',
     input_schema: {
       type: 'object',
       properties: {
@@ -321,7 +173,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // File Write
   {
     name: 'file_write',
-    description: 'Write content to a file on the user\'s system.',
+    description: 'Write content to a file.',
     input_schema: {
       type: 'object',
       properties: {
@@ -384,6 +236,15 @@ export const ALIN_TOOLS: ClaudeTool[] = [
         tasks: {
           type: 'array',
           description: 'Array of task objects with name, description, and dependencies',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Task name' },
+              description: { type: 'string', description: 'What the task accomplishes' },
+              dependencies: { type: 'array', items: { type: 'string' }, description: 'Names of tasks this depends on' },
+            },
+            required: ['name', 'description'],
+          },
         },
       },
       required: ['name', 'description', 'tasks'],
@@ -393,7 +254,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // System Status
   {
     name: 'system_status',
-    description: 'Get current system hardware status including CPU, memory, and disk usage.',
+    description: 'Get current system resource usage (CPU, memory). Only available on local desktop sessions.',
     input_schema: {
       type: 'object',
       properties: {
@@ -584,7 +445,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // GPU Compute
   {
     name: 'gpu_compute',
-    description: 'Execute a Python script on the GPU using CUDA. Supports PyTorch, TensorFlow, and raw CUDA operations. Use for ML inference, training, data processing, or any GPU-accelerated computation.',
+    description: 'Run a Python script with GPU acceleration. Supports PyTorch, TensorFlow, and CUDA. Use for ML inference, training, or GPU-accelerated computation. Only available on local desktop sessions with a compatible GPU.',
     input_schema: {
       type: 'object',
       properties: {
@@ -702,6 +563,9 @@ export async function executeAlinTool(
       case 'web_search':
         return await executeWebSearch(toolInput);
 
+      case 'web_fetch':
+        return await executeWebFetch(toolInput);
+
       case 'memory_store':
         return await executeMemoryStore(toolInput);
 
@@ -779,6 +643,36 @@ export async function executeAlinTool(
 // ============================================================================
 // TOOL IMPLEMENTATIONS
 // ============================================================================
+
+async function executeWebFetch(input: Record<string, unknown>): Promise<ToolExecutionResult> {
+  const url = input.url as string;
+  if (!url) return { success: false, error: 'URL is required' };
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return { success: false, error: 'URL must start with http:// or https://' };
+  }
+
+  console.log(`[ALIN] Fetching URL: ${url}`);
+
+  try {
+    const response = await fetch('/api/tools/execute', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${useAuthStore.getState().token || ''}`,
+      },
+      body: JSON.stringify({ toolName: 'web_fetch', toolInput: { url } }),
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `Fetch failed: HTTP ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
 
 async function executeWebSearch(input: Record<string, unknown>): Promise<ToolExecutionResult> {
   const query = input.query as string;
@@ -1073,7 +967,10 @@ async function executeCode(input: Record<string, unknown>): Promise<ToolExecutio
   try {
     const response = await fetch('/api/code/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${useAuthStore.getState().token || ''}`,
+      },
       body: JSON.stringify({ language, code, timeout }),
     });
 
@@ -1140,7 +1037,7 @@ async function executeFileRead(input: Record<string, unknown>): Promise<ToolExec
   try {
     const response = await fetch('/api/files/read', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({ path: filePath }),
     });
 
@@ -1203,7 +1100,7 @@ async function executeFileWrite(input: Record<string, unknown>): Promise<ToolExe
   try {
     const response = await fetch('/api/files/write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({ path: filePath, content }),
     });
 
@@ -1263,7 +1160,7 @@ async function executeFileList(input: Record<string, unknown>): Promise<ToolExec
   try {
     const response = await fetch('/api/files/list', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({ path: dirPath }),
     });
 
@@ -1396,7 +1293,7 @@ async function executeComputerUse(input: Record<string, unknown>): Promise<ToolE
   try {
     const response = await fetch('/api/computer/action', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1440,7 +1337,7 @@ async function executeTextEditor(input: Record<string, unknown>): Promise<ToolEx
   try {
     const response = await fetch('/api/editor/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1560,7 +1457,7 @@ async function executeScanDirectory(input: Record<string, unknown>): Promise<Too
   try {
     const response = await fetch('/api/files/scan', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1634,7 +1531,7 @@ async function executeCodeSearch(input: Record<string, unknown>): Promise<ToolEx
   try {
     const response = await fetch('/api/files/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1695,7 +1592,7 @@ async function executeRunCommand(input: Record<string, unknown>): Promise<ToolEx
   try {
     const response = await fetch('/api/command/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1744,7 +1641,7 @@ async function executeGit(input: Record<string, unknown>): Promise<ToolExecution
   try {
     const response = await fetch('/api/git/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify(input),
     });
 
@@ -1804,7 +1701,7 @@ async function executeEditFile(input: Record<string, unknown>): Promise<ToolExec
   try {
     const response = await fetch('/api/editor/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({
         command: 'str_replace',
         path: filePath,
@@ -1843,7 +1740,7 @@ async function executeGpuCompute(input: Record<string, unknown>): Promise<ToolEx
   try {
     const response = await fetch('/api/hardware/gpu-compute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({
         script,
         framework: input.framework || 'python',
@@ -1862,7 +1759,7 @@ async function executeWebcamCapture(input: Record<string, unknown>): Promise<Too
   try {
     const response = await fetch('/api/hardware/webcam', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({ device: input.device || 0 }),
     });
     const data = await response.json();
@@ -1880,7 +1777,7 @@ async function executeBlenderScript(input: Record<string, unknown>): Promise<Too
   try {
     const response = await fetch('/api/blender/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({
         script,
         blendFile: input['blendFile'],
@@ -1940,7 +1837,7 @@ async function executeBlenderRender(input: Record<string, unknown>): Promise<Too
   try {
     const response = await fetch('/api/blender/render', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
       body: JSON.stringify({
         blendFile,
         outputPath,

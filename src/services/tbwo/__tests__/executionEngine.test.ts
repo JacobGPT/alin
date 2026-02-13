@@ -160,6 +160,7 @@ describe('ExecutionEngine', () => {
           },
         },
         checkpoints: [],
+        pauseRequests: [],
         authorityLevel: AuthorityLevel.AUTONOMOUS,
       };
       mockGetTBWOById.mockReturnValue(mockTBWO);
@@ -232,6 +233,7 @@ describe('ExecutionEngine', () => {
             },
           },
           checkpoints: [],
+          pauseRequests: [],
           authorityLevel: AuthorityLevel.AUTONOMOUS,
         })
         // Subsequent calls during phase execution return fresh state
@@ -242,6 +244,7 @@ describe('ExecutionEngine', () => {
             phases: [{ id: 'phase-1', name: 'Phase 1', tasks: [] }],
           },
           checkpoints: [],
+          pauseRequests: [],
           authorityLevel: AuthorityLevel.AUTONOMOUS,
           timeBudget: { total: 10, elapsed: 0, remaining: 10, phases: new Map() },
         });

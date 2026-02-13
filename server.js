@@ -31,11 +31,22 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import Database from 'better-sqlite3';
 import { randomUUID, createHash } from 'crypto';
+import { EventEmitter } from 'events';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Resend } from 'resend';
 import JSZip from 'jszip';
 import rateLimit from 'express-rate-limit';
+import { CloudflarePagesDeploy } from './server/services/cloudflarePagesDeploy.js';
+import { CloudflareR2 } from './server/services/cloudflareR2.js';
+import { CloudflareKV } from './server/services/cloudflareKV.js';
+import { CloudflareImages } from './server/services/cloudflareImages.js';
+import { CloudflareStream } from './server/services/cloudflareStream.js';
+import { CloudflareVectorize } from './server/services/cloudflareVectorize.js';
+import { buildStaticSite } from './server/services/buildStaticSite.js';
+import { SandboxPipeline, getPipeline, setPipeline } from './server/services/sandboxPipeline.js';
+import { generatePatchPlan, applyPatchPlan } from './server/services/sitePatchPlanner.js';
+import { assemblePrompt, detectMode } from './server/prompts/index.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -44,6 +55,35 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+
+// Trust first proxy (Cloudflare, nginx, etc.) so req.ip is correct
+app.set('trust proxy', 1);
+
+// Deploy progress event emitters — keyed by deploymentId, auto-cleaned after done/error or 10-minute timeout
+const deployEvents = new Map();
+function emitDeployEvent(deployId, event, data) {
+  const emitter = deployEvents.get(deployId);
+  if (emitter) emitter.emit('progress', { event, ...data, timestamp: Date.now() });
+}
+function createDeployEmitter(deployId) {
+  const emitter = new EventEmitter();
+  deployEvents.set(deployId, emitter);
+  // Auto-cleanup after 10 minutes
+  const timeout = setTimeout(() => {
+    emitter.removeAllListeners();
+    deployEvents.delete(deployId);
+  }, 10 * 60 * 1000);
+  emitter._cleanupTimeout = timeout;
+  return emitter;
+}
+function cleanupDeployEmitter(deployId) {
+  const emitter = deployEvents.get(deployId);
+  if (emitter) {
+    if (emitter._cleanupTimeout) clearTimeout(emitter._cleanupTimeout);
+    emitter.removeAllListeners();
+    deployEvents.delete(deployId);
+  }
+}
 
 // Enable CORS for frontend
 app.use(cors({
@@ -70,7 +110,8 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Try again in 15 minutes.', code: 'RATE_LIMIT_EXCEEDED' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => req.ip?.replace(/^::ffff:/, '') || 'unknown',
+  validate: false,
 });
 
 const verifyLimiter = rateLimit({
@@ -79,7 +120,8 @@ const verifyLimiter = rateLimit({
   message: { error: 'Too many verification attempts. Try again in 15 minutes.', code: 'RATE_LIMIT_EXCEEDED' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => req.ip?.replace(/^::ffff:/, '') || 'unknown',
+  validate: false,
 });
 
 const executionLimiter = rateLimit({
@@ -88,7 +130,8 @@ const executionLimiter = rateLimit({
   message: { error: 'Too many execution requests. Try again in 1 minute.', code: 'RATE_LIMIT_EXCEEDED' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.ip?.replace(/^::ffff:/, '') || 'unknown',
+  validate: false,
 });
 
 const scanLimiter = rateLimit({
@@ -97,7 +140,8 @@ const scanLimiter = rateLimit({
   message: { error: 'Too many scan requests. Try again in 1 minute.', code: 'RATE_LIMIT_EXCEEDED' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.ip?.replace(/^::ffff:/, '') || 'unknown',
+  validate: false,
 });
 
 // ============================================================================
@@ -162,11 +206,29 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Token revocation blocklist — stores JWTs that have been explicitly logged out / refreshed
+const revokedTokens = new Set();
+// Periodically prune expired tokens from the blocklist (every hour)
+setInterval(() => {
+  for (const token of revokedTokens) {
+    try { jwt.verify(token, JWT_SECRET); } catch { revokedTokens.delete(token); }
+  }
+}, 60 * 60 * 1000);
+
 function requireAuth(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
   if (!token) return res.status(401).json({ error: 'Authentication required' });
+  if (revokedTokens.has(token)) return res.status(401).json({ error: 'Token has been revoked' });
   try {
     req.user = jwt.verify(token, JWT_SECRET);
+    // Validate X-Project-Id ownership (falls back to 'default' if invalid)
+    const rawProjectId = req.headers['x-project-id'] || 'default';
+    try {
+      const projectRow = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(rawProjectId, req.user.id);
+      req.projectId = projectRow ? rawProjectId : 'default';
+    } catch {
+      req.projectId = 'default';
+    }
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -180,6 +242,7 @@ function optionalAuth(req, res, next) {
   } else {
     req.user = null;
   }
+  req.projectId = req.headers['x-project-id'] || 'default';
   next();
 }
 
@@ -194,8 +257,39 @@ function sendError(res, status, error, code, suggestion) {
   if (suggestion) body.suggestion = suggestion;
   if (!IS_PRODUCTION && status >= 500) body.details = error;
   if (IS_PRODUCTION && status >= 500) body.error = 'An internal error occurred. Please try again.';
+  // Log 500 errors for audit trail
+  if (status >= 500) {
+    console.error(`[ServerError] ${status} ${code || 'INTERNAL_ERROR'}: ${error}`);
+    try {
+      db.prepare('INSERT INTO audit_entries (id, conversation_id, message_id, model, tokens_prompt, tokens_completion, tokens_total, cost, tools_used, duration_ms, timestamp, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(randomUUID(), '', '', 'server-error', 0, 0, 0, 0, JSON.stringify([{ error: error?.slice?.(0, 500) || error, code, status }]), 0, Date.now(), '');
+    } catch {}
+  }
   return res.status(status).json(body);
 }
+
+/**
+ * Safe JSON parse — returns fallback on failure instead of throwing.
+ * Use for parsing user-provided JSON, DB columns, request bodies, etc.
+ */
+function safeJsonParse(str, fallback = null) {
+  if (!str || typeof str !== 'string') return fallback;
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+// ============================================================================
+// DEFAULT MODEL CONFIGURATION — override via environment variables
+// ============================================================================
+
+const DEFAULT_MODELS = {
+  claudeSonnet: process.env.DEFAULT_CLAUDE_MODEL || 'claude-sonnet-4-5-20250929',
+  claudeOpus: process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-6',
+  claudeHaiku: process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
+  gpt4o: process.env.GPT4O_MODEL || 'gpt-4o',
+  gpt4oMini: process.env.GPT4O_MINI_MODEL || 'gpt-4o-mini',
+  gpt4Turbo: process.env.GPT4_TURBO_MODEL || 'gpt-4-turbo',
+  o1Preview: process.env.O1_PREVIEW_MODEL || 'o1-preview',
+};
 
 // ============================================================================
 // PLAN TIER LIMITS
@@ -203,57 +297,133 @@ function sendError(res, status, error, code, suggestion) {
 
 const PLAN_LIMITS = {
   free: {
-    messagesPerHour: 10,
-    allowedModels: ['claude-3-5-sonnet-20241022'],
-    maxConversations: 10,
+    messagesPerHour: 25,
+    allowedModels: [DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.gpt4oMini],
+    opusCreditsPerMonth: 0,
+    maxConversations: 50,
     tbwoEnabled: false,
+    tbwoParallel: false,
     directModeEnabled: true,
-    codeLabEnabled: false,
-    imageStudioEnabled: false,
-    memoryLayers: 2,
+    codeLabEnabled: true,
+    imageStudioEnabled: true,
+    memoryLayers: 3,
+    memoryRetentionDays: 30,
     selfLearning: false,
-    maxTokens: 4096,
+    maxTokens: 16384,
     computerUse: false,
-    maxToolCallsPerMessage: 3,
+    maxToolCallsPerMessage: 10,
     thinkingBudgetCap: 5000,
+    tbwoRunsPerMonth: 0,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: false,
+    vectorizeEnabled: false,
+    maxCfImages: 5,
+    maxCfVideos: 0,
   },
   pro: {
     messagesPerHour: -1,
-    allowedModels: ['claude-opus-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+    allowedModels: [DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.claudeHaiku, DEFAULT_MODELS.gpt4o, DEFAULT_MODELS.gpt4oMini, DEFAULT_MODELS.gpt4Turbo],
+    opusCreditsPerMonth: 100,
     maxConversations: -1,
     tbwoEnabled: true,
+    tbwoParallel: false,
     directModeEnabled: true,
     codeLabEnabled: true,
     imageStudioEnabled: true,
     memoryLayers: 8,
+    memoryRetentionDays: -1,
     selfLearning: true,
-    maxTokens: 8192,
+    maxTokens: 32768,
     computerUse: true,
     maxToolCallsPerMessage: -1,
     thinkingBudgetCap: 50000,
+    tbwoRunsPerMonth: 50,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: true,
+    vectorizeEnabled: true,
+    maxCfImages: 50,
+    maxCfVideos: 20,
   },
-  enterprise: {
+  elite: {
     messagesPerHour: -1,
-    allowedModels: ['claude-opus-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-preview'],
+    allowedModels: [DEFAULT_MODELS.claudeOpus, DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.claudeHaiku, DEFAULT_MODELS.gpt4o, DEFAULT_MODELS.gpt4oMini, DEFAULT_MODELS.gpt4Turbo, DEFAULT_MODELS.o1Preview],
+    opusCreditsPerMonth: -1,
     maxConversations: -1,
     tbwoEnabled: true,
+    tbwoParallel: true,
     directModeEnabled: true,
     codeLabEnabled: true,
     imageStudioEnabled: true,
     memoryLayers: 8,
+    memoryRetentionDays: -1,
     selfLearning: true,
-    maxTokens: 16384,
+    maxTokens: 65536,
     computerUse: true,
     customRouting: true,
     maxToolCallsPerMessage: -1,
     thinkingBudgetCap: 100000,
+    tbwoRunsPerMonth: -1,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: true,
+    vectorizeEnabled: true,
+    maxCfImages: -1,
+    maxCfVideos: -1,
+  },
+  // Admin virtual tier — every capability maxed out
+  admin: {
+    messagesPerHour: -1,
+    allowedModels: [DEFAULT_MODELS.claudeOpus, DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.claudeHaiku, DEFAULT_MODELS.gpt4o, DEFAULT_MODELS.gpt4oMini, DEFAULT_MODELS.gpt4Turbo, DEFAULT_MODELS.o1Preview],
+    opusCreditsPerMonth: -1,
+    maxConversations: -1,
+    tbwoEnabled: true,
+    tbwoParallel: true,
+    directModeEnabled: true,
+    codeLabEnabled: true,
+    imageStudioEnabled: true,
+    memoryLayers: 8,
+    memoryRetentionDays: -1,
+    selfLearning: true,
+    maxTokens: 65536,
+    computerUse: true,
+    customRouting: true,
+    maxToolCallsPerMessage: -1,
+    thinkingBudgetCap: 100000,
+    tbwoRunsPerMonth: -1,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: true,
+    vectorizeEnabled: true,
+    maxCfImages: -1,
+    maxCfVideos: -1,
   },
 };
+
+// ============================================================================
+// QUOTA HELPERS — monthly limit tracking via user_quotas table
+// ============================================================================
+
+function getCurrentPeriod() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getQuotaCount(userId, quotaType) {
+  const row = stmts.getQuota.get(userId, quotaType, getCurrentPeriod());
+  return row ? row.count : 0;
+}
+
+function incrementQuota(userId, quotaType) {
+  stmts.incrementQuota.run(userId, quotaType, getCurrentPeriod());
+}
 
 function checkPlanLimits(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
 
-  const plan = req.user.plan || 'free';
+  // Admin users get admin-level access (every ability maxed out)
+  const plan = req.user.isAdmin ? 'admin' : (req.user.plan || 'free');
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
   const model = req.body.model;
 
@@ -264,6 +434,19 @@ function checkPlanLimits(req, res, next) {
       allowedModels: limits.allowedModels,
       plan,
     });
+  }
+
+  // Check Opus monthly credits
+  if (model && model.includes('opus') && limits.opusCreditsPerMonth > 0) {
+    const used = getQuotaCount(req.user.id, 'opus_messages');
+    if (used >= limits.opusCreditsPerMonth) {
+      return res.status(429).json({
+        error: 'Monthly Opus credits exhausted. Switch to Sonnet or upgrade to Elite for unlimited Opus.',
+        used,
+        limit: limits.opusCreditsPerMonth,
+        code: 'OPUS_QUOTA_EXCEEDED',
+      });
+    }
   }
 
   // Check rate limit (messages per hour)
@@ -283,6 +466,29 @@ function checkPlanLimits(req, res, next) {
       }
     } catch {
       // If user_id column doesn't exist yet, skip rate limiting
+    }
+  }
+
+  // Daily message cap (safety net)
+  const DAILY_CAPS = { free: 100, pro: 1000, elite: -1, admin: -1 };
+  const dailyCap = DAILY_CAPS[plan] ?? 100;
+  if (dailyCap > 0) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    try {
+      const row = db.prepare(
+        'SELECT COUNT(*) as count FROM messages WHERE timestamp > ? AND conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)'
+      ).get(todayStart.getTime(), req.user.id);
+      if (row && row.count >= dailyCap) {
+        return res.status(429).json({
+          error: 'Daily message limit reached. Resets at midnight.',
+          limit: dailyCap,
+          plan,
+          code: 'DAILY_LIMIT_EXCEEDED',
+        });
+      }
+    } catch {
+      // Skip if query fails
     }
   }
 
@@ -318,7 +524,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New Chat',
     mode TEXT DEFAULT 'regular',
-    model TEXT DEFAULT 'claude-sonnet-4-20250514',
+    model TEXT DEFAULT 'claude-sonnet-4-5-20250929',
     provider TEXT DEFAULT 'anthropic',
     is_favorite INTEGER DEFAULT 0,
     is_archived INTEGER DEFAULT 0,
@@ -450,7 +656,7 @@ db.exec(`
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT DEFAULT '',
-    plan TEXT DEFAULT 'free' CHECK(plan IN ('free','pro','enterprise')),
+    plan TEXT DEFAULT 'free' CHECK(plan IN ('free','pro','elite')),
     email_verified INTEGER DEFAULT 0,
     verification_code TEXT,
     verification_expires INTEGER,
@@ -467,12 +673,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_images_created ON images(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
-  -- Performance indexes for user-scoped queries
-  CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp ON messages(user_id, timestamp DESC);
-  CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_artifacts_user ON artifacts(user_id);
-  CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_entries(user_id, timestamp DESC);
-  CREATE INDEX IF NOT EXISTS idx_memory_user_layer ON memory_entries(user_id, layer);
+  -- Performance indexes for user-scoped queries (user_id added by migration below)
+  -- These are created after the ALTER TABLE migration runs
 
   -- Self-Model: Execution Outcomes
   CREATE TABLE IF NOT EXISTS execution_outcomes (
@@ -563,6 +765,56 @@ for (const table of userIdTables) {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`); } catch { /* column already exists */ }
 }
 
+// Add project_id columns to root entities (safe — SQLite ignores if already exists)
+const projectIdTables = ['conversations', 'tbwo_orders', 'memory_entries'];
+for (const table of projectIdTables) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN project_id TEXT DEFAULT 'default'`); } catch { /* column already exists */ }
+}
+
+// Feature 6: Per-model success rate tracking table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS model_success_rates (
+    model TEXT PRIMARY KEY,
+    success_count INTEGER DEFAULT 0,
+    failure_count INTEGER DEFAULT 0,
+    avg_duration REAL DEFAULT 0,
+    updated_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+`);
+
+// Feature 10: Add execution_state column to tbwo_orders for resumable execution
+try { db.exec('ALTER TABLE tbwo_orders ADD COLUMN execution_state TEXT'); } catch { /* column already exists */ }
+
+// Create projects table (ownership-validated)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT 'Default Project',
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+    UNIQUE(id, user_id)
+  );
+`);
+
+// Seed default project for local-user
+try {
+  db.exec(`INSERT OR IGNORE INTO projects (id, user_id, name) VALUES ('default', 'local-user', 'Default Project')`);
+} catch { /* already exists */ }
+
+// Create user-scoped indexes (now that user_id columns exist)
+try {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp ON messages(user_id, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_user ON artifacts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_entries(user_id, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_user_layer ON memory_entries(user_id, layer);
+    CREATE INDEX IF NOT EXISTS idx_conv_user_project ON conversations(user_id, project_id);
+    CREATE INDEX IF NOT EXISTS idx_tbwo_user_project ON tbwo_orders(user_id, project_id);
+    CREATE INDEX IF NOT EXISTS idx_mem_user_project ON memory_entries(user_id, project_id);
+  `);
+} catch { /* indexes may already exist */ }
+
 // Per-user settings table (composite PK so each user has their own settings)
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_settings (
@@ -639,6 +891,117 @@ db.exec(`
     top_model TEXT,
     top_mode TEXT
   );
+
+  -- Sites (Deploy + Dashboard v1)
+  CREATE TABLE IF NOT EXISTS sites (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    project_id TEXT DEFAULT 'default',
+    name TEXT NOT NULL,
+    tbwo_run_id TEXT,
+    status TEXT DEFAULT 'draft',
+    cloudflare_project_name TEXT,
+    domain TEXT,
+    manifest TEXT,
+    storage_path TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+    updated_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_sites_user ON sites(user_id);
+
+  CREATE TABLE IF NOT EXISTS deployments (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    cloudflare_project_name TEXT,
+    cloudflare_deployment_id TEXT,
+    url TEXT,
+    status TEXT DEFAULT 'queued',
+    build_log TEXT,
+    error TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_deployments_site ON deployments(site_id, user_id);
+
+  CREATE TABLE IF NOT EXISTS site_patches (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    change_request TEXT NOT NULL,
+    plan TEXT,
+    status TEXT DEFAULT 'planning',
+    apply_result TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+    resolved_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_patches_site ON site_patches(site_id, user_id);
+
+  -- Site versions: track each R2 deployment version
+  CREATE TABLE IF NOT EXISTS site_versions (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    file_count INTEGER DEFAULT 0,
+    total_bytes INTEGER DEFAULT 0,
+    deployment_id TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+    UNIQUE(site_id, version)
+  );
+  CREATE INDEX IF NOT EXISTS idx_site_versions_site ON site_versions(site_id, user_id);
+
+  -- CF Images: user-uploaded Cloudflare Images records
+  CREATE TABLE IF NOT EXISTS cf_images (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    cf_image_id TEXT NOT NULL,
+    filename TEXT,
+    url TEXT,
+    variants TEXT,
+    metadata TEXT,
+    site_id TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cf_images_user ON cf_images(user_id);
+
+  -- CF Videos: Cloudflare Stream video records
+  CREATE TABLE IF NOT EXISTS cf_videos (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    cf_uid TEXT NOT NULL,
+    status TEXT DEFAULT 'uploading',
+    thumbnail TEXT,
+    preview TEXT,
+    duration REAL,
+    metadata TEXT,
+    site_id TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cf_videos_user ON cf_videos(user_id);
+
+  -- Thread chunks: Vectorize-backed thread ingestion
+  CREATE TABLE IF NOT EXISTS thread_chunks (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    chunk_index INTEGER,
+    content TEXT,
+    summary TEXT,
+    token_count INTEGER,
+    vector_id TEXT,
+    metadata TEXT,
+    created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+  );
+  CREATE INDEX IF NOT EXISTS idx_thread_chunks_thread ON thread_chunks(thread_id, user_id);
+
+  -- User quotas: fast monthly limit tracking
+  CREATE TABLE IF NOT EXISTS user_quotas (
+    user_id TEXT NOT NULL,
+    quota_type TEXT NOT NULL,
+    period TEXT NOT NULL,
+    count INTEGER DEFAULT 0,
+    PRIMARY KEY (user_id, quota_type, period)
+  );
 `);
 
 console.log('[DB] SQLite database initialized at', dbPath);
@@ -703,7 +1066,7 @@ const stmts = {
   insertTBWO: db.prepare(`INSERT INTO tbwo_orders (id,type,status,objective,time_budget_total,quality_target,scope,plan,pods,active_pods,artifacts,checkpoints,authority_level,progress,receipts,chat_conversation_id,started_at,completed_at,metadata,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
   getTBWO: db.prepare('SELECT * FROM tbwo_orders WHERE id = ? AND user_id = ?'),
   listTBWOs: db.prepare('SELECT * FROM tbwo_orders WHERE user_id=? ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
-  updateTBWO: db.prepare(`UPDATE tbwo_orders SET type=?,status=?,objective=?,time_budget_total=?,quality_target=?,scope=?,plan=?,pods=?,active_pods=?,artifacts=?,checkpoints=?,authority_level=?,progress=?,receipts=?,chat_conversation_id=?,started_at=?,completed_at=?,metadata=?,updated_at=? WHERE id=? AND user_id=?`),
+  updateTBWO: db.prepare(`UPDATE tbwo_orders SET type=?,status=?,objective=?,time_budget_total=?,quality_target=?,scope=?,plan=?,pods=?,active_pods=?,artifacts=?,checkpoints=?,authority_level=?,progress=?,receipts=?,chat_conversation_id=?,started_at=?,completed_at=?,metadata=?,execution_state=?,updated_at=? WHERE id=? AND user_id=?`),
   deleteTBWO: db.prepare('DELETE FROM tbwo_orders WHERE id = ? AND user_id = ?'),
 
   // Artifacts
@@ -734,6 +1097,23 @@ const stmts = {
   listImages: db.prepare('SELECT * FROM images WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
   deleteImage: db.prepare('DELETE FROM images WHERE id = ? AND user_id = ?'),
 
+  // Sites
+  insertSite: db.prepare(`INSERT INTO sites (id,user_id,project_id,name,tbwo_run_id,status,cloudflare_project_name,domain,manifest,storage_path,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+  getSite: db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?'),
+  listSites: db.prepare('SELECT * FROM sites WHERE user_id=? ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
+  updateSite: db.prepare('UPDATE sites SET name=?,status=?,cloudflare_project_name=?,domain=?,manifest=?,updated_at=? WHERE id=? AND user_id=?'),
+
+  // Deployments
+  insertDeployment: db.prepare(`INSERT INTO deployments (id,site_id,user_id,cloudflare_project_name,cloudflare_deployment_id,url,status,build_log,error,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+  listDeployments: db.prepare('SELECT * FROM deployments WHERE site_id=? AND user_id=? ORDER BY created_at DESC LIMIT ?'),
+  updateDeploymentStatus: db.prepare('UPDATE deployments SET status=?,cloudflare_deployment_id=?,url=?,build_log=?,error=? WHERE id=? AND user_id=?'),
+
+  // Site Patches
+  insertPatch: db.prepare(`INSERT INTO site_patches (id,site_id,user_id,change_request,plan,status,created_at) VALUES (?,?,?,?,?,?,?)`),
+  getPatch: db.prepare('SELECT * FROM site_patches WHERE id = ? AND user_id = ?'),
+  listPatches: db.prepare('SELECT * FROM site_patches WHERE site_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT ?'),
+  updatePatch: db.prepare('UPDATE site_patches SET plan=?,status=?,apply_result=?,resolved_at=? WHERE id=? AND user_id=?'),
+
   // Self-Model: Execution Outcomes
   insertOutcome: db.prepare(`INSERT INTO execution_outcomes (id,tbwo_id,objective,type,time_budget,plan_confidence,phases_completed,phases_failed,artifacts_count,user_edits_after,quality_score,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
   listOutcomes: db.prepare('SELECT * FROM execution_outcomes WHERE user_id=? ORDER BY timestamp DESC LIMIT ?'),
@@ -749,6 +1129,16 @@ const stmts = {
       avg_duration = (tool_reliability.avg_duration * (tool_reliability.success_count + tool_reliability.failure_count) + excluded.avg_duration) / (tool_reliability.success_count + tool_reliability.failure_count + 1),
       common_errors = CASE WHEN excluded.last_failure_reason != '' THEN excluded.common_errors ELSE tool_reliability.common_errors END,
       last_failure_reason = CASE WHEN excluded.last_failure_reason != '' THEN excluded.last_failure_reason ELSE tool_reliability.last_failure_reason END`),
+
+  // Self-Model: Model Success Rates (Feature 6 — adaptive routing)
+  getModelSuccessRates: db.prepare('SELECT model, success_count, failure_count, (success_count + failure_count) as total_calls, avg_duration FROM model_success_rates WHERE model != \'unknown\' ORDER BY total_calls DESC'),
+  upsertModelSuccessRate: db.prepare(`INSERT INTO model_success_rates (model, success_count, failure_count, avg_duration, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(model) DO UPDATE SET
+      success_count = model_success_rates.success_count + excluded.success_count,
+      failure_count = model_success_rates.failure_count + excluded.failure_count,
+      avg_duration = (model_success_rates.avg_duration * (model_success_rates.success_count + model_success_rates.failure_count) + excluded.avg_duration) / (model_success_rates.success_count + model_success_rates.failure_count + 1),
+      updated_at = excluded.updated_at`),
 
   // Self-Model: User Corrections
   insertCorrection: db.prepare(`INSERT INTO user_corrections (id, original_value, corrected_value, category, correction_count, last_corrected, user_id) VALUES (?,?,?,?,1,?,?)`),
@@ -773,6 +1163,29 @@ const stmts = {
   pruneExpiredLayers: db.prepare('DELETE FROM memory_layers WHERE user_id=? AND expires_at IS NOT NULL AND expires_at < ?'),
   deleteLayerMemory: db.prepare('DELETE FROM memory_layers WHERE id = ? AND user_id = ?'),
 
+  // Site Versions
+  insertSiteVersion: db.prepare(`INSERT INTO site_versions (id,site_id,user_id,version,file_count,total_bytes,deployment_id,created_at) VALUES (?,?,?,?,?,?,?,?)`),
+  listSiteVersions: db.prepare('SELECT * FROM site_versions WHERE site_id=? AND user_id=? ORDER BY version DESC LIMIT ?'),
+  getLatestVersion: db.prepare('SELECT * FROM site_versions WHERE site_id=? AND user_id=? ORDER BY version DESC LIMIT 1'),
+
+  // CF Images
+  insertCfImage: db.prepare(`INSERT INTO cf_images (id,user_id,cf_image_id,filename,url,variants,metadata,site_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)`),
+  listCfImages: db.prepare('SELECT * FROM cf_images WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+  getCfImage: db.prepare('SELECT * FROM cf_images WHERE id=? AND user_id=?'),
+  deleteCfImage: db.prepare('DELETE FROM cf_images WHERE id=? AND user_id=?'),
+
+  // CF Videos
+  insertCfVideo: db.prepare(`INSERT INTO cf_videos (id,user_id,cf_uid,status,thumbnail,preview,duration,metadata,site_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+  listCfVideos: db.prepare('SELECT * FROM cf_videos WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+  getCfVideo: db.prepare('SELECT * FROM cf_videos WHERE id=? AND user_id=?'),
+  updateCfVideo: db.prepare('UPDATE cf_videos SET status=?,thumbnail=?,preview=?,duration=? WHERE id=? AND user_id=?'),
+  deleteCfVideo: db.prepare('DELETE FROM cf_videos WHERE id=? AND user_id=?'),
+
+  // Thread Chunks
+  insertThreadChunk: db.prepare(`INSERT INTO thread_chunks (id,thread_id,user_id,chunk_index,content,summary,token_count,vector_id,metadata,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+  deleteThreadChunks: db.prepare('DELETE FROM thread_chunks WHERE thread_id=? AND user_id=?'),
+  listUserThreads: db.prepare('SELECT thread_id, MIN(created_at) as created_at, COUNT(*) as chunk_count, SUM(token_count) as total_tokens FROM thread_chunks WHERE user_id=? GROUP BY thread_id ORDER BY MIN(created_at) DESC LIMIT ?'),
+
   // Users (no user_id filtering — these ARE the user table)
   insertUser: db.prepare(`INSERT INTO users (id,email,password_hash,display_name,plan,is_admin,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
@@ -780,6 +1193,10 @@ const stmts = {
   updateUser: db.prepare(`UPDATE users SET email=?,display_name=?,plan=?,updated_at=? WHERE id=?`),
   updateUserPassword: db.prepare(`UPDATE users SET password_hash=?,updated_at=? WHERE id=?`),
   countUsers: db.prepare('SELECT COUNT(*) as count FROM users'),
+
+  // User Quotas
+  getQuota: db.prepare('SELECT count FROM user_quotas WHERE user_id=? AND quota_type=? AND period=?'),
+  incrementQuota: db.prepare(`INSERT INTO user_quotas (user_id, quota_type, period, count) VALUES (?, ?, ?, 1) ON CONFLICT(user_id, quota_type, period) DO UPDATE SET count = count + 1`),
 };
 
 // ============================================================================
@@ -934,7 +1351,7 @@ app.post('/api/auth/verify', verifyLimiter, async (req, res) => {
 });
 
 // Resend verification code
-app.post('/api/auth/resend-code', async (req, res) => {
+app.post('/api/auth/resend-code', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
@@ -1034,26 +1451,77 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/auth/refresh — Issue a new JWT, revoking the old one
+app.post('/api/auth/refresh', requireAuth, async (req, res) => {
+  try {
+    const oldToken = req.headers.authorization?.replace('Bearer ', '');
+    const user = stmts.getUserById.get(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const newToken = jwt.sign(
+      { id: user.id, email: user.email, plan: user.plan, isAdmin: !!user.is_admin },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    // Revoke the old token
+    if (oldToken) revokedTokens.add(oldToken);
+
+    res.json({
+      success: true,
+      token: newToken,
+      user: { id: user.id, email: user.email, displayName: user.display_name, plan: user.plan, isAdmin: !!user.is_admin, emailVerified: !!user.email_verified },
+    });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/auth/logout — Revoke the current token
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) revokedTokens.add(token);
+  res.json({ success: true });
+});
+
 app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
   const users = db.prepare('SELECT id, email, display_name, plan, is_admin, created_at FROM users').all();
   res.json({ success: true, users });
 });
 
-// One-time bootstrap: promote first user to admin+pro (localhost-only, only works if no admins exist)
+// One-time bootstrap: promote first user to admin+pro
+// Requires ALIN_BOOTSTRAP_TOKEN env var OR localhost-only access
 app.post('/api/admin/bootstrap', (req, res) => {
   try {
-    // Security: restrict to localhost requests only
+    // Security: require either a setup token or localhost access
+    const bootstrapToken = process.env.ALIN_BOOTSTRAP_TOKEN;
     const clientIp = req.ip || req.connection?.remoteAddress;
-    if (clientIp !== '127.0.0.1' && clientIp !== '::1' && clientIp !== '::ffff:127.0.0.1') {
-      return res.status(403).json({ error: 'Bootstrap only allowed from localhost', code: 'LOCALHOST_ONLY' });
+    const isLocalhost = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+
+    if (bootstrapToken) {
+      // Token-based auth: works from any IP (safer for proxied setups)
+      const providedToken = req.headers['x-bootstrap-token'] || req.body.token;
+      if (providedToken !== bootstrapToken) {
+        return res.status(403).json({ error: 'Invalid bootstrap token', code: 'INVALID_TOKEN' });
+      }
+    } else if (!isLocalhost) {
+      // Fallback to localhost-only if no token configured
+      return res.status(403).json({ error: 'Bootstrap only allowed from localhost (set ALIN_BOOTSTRAP_TOKEN for remote access)', code: 'LOCALHOST_ONLY' });
     }
-    const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
-    if (adminExists) return res.status(403).json({ error: 'Admin already exists' });
-    const firstUser = db.prepare('SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1').get();
-    if (!firstUser) return res.status(404).json({ error: 'No users found' });
-    db.prepare('UPDATE users SET plan = ?, is_admin = 1, email_verified = 1 WHERE id = ?').run('pro', firstUser.id);
-    console.log(`[Admin] Bootstrapped admin: ${firstUser.email}`);
-    res.json({ success: true, promoted: firstUser.email, plan: 'pro', isAdmin: true });
+
+    // Use a transaction to prevent race conditions between check and update
+    const bootstrapTx = db.transaction(() => {
+      const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
+      if (adminExists) return { error: 'Admin already exists' };
+      const firstUser = db.prepare('SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1').get();
+      if (!firstUser) return { error: 'No users found', status: 404 };
+      db.prepare('UPDATE users SET plan = ?, is_admin = 1, email_verified = 1 WHERE id = ?').run('pro', firstUser.id);
+      return { success: true, email: firstUser.email };
+    });
+    const result = bootstrapTx();
+    if (result.error) return res.status(result.status || 403).json({ error: result.error });
+    console.log(`[Admin] Bootstrapped admin: ${result.email}`);
+    res.json({ success: true, promoted: result.email, plan: 'pro', isAdmin: true });
   } catch (error) { sendError(res, 500, error.message); }
 });
 
@@ -1181,7 +1649,7 @@ app.get('/api/admin/users/search', requireAuth, requireAdmin, (req, res) => {
 app.patch('/api/admin/users/:id/plan', requireAuth, requireAdmin, (req, res) => {
   try {
     const { plan } = req.body;
-    if (!['free', 'pro', 'enterprise'].includes(plan)) {
+    if (!['free', 'pro', 'elite'].includes(plan)) {
       return res.status(400).json({ error: 'Invalid plan' });
     }
     db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, req.params.id);
@@ -1235,39 +1703,6 @@ app.get('/api/admin/activity', requireAuth, requireAdmin, (req, res) => {
 // TELEMETRY ENDPOINTS
 // ============================================================================
 
-// Log a telemetry event
-app.post('/api/telemetry/event', requireAuth, (req, res) => {
-  try {
-    const { eventType, eventData, sessionId } = req.body;
-    db.prepare(`
-      INSERT INTO telemetry_events (user_id, session_id, event_type, event_data)
-      VALUES (?, ?, ?, ?)
-    `).run(req.user.id, sessionId || null, eventType, JSON.stringify(eventData || {}));
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Log conversation stats
-app.post('/api/telemetry/conversation', requireAuth, (req, res) => {
-  try {
-    const { conversationId, model, mode, messageCount, toolCalls,
-            inputTokens, outputTokens, duration } = req.body;
-    db.prepare(`
-      INSERT INTO telemetry_conversations
-        (user_id, conversation_id, model_used, mode, message_count,
-         tool_calls_count, total_input_tokens, total_output_tokens, duration_seconds)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, conversationId, model, mode || 'regular',
-           messageCount || 0, toolCalls || 0, inputTokens || 0,
-           outputTokens || 0, duration || 0);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // Log feedback (thumbs up/down, corrections)
 app.post('/api/telemetry/feedback', requireAuth, (req, res) => {
   try {
@@ -1280,22 +1715,6 @@ app.post('/api/telemetry/feedback', requireAuth, (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(req.user.id, conversationId, messageId, feedbackType,
            originalResponse || null, correctedResponse || null);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Log tool usage
-app.post('/api/telemetry/tool', requireAuth, (req, res) => {
-  try {
-    const { conversationId, toolName, success, durationMs, errorMessage } = req.body;
-    db.prepare(`
-      INSERT INTO telemetry_tool_usage
-        (user_id, conversation_id, tool_name, success, duration_ms, error_message)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, conversationId, toolName, success ? 1 : 0,
-           durationMs || 0, errorMessage || null);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1327,7 +1746,7 @@ app.post('/api/conversations', requireAuth, (req, res) => {
     const { id: clientId, title, mode, model, provider } = req.body;
     const id = clientId || randomUUID();
     const now = Date.now();
-    stmts.insertConversation.run(id, title || 'New Chat', mode || 'regular', model || 'claude-sonnet-4-20250514', provider || 'anthropic', '{}', now, now, userId);
+    stmts.insertConversation.run(id, title || 'New Chat', mode || 'regular', model || DEFAULT_MODELS.claudeSonnet, provider || 'anthropic', '{}', now, now, userId);
     console.log(`[DB] Created conversation: ${id} for user: ${userId}`);
     res.json({ success: true, id, createdAt: now });
   } catch (error) { sendError(res, 500, error.message); }
@@ -1406,6 +1825,11 @@ app.delete('/api/messages/:id', requireAuth, (req, res) => {
 
 function setupSSE(res) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  // Keep-alive heartbeat every 15s to prevent proxy/LB timeouts
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); }
+  }, 15_000);
+  res.on('close', () => clearInterval(heartbeat));
 }
 function sendSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`);
@@ -1420,8 +1844,8 @@ async function streamAnthropicToSSE(res, { model, messages, system, tools, think
   if (!apiKey) { sendSSE(res, 'error', { error: 'ANTHROPIC_API_KEY not set in server .env' }); return res.end(); }
 
   const body = {
-    model: model || 'claude-sonnet-4-5-20250929',
-    max_tokens: maxTokens || 8192,
+    model: model || DEFAULT_MODELS.claudeSonnet,
+    max_tokens: maxTokens || 16384,
     stream: true,
     messages,
   };
@@ -1430,7 +1854,7 @@ async function streamAnthropicToSSE(res, { model, messages, system, tools, think
   if (thinking) {
     body.thinking = { type: 'enabled', budget_tokens: thinkingBudget || 10000 };
     if (body.max_tokens <= (thinkingBudget || 10000)) {
-      body.max_tokens = (thinkingBudget || 10000) + 8192;
+      body.max_tokens = (thinkingBudget || 10000) + 16384;
     }
   } else if (temperature !== undefined) {
     body.temperature = temperature;
@@ -1454,7 +1878,14 @@ async function streamAnthropicToSSE(res, { model, messages, system, tools, think
 
   if (!response.ok) {
     const t = await response.text();
-    sendSSE(res, 'error', { error: `Anthropic ${response.status}`, details: t });
+    console.error(`[Anthropic] ${response.status} error:`, t.slice(0, 500));
+    // Parse Anthropic error to extract the actual message
+    let errorMsg = `Anthropic ${response.status}`;
+    try {
+      const errBody = JSON.parse(t);
+      if (errBody.error?.message) errorMsg = errBody.error.message;
+    } catch {}
+    sendSSE(res, 'error', { error: errorMsg, details: t });
     return res.end();
   }
 
@@ -1519,32 +1950,121 @@ async function streamAnthropicToSSE(res, { model, messages, system, tools, think
   res.end();
 }
 
+// Convert Claude-format tools to OpenAI function-calling format
+function convertToolsToOpenAI(tools) {
+  if (!tools || !Array.isArray(tools)) return [];
+  return tools
+    .filter(t => t.name && t.input_schema) // skip non-standard tools (computer_use, text_editor)
+    .map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: t.input_schema || { type: 'object', properties: {} },
+      },
+    }));
+}
+
+// Convert Claude-format messages to OpenAI-format messages
+function convertMessagesToOpenAI(messages, system) {
+  const oaiMessages = [];
+  if (system) oaiMessages.push({ role: 'system', content: system });
+
+  for (const m of messages) {
+    // Handle string content directly
+    if (typeof m.content === 'string') {
+      oaiMessages.push({ role: m.role, content: m.content });
+      continue;
+    }
+    if (!Array.isArray(m.content)) {
+      oaiMessages.push({ role: m.role, content: String(m.content || '') });
+      continue;
+    }
+
+    // Check if this message contains tool_result blocks (= tool response message)
+    const toolResults = m.content.filter(b => b.type === 'tool_result');
+    if (toolResults.length > 0) {
+      // OpenAI expects each tool result as a separate {role:'tool'} message
+      for (const tr of toolResults) {
+        oaiMessages.push({
+          role: 'tool',
+          tool_call_id: tr.tool_use_id || tr.toolUseId || '',
+          content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content || ''),
+        });
+      }
+      continue;
+    }
+
+    // Check if this is an assistant message with tool_use blocks
+    const toolUses = m.content.filter(b => b.type === 'tool_use');
+    const textBlocks = m.content.filter(b => b.type === 'text');
+    const imageBlocks = m.content.filter(b => b.type === 'image' || b.type === 'image_url');
+
+    if (m.role === 'assistant' && toolUses.length > 0) {
+      // OpenAI assistant messages with tool calls
+      const textContent = textBlocks.map(b => b.text).join('') || null;
+      oaiMessages.push({
+        role: 'assistant',
+        content: textContent,
+        tool_calls: toolUses.map((tu, i) => ({
+          id: tu.id || tu.toolUseId || `call_${i}`,
+          type: 'function',
+          function: {
+            name: tu.name || tu.toolName || '',
+            arguments: JSON.stringify(tu.input || tu.toolInput || {}),
+          },
+        })),
+      });
+      continue;
+    }
+
+    // Regular message — convert content blocks
+    const oaiContent = [];
+    for (const b of m.content) {
+      if (b.type === 'text' && b.text) {
+        oaiContent.push({ type: 'text', text: b.text });
+      } else if (b.type === 'image_url') {
+        oaiContent.push(b);
+      } else if (b.type === 'image' && b.source) {
+        // Convert Claude image format to OpenAI image_url format
+        if (b.source.type === 'base64') {
+          oaiContent.push({
+            type: 'image_url',
+            image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` },
+          });
+        } else if (b.source.type === 'url') {
+          oaiContent.push({ type: 'image_url', image_url: { url: b.source.url } });
+        }
+      }
+      // Skip thinking, redacted_thinking, tool_activity — not relevant for OpenAI
+    }
+
+    if (oaiContent.length > 0) {
+      oaiMessages.push({ role: m.role, content: oaiContent.length === 1 && oaiContent[0].type === 'text' ? oaiContent[0].text : oaiContent });
+    } else {
+      oaiMessages.push({ role: m.role, content: '[empty message]' });
+    }
+  }
+
+  return oaiMessages;
+}
+
 async function streamOpenAIToSSE(res, { model, messages, system, tools, maxTokens, temperature }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) { sendSSE(res, 'error', { error: 'OPENAI_API_KEY not set in server .env' }); return res.end(); }
 
-  const oaiMessages = [];
-  if (system) oaiMessages.push({ role: 'system', content: system });
-  for (const m of messages) {
-    oaiMessages.push({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content :
-        m.content.filter(b => b.type === 'text' || b.type === 'image_url').map(b =>
-          b.type === 'text' ? { type: 'text', text: b.text } : b
-        ),
-      ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}),
-      ...(m.tool_call_id ? { tool_call_id: m.tool_call_id } : {}),
-    });
-  }
+  const oaiMessages = convertMessagesToOpenAI(messages, system);
 
   const body = {
-    model: model || 'gpt-4o',
+    model: model || DEFAULT_MODELS.gpt4o,
     stream: true,
     messages: oaiMessages,
     temperature: temperature ?? 0.7,
-    max_tokens: maxTokens || 4096,
+    max_tokens: maxTokens || 16384,
   };
-  if (tools && tools.length > 0) body.tools = tools;
+  // Convert tools from Claude format to OpenAI function-calling format
+  const oaiTools = convertToolsToOpenAI(tools);
+  if (oaiTools.length > 0) body.tools = oaiTools;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -1562,6 +2082,7 @@ async function streamOpenAIToSSE(res, { model, messages, system, tools, maxToken
   const decoder = new TextDecoder();
   let buf = '';
   const toolCalls = {}; // index -> { id, name, arguments }
+  let lastFinishReason = '';
 
   sendSSE(res, 'start', { model, provider: 'openai' });
 
@@ -1590,19 +2111,29 @@ async function streamOpenAIToSSE(res, { model, messages, system, tools, maxToken
             if (tc.function?.arguments) toolCalls[tc.index].arguments += tc.function.arguments;
           }
         }
-        if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
-          // Emit accumulated tool calls
-          for (const idx of Object.keys(toolCalls)) {
-            const tc = toolCalls[idx];
-            let parsedArgs = {};
-            try { parsedArgs = JSON.parse(tc.arguments || '{}'); } catch {}
-            sendSSE(res, 'tool_use', { id: tc.id, name: tc.name, input: parsedArgs });
+        if (choice.finish_reason) {
+          lastFinishReason = choice.finish_reason;
+          if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
+            // Emit accumulated tool calls
+            for (const idx of Object.keys(toolCalls)) {
+              const tc = toolCalls[idx];
+              let parsedArgs = {};
+              try { parsedArgs = JSON.parse(tc.arguments || '{}'); } catch {}
+              sendSSE(res, 'tool_use', { id: tc.id, name: tc.name, input: parsedArgs });
+            }
           }
         }
       } catch {}
     }
   }
-  const stopReason = Object.keys(toolCalls).length > 0 ? 'tool_use' : 'end_turn';
+  let stopReason;
+  if (Object.keys(toolCalls).length > 0) {
+    stopReason = 'tool_use';
+  } else if (lastFinishReason === 'length') {
+    stopReason = 'max_tokens';
+  } else {
+    stopReason = 'end_turn';
+  }
   sendSSE(res, 'done', { model, stopReason });
   res.end();
 }
@@ -1615,7 +2146,33 @@ app.post('/api/chat/stream', requireAuth, checkPlanLimits, async (req, res) => {
 
   try {
     const isAnthropic = provider === 'anthropic' || model?.startsWith('claude');
-    const sysPrompt = system || systemPrompt;
+
+    // Server-side prompt assembly: if frontend sends '[DEPRECATED]' or no system prompt,
+    // assemble from modular prompts. Otherwise use provided system prompt (backward compat).
+    let sysPrompt;
+    if (system && system !== '[DEPRECATED]') {
+      sysPrompt = system;
+    } else if (systemPrompt && systemPrompt !== '[DEPRECATED]') {
+      sysPrompt = systemPrompt;
+    } else {
+      const mode = req.body.mode || 'regular';
+      sysPrompt = assemblePrompt(mode, { additionalContext: req.body.additionalContext || '' });
+    }
+
+    // Mode detection hint (only in chat/regular mode)
+    if ((!req.body.mode || req.body.mode === 'regular') && messages?.length > 0) {
+      const lastUser = [...messages].reverse().find(m => m.role === 'user');
+      const lastText = typeof lastUser?.content === 'string' ? lastUser.content
+        : Array.isArray(lastUser?.content) ? lastUser.content.filter(b => b.type === 'text').map(b => b.text).join('') : '';
+      if (lastText) {
+        const recentTexts = messages.filter(m => m.role === 'user').slice(-5)
+          .map(m => typeof m.content === 'string' ? m.content : '');
+        const hint = detectMode(lastText, 'chat', recentTexts);
+        if (hint.shouldSwitch) {
+          sendSSE(res, 'mode_hint', { suggestedMode: hint.mode, confidence: hint.confidence, reason: hint.reason });
+        }
+      }
+    }
 
     if (isAnthropic) {
       await streamAnthropicToSSE(res, { model, messages, system: sysPrompt, tools, thinking, thinkingBudget, maxTokens, temperature });
@@ -1638,7 +2195,17 @@ app.post('/api/chat/continue', requireAuth, checkPlanLimits, async (req, res) =>
 
   try {
     const isAnthropic = provider === 'anthropic' || model?.startsWith('claude');
-    const sysPrompt = system || systemPrompt;
+
+    // Server-side prompt assembly (same logic as /api/chat/stream, no mode detection on continuations)
+    let sysPrompt;
+    if (system && system !== '[DEPRECATED]') {
+      sysPrompt = system;
+    } else if (systemPrompt && systemPrompt !== '[DEPRECATED]') {
+      sysPrompt = systemPrompt;
+    } else {
+      const mode = req.body.mode || 'regular';
+      sysPrompt = assemblePrompt(mode, { additionalContext: req.body.additionalContext || '' });
+    }
 
     if (isAnthropic) {
       await streamAnthropicToSSE(res, { model, messages, system: sysPrompt, tools, thinking, thinkingBudget, maxTokens, temperature });
@@ -1733,6 +2300,16 @@ app.get('/api/tbwo', requireAuth, (req, res) => {
 app.post('/api/tbwo', requireAuth, (req, res) => {
   try {
     const userId = req.user.id;
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (!limits.tbwoEnabled) {
+      return res.status(403).json({ error: 'TBWO is not available on your plan. Upgrade to Pro to access autonomous workflows.', code: 'TBWO_DISABLED' });
+    }
+    if (limits.tbwoRunsPerMonth > 0) {
+      const used = getQuotaCount(userId, 'tbwo_runs');
+      if (used >= limits.tbwoRunsPerMonth) {
+        return res.status(429).json({ error: 'Monthly TBWO run limit reached', used, limit: limits.tbwoRunsPerMonth, code: 'TBWO_QUOTA_EXCEEDED' });
+      }
+    }
     const b = req.body;
     const id = b.id || randomUUID();
     const now = Date.now();
@@ -1747,6 +2324,7 @@ app.post('/api/tbwo', requireAuth, (req, res) => {
       b.chatConversationId || null, b.startedAt || null, b.completedAt || null,
       JSON.stringify(b.metadata || {}), b.createdAt || now, b.updatedAt || now, userId
     );
+    incrementQuota(userId, 'tbwo_runs');
     res.json({ success: true, id });
   } catch (error) { sendError(res, 500, error.message); }
 });
@@ -1805,6 +2383,7 @@ app.patch('/api/tbwo/:id', requireAuth, (req, res) => {
       b.chatConversationId ?? e.chat_conversation_id,
       b.startedAt ?? e.started_at, b.completedAt ?? e.completed_at,
       b.metadata ? JSON.stringify(b.metadata) : e.metadata,
+      b.execution_state !== undefined ? (b.execution_state === null ? null : (typeof b.execution_state === 'string' ? b.execution_state : JSON.stringify(b.execution_state))) : (e.execution_state || null),
       now, req.params.id, userId
     );
     res.json({ success: true });
@@ -1936,6 +2515,12 @@ app.post('/api/tbwo/:id/workspace/read', requireAuth, async (req, res) => {
     const content = await fs.readFile(fullPath, 'utf-8');
     res.json({ success: true, content, path: relativePath });
   } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: `File not found: ${req.body.path}` });
+    }
+    if (error.code === 'EISDIR') {
+      return res.status(400).json({ error: `Path is a directory, not a file: ${req.body.path}` });
+    }
     sendError(res, 500, error.message);
   }
 });
@@ -1955,7 +2540,13 @@ app.post('/api/tbwo/:id/workspace/list', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Path traversal detected' });
     }
 
-    const entries = await fs.readdir(fullPath, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await fs.readdir(fullPath, { withFileTypes: true });
+    } catch (e) {
+      if (e.code === 'ENOENT') return res.json({ success: true, files: [] });
+      throw e;
+    }
     const files = entries.map(e => ({
       name: e.name,
       isDirectory: e.isDirectory(),
@@ -2046,6 +2637,1163 @@ app.delete('/api/tbwo/:id/workspace', requireAuth, async (req, res) => {
     sendError(res, 500, error.message);
   }
 });
+
+// ============================================================================
+// WORKSPACE MANIFEST + VALIDATION
+// ============================================================================
+
+// GET /api/tbwo/:id/workspace/manifest — Generate file tree manifest
+app.get('/api/tbwo/:id/workspace/manifest', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    async function buildTree(dirPath, relativeTo) {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const nodes = [];
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        const relPath = path.relative(relativeTo, fullPath).replace(/\\/g, '/');
+        if (entry.isDirectory()) {
+          const children = await buildTree(fullPath, relativeTo);
+          nodes.push({ type: 'directory', name: entry.name, path: relPath, children });
+        } else {
+          const stat = await fs.stat(fullPath);
+          nodes.push({
+            type: 'file',
+            name: entry.name,
+            path: relPath,
+            size: stat.size,
+            downloadUrl: `/api/tbwo/${req.params.id}/workspace/file?path=${encodeURIComponent(relPath)}`,
+          });
+        }
+      }
+      return nodes;
+    }
+
+    const manifest = await buildTree(ws.path, ws.path);
+    const totalFiles = (function countFiles(nodes) {
+      return nodes.reduce((sum, n) => sum + (n.type === 'file' ? 1 : countFiles(n.children || [])), 0);
+    })(manifest);
+    const totalSize = (function sumSize(nodes) {
+      return nodes.reduce((sum, n) => sum + (n.type === 'file' ? (n.size || 0) : sumSize(n.children || [])), 0);
+    })(manifest);
+
+    res.json({ manifest, totalFiles, totalSize });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/tbwo/:id/workspace/validate — Run server-side validation
+app.post('/api/tbwo/:id/workspace/validate', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const { expectedPages = [], approvedClaims = [] } = req.body;
+
+    const pipeline = new SandboxPipeline(req.params.id, req.user.id, {
+      expectedPages,
+      approvedClaims,
+    });
+    pipeline.workspacePath = ws.path;
+
+    const result = await pipeline.validate();
+    res.json(result);
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// ============================================================================
+// SANDBOX PIPELINE ENDPOINTS
+// ============================================================================
+
+// POST /api/tbwo/:id/sandbox/run — Kick off validate→repair→package pipeline
+app.post('/api/tbwo/:id/sandbox/run', requireAuth, async (req, res) => {
+  try {
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (!limits.tbwoEnabled) {
+      return res.status(403).json({ error: 'TBWO is not available on your plan. Upgrade to Pro to access autonomous workflows.', code: 'TBWO_DISABLED' });
+    }
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found. Init workspace first.' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    const { throughStage = 'package', brief, expectedPages, approvedClaims } = req.body;
+
+    const pipeline = new SandboxPipeline(req.params.id, req.user.id, {
+      brief: brief || null,
+      expectedPages: expectedPages || [],
+      approvedClaims: approvedClaims || [],
+    });
+
+    await pipeline.init(ws.path);
+    setPipeline(req.params.id, pipeline);
+
+    // Run pipeline in background
+    res.json({ started: true, stage: 'init' });
+
+    // Non-blocking execution
+    pipeline.run(throughStage).catch(err => {
+      console.error(`[SandboxPipeline] ${req.params.id} failed:`, err.message);
+      pipeline.error = err.message;
+      pipeline.stage = 'failed';
+    });
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// GET /api/tbwo/:id/sandbox/status — Poll pipeline progress
+app.get('/api/tbwo/:id/sandbox/status', requireAuth, async (req, res) => {
+  try {
+    const pipeline = getPipeline(req.params.id);
+    if (!pipeline) {
+      return res.json({ stage: 'none', stageLog: [], artifacts: {}, progress: 0 });
+    }
+    res.json(pipeline.getProgress());
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// POST /api/tbwo/:id/sandbox/deploy — Trigger deploy stage
+app.post('/api/tbwo/:id/sandbox/deploy', requireAuth, async (req, res) => {
+  try {
+    const ws = tbwoWorkspaces.get(req.params.id);
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+    if (ws.userId !== req.user.id) return res.status(403).json({ error: 'Not your workspace' });
+
+    // Use existing deploy infrastructure
+    const { adapter = 'cloudflare' } = req.body;
+
+    if (adapter === 'cloudflare') {
+      const result = await cfDeploy.deploy(ws.path, {
+        projectName: `alin-site-${req.params.id.slice(0, 8)}`,
+      });
+      res.json({ deploymentId: result.id || req.params.id, url: result.url || null, status: 'deployed' });
+    } else {
+      res.json({ deploymentId: req.params.id, url: null, status: 'unsupported_adapter' });
+    }
+  } catch (error) {
+    sendError(res, 500, error.message);
+  }
+});
+
+// ============================================================================
+// SITES + DEPLOY ENDPOINTS (Deploy Dashboard v1)
+// ============================================================================
+
+const cfDeploy = new CloudflarePagesDeploy();
+const cfR2 = new CloudflareR2();
+const cfKV = new CloudflareKV();
+const cfImages = new CloudflareImages();
+const cfStream = new CloudflareStream();
+const cfVectorize = new CloudflareVectorize();
+const SITES_DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'sites');
+
+// Rate limit deploys (max 5 per minute per user, in-memory)
+const deployLimiter = rateLimit({ windowMs: 60_000, max: 5, keyGenerator: (req) => req.user?.id || req.ip });
+const mediaUploadLimiter = rateLimit({ windowMs: 60_000, max: 20, keyGenerator: (req) => req.user?.id || req.ip });
+const threadIngestLimiter = rateLimit({ windowMs: 60_000, max: 10, keyGenerator: (req) => req.user?.id || req.ip });
+
+// --- Create a site from a TBWO run ---
+app.post('/api/sites', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, tbwoRunId, manifest } = req.body;
+    if (!name) return sendError(res, 400, 'name is required');
+
+    const siteId = randomUUID();
+    const now = Date.now();
+    const projectId = req.projectId || 'default';
+
+    // If tbwoRunId provided, copy workspace files to persistent storage
+    let storagePath = null;
+    if (tbwoRunId) {
+      const ws = tbwoWorkspaces.get(tbwoRunId);
+      if (ws && ws.userId === userId) {
+        storagePath = path.join(SITES_DATA_DIR, siteId);
+        await fs.mkdir(storagePath, { recursive: true });
+        await copyDir(ws.path, storagePath);
+      }
+    }
+
+    stmts.insertSite.run(
+      siteId, userId, projectId, name,
+      tbwoRunId || null, 'draft', null, null, manifest || null,
+      storagePath, now, now
+    );
+
+    const site = stmts.getSite.get(siteId, userId);
+    res.json({ success: true, site });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- List user's sites ---
+app.get('/api/sites', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const sites = stmts.listSites.all(req.user.id, limit, offset);
+    res.json({ success: true, sites });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Get single site ---
+app.get('/api/sites/:siteId', requireAuth, (req, res) => {
+  try {
+    const site = stmts.getSite.get(req.params.siteId, req.user.id);
+    if (!site) return sendError(res, 404, 'Site not found');
+    res.json({ success: true, site });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Deploy a site ---
+app.post('/api/sites/:siteId/deploy', requireAuth, deployLimiter, async (req, res) => {
+  try {
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (!limits.sitesEnabled) {
+      return res.status(403).json({ error: 'Site deployment not available on your plan', code: 'SITES_DISABLED' });
+    }
+    const userId = req.user.id;
+    const site = stmts.getSite.get(req.params.siteId, userId);
+    if (!site) return sendError(res, 404, 'Site not found');
+
+    const deployId = randomUUID();
+    const now = Date.now();
+    const cfProjectName = site.cloudflare_project_name ||
+      site.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 58);
+
+    // Create deployment record (queued)
+    stmts.insertDeployment.run(
+      deployId, site.id, userId, cfProjectName,
+      null, null, 'queued', null, null, now
+    );
+
+    // Send immediate response so client can poll
+    res.json({ success: true, deployment: { id: deployId, status: 'queued' } });
+
+    // Create SSE emitter for this deployment
+    const emitter = createDeployEmitter(deployId);
+
+    // Async: build + deploy
+    (async () => {
+      try {
+        // 1. Find/build static output
+        const siteDir = site.storage_path;
+        if (!siteDir) {
+          stmts.updateDeploymentStatus.run('failed', null, null, null, 'No site files found. Create from TBWO first.', deployId, userId);
+          emitDeployEvent(deployId, 'error', { message: 'No site files found. Create from TBWO first.' });
+          emitDeployEvent(deployId, 'done', {});
+          cleanupDeployEmitter(deployId);
+          return;
+        }
+
+        emitDeployEvent(deployId, 'status', { step: 'building', message: 'Building static site...' });
+        stmts.updateDeploymentStatus.run('building', null, null, null, null, deployId, userId);
+        const { outputDir, buildLog } = await buildStaticSite(siteDir, (step, detail) => {
+          emitDeployEvent(deployId, 'status', { step, message: step === 'installing' ? 'Installing dependencies...' : step === 'compiling' ? 'Running build command...' : step === 'built' ? `Build complete. Output: ${detail?.outputDir || 'dist'}/` : step });
+        });
+
+        // 2. Deploy — prefer R2 when configured, fall back to CF Pages
+        stmts.updateDeploymentStatus.run('deploying', null, null, buildLog, null, deployId, userId);
+
+        if (cfR2.isConfigured) {
+          emitDeployEvent(deployId, 'status', { step: 'uploading', message: 'Uploading to R2...' });
+          const latestRow = stmts.getLatestVersion.get(site.id, userId);
+          const nextVersion = latestRow ? latestRow.version + 1 : 1;
+          const r2Result = await cfR2.deploySite(site.id, outputDir, nextVersion);
+          const subdomain = cfProjectName;
+          const liveUrl = `https://${subdomain}.alinai.dev`;
+
+          emitDeployEvent(deployId, 'status', { step: 'registering', message: 'Registering domain...' });
+          if (cfKV.isConfigured) {
+            await cfKV.registerDomain(subdomain, userId, site.id, nextVersion);
+            await cfKV.setActiveVersion(site.id, nextVersion, deployId);
+          }
+
+          stmts.insertSiteVersion.run(
+            randomUUID(), site.id, userId, nextVersion,
+            r2Result.fileCount, r2Result.totalBytes, deployId, Date.now()
+          );
+
+          stmts.updateDeploymentStatus.run('success', deployId, liveUrl, buildLog, null, deployId, userId);
+          stmts.updateSite.run(site.name, 'deployed', cfProjectName, liveUrl, site.manifest, Date.now(), site.id, userId);
+          emitDeployEvent(deployId, 'status', { step: 'success', message: `Live at ${liveUrl}`, url: liveUrl, fileCount: r2Result.fileCount });
+          console.log(`[Deploy] Site ${site.id} deployed to R2 v${nextVersion}: ${liveUrl}`);
+        } else {
+          emitDeployEvent(deployId, 'status', { step: 'uploading', message: 'Deploying to Cloudflare Pages...' });
+          await cfDeploy.ensureProject(cfProjectName);
+          const result = await cfDeploy.deploy(cfProjectName, outputDir);
+          stmts.updateDeploymentStatus.run('success', result.id, result.url, buildLog, null, deployId, userId);
+          stmts.updateSite.run(site.name, 'deployed', cfProjectName, result.url, site.manifest, Date.now(), site.id, userId);
+          emitDeployEvent(deployId, 'status', { step: 'success', message: `Live at ${result.url}`, url: result.url });
+          console.log(`[Deploy] Site ${site.id} deployed via Pages: ${result.url}${result.stub ? ' (stub)' : ''}`);
+        }
+        emitDeployEvent(deployId, 'done', {});
+        cleanupDeployEmitter(deployId);
+      } catch (err) {
+        console.error(`[Deploy] Failed for site ${site.id}:`, err.message);
+        stmts.updateDeploymentStatus.run('failed', null, null, null, err.message, deployId, userId);
+        emitDeployEvent(deployId, 'error', { message: err.message });
+        emitDeployEvent(deployId, 'done', {});
+        cleanupDeployEmitter(deployId);
+      }
+    })();
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- List deployments for a site ---
+app.get('/api/sites/:siteId/deployments', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const deployments = stmts.listDeployments.all(req.params.siteId, req.user.id, limit);
+    res.json({ success: true, deployments });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- SSE Deploy Progress Stream ---
+app.get('/api/sites/:siteId/deploy/:deploymentId/stream', requireAuth, (req, res) => {
+  const { deploymentId } = req.params;
+  setupSSE(res);
+
+  const emitter = deployEvents.get(deploymentId);
+  if (!emitter) {
+    // Deployment already finished or never had an emitter — send current status from DB
+    const userId = req.user.id;
+    const deployments = stmts.listDeployments.all(req.params.siteId, userId, 5);
+    const target = deployments.find(d => d.id === deploymentId);
+    if (target) {
+      sendSSE(res, 'status', { step: target.status, message: target.status === 'success' ? `Live at ${target.url}` : target.status === 'failed' ? target.error : target.status });
+      if (target.status === 'success' || target.status === 'failed') {
+        sendSSE(res, 'done', {});
+      }
+    } else {
+      sendSSE(res, 'error', { message: 'Deployment not found' });
+      sendSSE(res, 'done', {});
+    }
+    return res.end();
+  }
+
+  // Subscribe to live progress events
+  const handler = (data) => {
+    try {
+      sendSSE(res, data.event, data);
+      if (data.event === 'done') {
+        res.end();
+      }
+    } catch {
+      // Client disconnected
+      emitter.removeListener('progress', handler);
+    }
+  };
+
+  emitter.on('progress', handler);
+
+  // Cleanup on client disconnect
+  req.on('close', () => {
+    emitter.removeListener('progress', handler);
+  });
+});
+
+// --- Preview: serve site files statically ---
+app.get('/api/preview/:siteId/*', requireAuth, async (req, res) => {
+  try {
+    const site = stmts.getSite.get(req.params.siteId, req.user.id);
+    if (!site) return sendError(res, 404, 'Site not found');
+    if (!site.storage_path) return sendError(res, 404, 'No site files');
+
+    // Requested file path (everything after /api/preview/:siteId/)
+    const requestedPath = req.params[0] || 'index.html';
+    const safePath = path.normalize(requestedPath).replace(/^(\.\.[\/\\])+/, '');
+    let filePath = path.join(site.storage_path, safePath);
+
+    // Try site/ subdirectory first (ALIN Website Sprint layout)
+    const siteDirPath = path.join(site.storage_path, 'site', safePath);
+    try {
+      await fs.access(siteDirPath);
+      filePath = siteDirPath;
+    } catch {
+      // Try direct path
+      try {
+        await fs.access(filePath);
+      } catch {
+        // Default to index.html for SPA routing
+        const indexPath = path.join(site.storage_path, 'site', 'index.html');
+        try {
+          await fs.access(indexPath);
+          filePath = indexPath;
+        } catch {
+          return sendError(res, 404, 'File not found');
+        }
+      }
+    }
+
+    // Determine MIME type
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+      '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+      '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+      '.woff': 'font/woff', '.ttf': 'font/ttf', '.txt': 'text/plain',
+    };
+    res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+    const content = await fs.readFile(filePath);
+    res.send(content);
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Helper: recursive directory copy ---
+async function copyDir(src, dest) {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyDir(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
+  }
+}
+
+// ============================================================================
+// SITE BRIEF EXTRACTION
+// ============================================================================
+
+// --- Brief extraction cache (content-hash → result, 24h TTL) ---
+const briefCache = new Map(); // hash → { brief, provider, timestamp }
+const BRIEF_CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
+
+function briefCacheKey(sourceText, sourceType, contextHints) {
+  return createHash('sha256')
+    .update(sourceText + '|' + (sourceType || '') + '|' + (contextHints || ''))
+    .digest('hex');
+}
+
+// --- LLM caller with Anthropic retry + OpenAI fallback ---
+async function callLLMForBrief({ prompt, system, maxTokens, model, preferOpenAI }) {
+  const estimatedTokens = Math.ceil(prompt.length / 4);
+  const RETRIES = 3;
+  const BACKOFF = [500, 1500, 3500];
+
+  // --- Prefer GPT-4o-mini for structured extraction (cheaper, faster) ---
+  const oaiKey = process.env.OPENAI_API_KEY;
+  if ((preferOpenAI || !model) && oaiKey) {
+    const oaiModel = model || DEFAULT_MODELS.gpt4oMini;
+    console.log(`[extract-brief] Calling OpenAI | model: ${oaiModel} | prompt: ${prompt.length} chars (~${estimatedTokens} tokens) | maxTokens: ${maxTokens}`);
+    try {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${oaiKey}` },
+        body: JSON.stringify({
+          model: oaiModel,
+          messages: [
+            { role: 'system', content: system || 'Extract a site brief from the input. Output ONLY valid JSON.' },
+            { role: 'user', content: prompt },
+          ],
+          max_tokens: maxTokens || 4096,
+          temperature: 0.3,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        console.log(`[extract-brief] OpenAI ${oaiModel} succeeded`);
+        return { text: data.choices[0]?.message?.content || '', provider: 'openai', requestId: '' };
+      }
+      console.warn(`[extract-brief] OpenAI ${oaiModel} failed: ${resp.status}, falling back to Anthropic`);
+    } catch (oaiErr) {
+      console.warn(`[extract-brief] OpenAI error: ${oaiErr.message}, falling back to Anthropic`);
+    }
+  }
+
+  // --- Fallback to Anthropic ---
+  const claudeModel = model || DEFAULT_MODELS.claudeSonnet;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw Object.assign(new Error('ANTHROPIC_API_KEY not set'), { retryable: false });
+
+  console.log(`[extract-brief] Calling Anthropic | model: ${claudeModel} | prompt: ${prompt.length} chars (~${estimatedTokens} tokens) | maxTokens: ${maxTokens}`);
+
+  let lastError = null;
+  let lastStatus = 0;
+  let lastRequestId = '';
+
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: claudeModel,
+          max_tokens: maxTokens || 4096,
+          stream: false,
+          system: system || undefined,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const requestId = resp.headers.get('request-id') || '';
+        const textBlock = data.content?.find(b => b.type === 'text');
+        return { text: textBlock?.text || '', provider: 'anthropic', requestId };
+      }
+
+      lastStatus = resp.status;
+      lastRequestId = resp.headers.get('request-id') || '';
+
+      // Retry on 429, 529, 5xx
+      if (resp.status === 429 || resp.status === 529 || resp.status >= 500) {
+        const jitter = Math.random() * 500;
+        const delay = BACKOFF[attempt] + jitter;
+        console.warn(`[extract-brief] Anthropic ${resp.status} — retry ${attempt + 1}/${RETRIES} in ${Math.round(delay)}ms`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      // Non-retryable error (400, 401, etc.)
+      const errText = await resp.text();
+      throw Object.assign(new Error(`Anthropic ${resp.status}`), {
+        status: resp.status, provider: 'anthropic', requestId: lastRequestId, body: errText, retryable: false,
+      });
+    } catch (e) {
+      if (e.retryable === false) throw e; // non-retryable, don't fallback
+      lastError = e;
+      if (attempt < RETRIES - 1) {
+        const jitter = Math.random() * 500;
+        await new Promise(r => setTimeout(r, BACKOFF[attempt] + jitter));
+      }
+    }
+  }
+
+  // All providers failed
+  throw Object.assign(
+    new Error('All LLM providers failed'),
+    { status: lastStatus, provider: 'anthropic', requestId: lastRequestId, retryable: true },
+  );
+}
+
+// --- Regenerate a single section via Claude ---
+app.post('/api/sites/regenerate-section', requireAuth, async (req, res) => {
+  try {
+    const { sectionHtml, action, instruction, cssContext, productName, fullPageContext } = req.body;
+    if (!sectionHtml || typeof sectionHtml !== 'string') {
+      return sendError(res, 400, 'sectionHtml is required');
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return sendError(res, 500, 'ANTHROPIC_API_KEY not set');
+
+    const systemPrompt = `You are a senior web designer and conversion specialist. You rewrite HTML sections to be more effective.
+
+Rules:
+- Return ONLY the rewritten HTML section (no explanation, no markdown fences).
+- Keep the same HTML tag structure (section element with same classes/IDs).
+- Maintain the same CSS custom properties and class naming conventions.
+- Preserve all links and their href values unless the instruction says otherwise.
+- Output valid, well-formatted HTML.
+${cssContext ? `\nCSS context (design tokens in use):\n${cssContext}` : ''}
+${productName ? `\nProduct name: ${productName}` : ''}`;
+
+    const userPrompt = `Action: ${action || 'custom'}
+
+Instruction: ${instruction || 'Improve this section.'}
+
+Current section HTML:
+${sectionHtml}
+
+${fullPageContext ? `Page context (for tone/content consistency):\n${fullPageContext.slice(0, 2000)}` : ''}
+
+Rewrite the section HTML now. Output ONLY the HTML.`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODELS.claudeSonnet,
+        max_tokens: 4096,
+        stream: false,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error('[regenerate-section] Anthropic error:', resp.status, errText);
+      return sendError(res, 502, `Claude API error: ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const textBlock = data.content?.find(b => b.type === 'text');
+    let newHtml = textBlock?.text || '';
+
+    // Strip markdown fences if Claude included them despite instructions
+    newHtml = newHtml.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
+
+    res.json({ success: true, newHtml });
+  } catch (err) {
+    console.error('[regenerate-section] Error:', err);
+    sendError(res, 500, err.message || 'Section regeneration failed');
+  }
+});
+
+// --- Analyze a video for UX issues ---
+app.post('/api/video/analyze-ux', requireAuth, async (req, res) => {
+  try {
+    // This endpoint accepts base64 frames (client-side extraction)
+    // or can be extended with fluent-ffmpeg for server-side extraction
+    const { frames, videoName } = req.body;
+
+    if (!frames || !Array.isArray(frames) || frames.length === 0) {
+      return sendError(res, 400, 'frames array is required (base64 images)');
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return sendError(res, 500, 'ANTHROPIC_API_KEY not set');
+
+    // Build vision content blocks
+    const imageBlocks = frames.slice(0, 10).map((frame, i) => ({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: frame.mediaType || 'image/png',
+        data: frame.data,
+      },
+    }));
+
+    const textBlock = {
+      type: 'text',
+      text: `Analyze these ${frames.length} keyframes from a product demo video "${videoName || 'unknown'}".
+
+For each frame and overall, evaluate:
+1. Layout & Visual Hierarchy: Is the layout clear? Can users find key actions?
+2. UX Flow: Does the demonstrated flow feel intuitive? Any confusing steps?
+3. Accessibility: Color contrast, text readability, touch target sizes
+4. Copy & Messaging: Are labels clear? CTAs compelling? Error messages helpful?
+5. Design Consistency: Color scheme, typography, spacing consistent?
+6. Friction Points: Where might users get stuck or confused?
+
+Return a JSON object with this structure:
+{
+  "overallScore": 0-100,
+  "scores": { "layout": N, "uxFlow": N, "accessibility": N, "copyClarity": N, "designConsistency": N, "frictionLevel": N },
+  "frameAnalyses": [{ "frameIndex": N, "description": "...", "issues": [...], "suggestions": [...], "score": N }],
+  "overallRecommendations": ["..."],
+  "criticalIssues": ["..."]
+}
+
+Output ONLY valid JSON.`,
+    };
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODELS.claudeSonnet,
+        max_tokens: 8192,
+        stream: false,
+        messages: [{
+          role: 'user',
+          content: [...imageBlocks, textBlock],
+        }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error('[video-analyze] Anthropic error:', resp.status, errText);
+      return sendError(res, 502, `Claude API error: ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const responseText = data.content?.find(b => b.type === 'text')?.text || '{}';
+
+    // Parse JSON from response
+    let analysis;
+    try {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+    } catch {
+      analysis = { overallScore: 0, error: 'Failed to parse analysis', raw: responseText.slice(0, 500) };
+    }
+
+    // Enrich with metadata
+    analysis.id = `vua-${Date.now()}`;
+    analysis.videoName = videoName || 'unknown';
+    analysis.frameCount = frames.length;
+    analysis.generatedAt = Date.now();
+
+    res.json({ success: true, analysis });
+  } catch (err) {
+    console.error('[video-analyze] Error:', err);
+    sendError(res, 500, err.message || 'Video analysis failed');
+  }
+});
+
+app.post('/api/sites/extract-brief', requireAuth, async (req, res) => {
+  try {
+    const { sourceText, sourceType, contextHints, model } = req.body;
+    if (!sourceText || typeof sourceText !== 'string' || sourceText.trim().length < 10) {
+      return sendError(res, 400, 'sourceText is required (min 10 chars)');
+    }
+
+    const text = sourceText.trim();
+    const llmModel = model || DEFAULT_MODELS.claudeSonnet;
+
+    // --- Cache check ---
+    const cacheKey = briefCacheKey(text, sourceType, contextHints);
+    const cached = briefCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < BRIEF_CACHE_TTL) {
+      console.log(`[extract-brief] Cache hit | key: ${cacheKey.slice(0, 12)}… | age: ${Math.round((Date.now() - cached.timestamp) / 1000)}s`);
+      return res.json({ success: true, brief: cached.brief, provider: cached.provider, cached: true });
+    }
+
+    const CHUNK_SIZE = 25000;
+    const chunks = [];
+
+    // Chunk if needed
+    if (text.length > CHUNK_SIZE) {
+      for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+        chunks.push(text.slice(i, i + CHUNK_SIZE));
+      }
+    } else {
+      chunks.push(text);
+    }
+
+    const estimatedTokens = Math.ceil(text.length / 4);
+    console.log(`[extract-brief] Starting extraction | input: ${text.length} chars (~${estimatedTokens} tokens) | chunks: ${chunks.length} | avg chunk: ${Math.round(text.length / chunks.length)} chars | model: ${llmModel}`);
+
+    // Extract per chunk
+    const partialBriefs = [];
+    let lastProvider = 'anthropic';
+
+    for (const chunk of chunks) {
+      const prompt = `You are analyzing ${sourceType === 'THREAD' ? 'a conversation/thread' : 'a product description'} to extract a structured site brief for building a website.
+
+${contextHints ? `Context hint: This is for a "${contextHints}" type business.` : ''}
+
+INPUT:
+${chunk}
+
+Extract a structured JSON site brief. Output ONLY valid JSON, no markdown fences.
+
+CRITICAL RULES:
+- productName: Use EXACTLY the product/brand name from the input. NEVER rename or invent one.
+- pricing: Only include pricing tiers if the input explicitly mentions them. If not mentioned, set tiers to empty array.
+- Do NOT fabricate any numbers, stats, or claims. If the input says "500+ users" mark it as a requiredUnknown unless the speaker clearly states it as fact.
+- requiredUnknowns: ONLY list items where fabricating a default would be HARMFUL or MISLEADING. For example: product name (if unclear), pricing tiers (if referenced but not specified), contact info (if a contact page is expected). Do NOT list things like testimonials, team bios, sample photos, user counts, or integration details — the builder can use sensible placeholders for those. Maximum 4 items.
+- contactEmail, contactPhone, contactAddress: Extract EXACTLY as provided. If user says "my email is jake@gmail.com", store EXACTLY "jake@gmail.com". Never invent contact info. If not mentioned, set to empty string.
+
+Schema:
+{
+  "productName": "string — EXACT product/brand name from input, never rename",
+  "tagline": "string — short tagline extracted or inferred",
+  "oneLinerPositioning": "string — one-sentence positioning statement",
+  "businessType": "string — what kind of business/project",
+  "icpGuess": "string — ideal customer profile guess",
+  "targetAudience": "string — who this is for",
+  "primaryPain": "string — main problem this solves",
+  "primaryCTA": "string — main call to action (e.g. Start Free Trial, Book a Demo)",
+  "toneStyle": "string — voice/tone",
+  "goal": "string — primary goal of the website",
+  "navPages": ["array of page names for main navigation"],
+  "features": ["array of product features mentioned"],
+  "integrations": ["array of integrations mentioned, or empty"],
+  "pricing": {
+    "hasFreePlan": false,
+    "tiers": [{"name": "string", "priceMonthly": "string", "limitLabel": "string", "highlights": ["string"], "isMostPopular": false}],
+    "trial": {"enabled": false, "days": 0, "requiresCard": false},
+    "annual": {"enabled": false, "discountLabel": ""}
+  },
+  "designDirection": "string — suggested aesthetic",
+  "requiredUnknowns": [{"id": "string", "question": "string", "reason": "string", "required": true}],
+  "assumptions": ["array of assumptions made"],
+  "constraints": {
+    "NO_FABRICATED_STATS": true,
+    "NO_RENAME_WITHOUT_APPROVAL": true,
+    "NO_SECURITY_CLAIMS_UNLESS_PROVIDED": true
+  },
+  "coreProblem": "string — the core problem this product solves, in one sentence",
+  "differentiators": ["array of 2-4 things that make this product different from alternatives"],
+  "contactEmail": "string — email address if mentioned, or empty string",
+  "contactPhone": "string — phone number if mentioned, or empty string",
+  "contactAddress": "string — physical address if mentioned, or empty string",
+  "socialLinks": {"platform": "url"},
+  "operatingHours": "string — business hours if mentioned, or empty string",
+  "pages": ["same as navPages, for compat"],
+  "tone": "same as toneStyle, for compat",
+  "ctas": ["array of CTA goals"]
+}`;
+
+      const result = await callLLMForBrief({
+        prompt,
+        system: 'Extract a site brief from the input. Output ONLY valid JSON.',
+        maxTokens: 4096,
+        model: llmModel,
+      });
+
+      lastProvider = result.provider;
+
+      if (result.text) {
+        let json = result.text.trim();
+        if (json.startsWith('```')) json = json.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+        try {
+          partialBriefs.push(JSON.parse(json));
+        } catch { /* skip unparseable chunk */ }
+      }
+    }
+
+    if (partialBriefs.length === 0) {
+      return sendError(res, 500, 'Failed to extract brief from input');
+    }
+
+    // Merge if multiple chunks
+    let brief;
+    if (partialBriefs.length === 1) {
+      brief = partialBriefs[0];
+    } else {
+      // Merge pass
+      const mergePrompt = `Merge these partial site briefs into one consolidated brief. Output ONLY valid JSON with the same schema.
+
+PARTIAL BRIEFS:
+${JSON.stringify(partialBriefs, null, 2)}
+
+Output the merged brief as a single JSON object.`;
+
+      const mergeResult = await callLLMForBrief({
+        prompt: mergePrompt,
+        system: 'Merge partial briefs into one. Output ONLY valid JSON.',
+        maxTokens: 4096,
+        model: llmModel,
+      });
+
+      lastProvider = mergeResult.provider;
+
+      if (mergeResult.text) {
+        let json = mergeResult.text.trim();
+        if (json.startsWith('```')) json = json.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+        try {
+          brief = JSON.parse(json);
+        } catch {
+          brief = partialBriefs[0]; // Fallback to first
+        }
+      } else {
+        brief = partialBriefs[0];
+      }
+    }
+
+    // --- Build provenance map ---
+    const provenance = {};
+    const provenanceFields = [
+      'productName', 'tagline', 'oneLinerPositioning', 'targetAudience',
+      'primaryPain', 'primaryCTA', 'toneStyle', 'designDirection',
+      'navPages', 'features', 'pricing',
+      'contactEmail', 'contactPhone', 'contactAddress',
+    ];
+    for (const field of provenanceFields) {
+      const val = brief[field];
+      if (val === undefined || val === null || val === '' ||
+          (Array.isArray(val) && val.length === 0) ||
+          (typeof val === 'string' && /^(unknown|n\/a|not specified|tbd)$/i.test(val.trim()))) {
+        provenance[field] = 'PLACEHOLDER';
+      } else {
+        provenance[field] = 'INFERRED';
+      }
+    }
+
+    // --- Detect missing fields → missingQuestions ---
+    const missingQuestions = [];
+    if (!brief.productName || brief.productName.length < 2 || /^(unknown|my site|untitled)/i.test(brief.productName)) {
+      missingQuestions.push({
+        id: 'productName',
+        question: 'What is the name of your product or brand?',
+        reason: 'We need this to avoid making up a name for your site.',
+        blocking: true,
+      });
+    }
+    if (!brief.targetAudience || brief.targetAudience.length < 5) {
+      missingQuestions.push({
+        id: 'targetAudience',
+        question: 'Who is the target audience for this website?',
+        reason: 'This helps us write copy that resonates with the right people.',
+        blocking: false,
+      });
+    }
+    if (brief.pricing?.tiers?.length === 0 && (brief.features?.some(f => /pric/i.test(f)) || brief.navPages?.some(p => /pric/i.test(p)))) {
+      missingQuestions.push({
+        id: 'pricing',
+        question: 'You mentioned pricing — what are your pricing tiers? (name, price, features for each)',
+        reason: 'Pricing tiers were referenced but no specifics were provided.',
+        blocking: true,
+      });
+    }
+    if (!brief.primaryCTA || brief.primaryCTA.length < 3) {
+      missingQuestions.push({
+        id: 'primaryCTA',
+        question: 'What should the main call-to-action button say? (e.g., "Start Free Trial", "Book a Demo")',
+        reason: 'Every page needs a clear CTA.',
+        blocking: false,
+      });
+    }
+
+    // --- Cache the result ---
+    briefCache.set(cacheKey, { brief, provider: lastProvider, timestamp: Date.now() });
+    console.log(`[extract-brief] Cached result | key: ${cacheKey.slice(0, 12)}… | provider: ${lastProvider} | missing: ${missingQuestions.length}`);
+
+    res.json({ success: true, brief, provider: lastProvider, provenance, missingQuestions });
+  } catch (error) {
+    console.error('[extract-brief] Failed:', error.message);
+    const status = error.retryable !== undefined ? 502 : 500;
+    return res.status(status).json({
+      error: error.retryable ? 'LLM provider temporarily unavailable. Please retry.' : error.message,
+      code: 'PROVIDER_ERROR',
+      provider: error.provider || 'anthropic',
+      request_id: error.requestId || '',
+      retryable: error.retryable ?? true,
+    });
+  }
+});
+
+// ============================================================================
+// EXTRACT FROM URL
+// ============================================================================
+
+app.post('/api/sites/extract-from-url', requireAuth, async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+      return sendError(res, 400, 'url is required');
+    }
+
+    // Fetch page content
+    let pageContent = '';
+    try {
+      const fetchResp = await fetch(url, {
+        headers: { 'User-Agent': 'ALIN/1.0 SiteExtractor' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!fetchResp.ok) {
+        return sendError(res, 502, `Failed to fetch URL: HTTP ${fetchResp.status}`);
+      }
+      const html = await fetchResp.text();
+      // Strip scripts, styles, and tags for text extraction
+      pageContent = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 15000);
+    } catch (fetchErr) {
+      return sendError(res, 502, `Failed to fetch URL: ${fetchErr.message}`);
+    }
+
+    if (pageContent.length < 50) {
+      return sendError(res, 422, 'Page content too short to extract product info');
+    }
+
+    // Ask LLM to extract product info
+    const prompt = `Analyze this webpage content and extract product/company information.
+
+URL: ${url}
+
+CONTENT:
+${pageContent}
+
+Extract and return ONLY valid JSON:
+{
+  "productName": "string — product or company name",
+  "tagline": "string — tagline or hero text",
+  "businessType": "string — type of business",
+  "targetAudience": "string — who this is for",
+  "features": ["key features mentioned"],
+  "toneStyle": "string — detected tone/voice",
+  "designDirection": "string — detected design style"
+}`;
+
+    const result = await callLLMForBrief({
+      prompt,
+      system: 'Extract product info from webpage content. Output ONLY valid JSON.',
+      maxTokens: 2048,
+      model: DEFAULT_MODELS.claudeSonnet,
+    });
+
+    if (!result.text) {
+      return sendError(res, 500, 'LLM returned no output');
+    }
+
+    let json = result.text.trim();
+    if (json.startsWith('```')) json = json.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+    try {
+      const extracted = JSON.parse(json);
+      res.json({ success: true, partial: extracted, url });
+    } catch {
+      return sendError(res, 500, 'Failed to parse LLM response as JSON');
+    }
+  } catch (error) {
+    console.error('[extract-from-url] Failed:', error.message);
+    return sendError(res, 500, error.message);
+  }
+});
+
+// ============================================================================
+// SITE PATCH ENDPOINTS
+// ============================================================================
+
+// --- Plan a patch: Claude analyzes site files + change request ---
+app.post('/api/sites/:siteId/patch/plan', requireAuth, async (req, res) => {
+  try {
+    const site = stmts.getSite.get(req.params.siteId, req.user.id);
+    if (!site) return sendError(res, 404, 'Site not found');
+    if (!site.storage_path) return sendError(res, 400, 'Site has no files');
+
+    const { changeRequest } = req.body;
+    if (!changeRequest || typeof changeRequest !== 'string' || changeRequest.trim().length < 3) {
+      return sendError(res, 400, 'changeRequest is required (min 3 chars)');
+    }
+
+    const patchId = randomUUID();
+    const now = Date.now();
+
+    // Insert patch record as 'planning'
+    stmts.insertPatch.run(patchId, site.id, req.user.id, changeRequest.trim(), null, 'planning', now);
+
+    // Generate plan (async — respond with patchId immediately, update when done)
+    res.json({ success: true, patchId, status: 'planning' });
+
+    // Background: call Claude to generate patch plan
+    (async () => {
+      try {
+        const plan = await generatePatchPlan(callClaudeSync, site.storage_path, changeRequest.trim());
+        stmts.updatePatch.run(JSON.stringify(plan), 'planned', null, null, patchId, req.user.id);
+      } catch (err) {
+        console.error('[SitePatch] Plan generation failed:', err.message);
+        stmts.updatePatch.run(null, 'failed', JSON.stringify({ error: err.message }), Date.now(), patchId, req.user.id);
+      }
+    })();
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Get a specific patch plan ---
+app.get('/api/sites/:siteId/patches/:patchId', requireAuth, (req, res) => {
+  try {
+    const patch = stmts.getPatch.get(req.params.patchId, req.user.id);
+    if (!patch) return sendError(res, 404, 'Patch not found');
+    // Parse plan JSON if present
+    if (patch.plan) {
+      try { patch.plan = JSON.parse(patch.plan); } catch { /* leave as string */ }
+    }
+    if (patch.apply_result) {
+      try { patch.apply_result = JSON.parse(patch.apply_result); } catch { /* leave as string */ }
+    }
+    res.json({ success: true, patch });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- List patches for a site ---
+app.get('/api/sites/:siteId/patches', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const patches = stmts.listPatches.all(req.params.siteId, req.user.id, limit);
+    // Parse JSON fields
+    for (const p of patches) {
+      if (p.plan) { try { p.plan = JSON.parse(p.plan); } catch { /* leave */ } }
+      if (p.apply_result) { try { p.apply_result = JSON.parse(p.apply_result); } catch { /* leave */ } }
+    }
+    res.json({ success: true, patches });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Apply a patch plan to the site workspace ---
+app.post('/api/sites/:siteId/patch/:patchId/apply', requireAuth, async (req, res) => {
+  try {
+    const site = stmts.getSite.get(req.params.siteId, req.user.id);
+    if (!site) return sendError(res, 404, 'Site not found');
+    if (!site.storage_path) return sendError(res, 400, 'Site has no files');
+
+    const patch = stmts.getPatch.get(req.params.patchId, req.user.id);
+    if (!patch) return sendError(res, 404, 'Patch not found');
+    if (patch.status !== 'planned' && patch.status !== 'approved') {
+      return sendError(res, 400, `Cannot apply patch in status: ${patch.status}`);
+    }
+
+    let plan;
+    try {
+      plan = typeof patch.plan === 'string' ? JSON.parse(patch.plan) : patch.plan;
+    } catch {
+      return sendError(res, 400, 'Invalid patch plan data');
+    }
+
+    if (!plan || !Array.isArray(plan.changes) || plan.changes.length === 0) {
+      return sendError(res, 400, 'Patch plan has no changes');
+    }
+
+    // Check for unresolved PLACEHOLDERs
+    const placeholders = plan.placeholders || [];
+    if (placeholders.length > 0) {
+      // Check if user provided replacements in request body
+      const replacements = req.body.replacements || {};
+      for (const change of plan.changes) {
+        if (change.after && typeof change.after === 'string') {
+          for (const [placeholder, value] of Object.entries(replacements)) {
+            change.after = change.after.replace(new RegExp(escapeRegex(placeholder), 'g'), value);
+          }
+        }
+      }
+    }
+
+    // Apply the patch
+    const result = await applyPatchPlan(site.storage_path, plan);
+    const now = Date.now();
+    stmts.updatePatch.run(
+      typeof patch.plan === 'string' ? patch.plan : JSON.stringify(plan),
+      result.failed > 0 ? 'partially_applied' : 'applied',
+      JSON.stringify(result),
+      now,
+      patch.id,
+      req.user.id,
+    );
+
+    // Update site timestamp
+    stmts.updateSite.run(site.name, site.status, site.cloudflare_project_name, site.domain, site.manifest, now, site.id, req.user.id);
+
+    res.json({ success: true, result });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Reject a patch plan ---
+app.post('/api/sites/:siteId/patch/:patchId/reject', requireAuth, (req, res) => {
+  try {
+    const patch = stmts.getPatch.get(req.params.patchId, req.user.id);
+    if (!patch) return sendError(res, 404, 'Patch not found');
+    stmts.updatePatch.run(patch.plan, 'rejected', null, Date.now(), patch.id, req.user.id);
+    res.json({ success: true });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // ============================================================================
 // ARTIFACT ENDPOINTS
@@ -2225,6 +3973,10 @@ app.post('/api/audit', requireAuth, (req, res) => {
       b.durationMs ?? 0,
       b.timestamp || Date.now(), userId
     );
+    // Track Opus usage for monthly quota enforcement
+    if (b.model && b.model.includes('opus')) {
+      incrementQuota(userId, 'opus_messages');
+    }
     res.json({ success: true, id });
   } catch (error) { sendError(res, 500, error.message); }
 });
@@ -2340,31 +4092,6 @@ app.post('/api/search/brave', requireAuth, async (req, res) => {
     res.json({ results: webResults, query });
   } catch (error) {
     console.error('[Brave Proxy] Error:', error.message);
-    sendError(res, 500, error.message);
-  }
-});
-
-/**
- * DuckDuckGo Search Proxy (fallback)
- * GET /api/search/ddg?q=query
- */
-app.get('/api/search/ddg', requireAuth, async (req, res) => {
-  try {
-    const { q } = req.query;
-
-    if (!q) {
-      return res.status(400).json({ error: 'Query parameter q is required' });
-    }
-
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`;
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    console.log(`[DDG Proxy] Search for "${q}"`);
-    res.json(data);
-  } catch (error) {
-    console.error('[DDG Proxy] Error:', error.message);
     sendError(res, 500, error.message);
   }
 });
@@ -3002,6 +4729,22 @@ app.post('/api/git/execute', requireAuth, async (req, res) => {
 import { spawn, execSync } from 'child_process';
 import { tmpdir } from 'os';
 
+// Detect available Python command (python3 on Linux/Railway, python on Windows)
+let _pythonCmd = null;
+function getPythonCommand() {
+  if (_pythonCmd) return _pythonCmd;
+  for (const cmd of ['python3', 'python']) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'pipe', timeout: 5000 });
+      _pythonCmd = cmd;
+      console.log(`[Code] Using Python command: ${cmd}`);
+      return cmd;
+    } catch {}
+  }
+  _pythonCmd = 'python3'; // fallback, will fail with clear error
+  return _pythonCmd;
+}
+
 /**
  * Execute code in a sandboxed environment
  * POST /api/code/execute
@@ -3019,12 +4762,22 @@ app.post('/api/code/execute', requireAuth, executionLimiter, async (req, res) =>
       return res.status(400).json({ error: 'Language is required' });
     }
 
-    // Security: Block obviously dangerous code
+    // Security: Block dangerous system-level operations
+    // Targeted patterns — won't block legitimate Python builtins like eval()/exec()
     const dangerousPatterns = [
-      'rm -rf', 'format c:', 'del /f /s', 'shutdown',
-      '__import__("os")', 'subprocess', 'eval(', 'exec(',
-      'require("child_process")', 'require("fs")',
-      'process.exit', 'process.kill',
+      'rm -rf /',           // destructive delete
+      'format c:',          // Windows format
+      'del /f /s /q c:',    // Windows destructive delete
+      'shutdown',           // system shutdown
+      '__import__("os").system',  // shell escape via os.system
+      'subprocess.call',    // shell subprocess
+      'subprocess.run',     // shell subprocess
+      'subprocess.Popen',   // shell subprocess
+      'require("child_process")', // Node shell escape
+      'process.exit',       // Node process kill
+      'process.kill',       // Node process kill
+      'os.remove(',         // file deletion
+      'shutil.rmtree',      // recursive directory deletion
     ];
 
     const lowerCode = code.toLowerCase();
@@ -3045,7 +4798,7 @@ app.post('/api/code/execute', requireAuth, executionLimiter, async (req, res) =>
       case 'py':
         tempFile = path.join(tempDir, `alin_code_${Date.now()}.py`);
         await fs.writeFile(tempFile, code);
-        command = 'python';
+        command = getPythonCommand();
         args = [tempFile];
         break;
 
@@ -3095,34 +4848,37 @@ app.post('/api/code/execute', requireAuth, executionLimiter, async (req, res) =>
 
 function executeWithTimeout(command, args, timeout) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const child = spawn(command, args, {
-      timeout,
-      maxBuffer: 1024 * 1024, // 1MB output limit
+      timeout: timeout + 1000, // spawn timeout as safety net (slightly longer)
     });
 
     let stdout = '';
     let stderr = '';
 
     child.stdout.on('data', (data) => {
-      stdout += data.toString();
+      if (stdout.length < 1024 * 1024) stdout += data.toString(); // 1MB cap
     });
 
     child.stderr.on('data', (data) => {
-      stderr += data.toString();
+      if (stderr.length < 256 * 1024) stderr += data.toString(); // 256KB cap
     });
 
     child.on('close', (exitCode) => {
-      resolve({ stdout, stderr, exitCode });
+      if (!settled) { settled = true; resolve({ stdout, stderr, exitCode }); }
     });
 
     child.on('error', (error) => {
-      reject(error);
+      if (!settled) { settled = true; reject(error); }
     });
 
-    // Kill if timeout
+    // Primary timeout — kill and resolve with timeout error
     setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Execution timed out after ${timeout}ms`));
+      if (!settled) {
+        settled = true;
+        try { child.kill('SIGTERM'); } catch {}
+        resolve({ stdout, stderr: stderr + `\n[Execution timed out after ${timeout}ms]`, exitCode: 124 });
+      }
     }, timeout);
   });
 }
@@ -3318,6 +5074,13 @@ app.post('/api/editor/execute', requireAuth, async (req, res) => {
 
 app.post('/api/images/generate', requireAuth, async (req, res) => {
   try {
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (limits.maxCfImages >= 0) {
+      const used = getQuotaCount(req.user.id, 'image_generations');
+      if (used >= limits.maxCfImages) {
+        return res.status(429).json({ error: 'Monthly image generation limit reached', used, limit: limits.maxCfImages, code: 'IMAGE_QUOTA_EXCEEDED' });
+      }
+    }
     const { prompt, size = '1024x1024', quality = 'standard', style = 'vivid', apiKey } = req.body;
 
     if (!prompt) {
@@ -3365,6 +5128,7 @@ app.post('/api/images/generate', requireAuth, async (req, res) => {
 
     console.log(`[Image Gen] Success, revised prompt: "${(imageData.revised_prompt || '').slice(0, 60)}..."`);
 
+    incrementQuota(req.user.id, 'image_generations');
     res.json({
       success: true,
       url: imageData.url,
@@ -3372,6 +5136,116 @@ app.post('/api/images/generate', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Image Gen] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// WEB FETCH — Fetch URL content as text
+// ============================================================================
+
+app.post('/api/web/fetch', requireAuth, async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'URL is required' });
+    }
+
+    console.log(`[Web Fetch] Fetching: ${url.slice(0, 100)}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'ALIN/1.0 (Web Fetch)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return res.status(502).json({ success: false, error: `Upstream returned ${response.status}` });
+    }
+
+    let html = await response.text();
+
+    // Strip scripts and styles
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+    html = html.replace(/<style[\s\S]*?<\/style>/gi, '');
+    // Strip HTML tags, keep text
+    let text = html.replace(/<[^>]+>/g, ' ');
+    // Collapse whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    // Cap at 50K chars
+    text = text.slice(0, 50_000);
+
+    res.json({ success: true, content: text, url });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ success: false, error: 'Request timed out (15s)' });
+    }
+    console.error('[Web Fetch] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// IMAGE SEARCH — Unsplash or picsum fallback
+// ============================================================================
+
+app.post('/api/images/search', requireAuth, async (req, res) => {
+  try {
+    const { query, count = 5, orientation } = req.body;
+    if (!query) {
+      return res.status(400).json({ success: false, error: 'Query is required' });
+    }
+
+    const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+    let images = [];
+
+    if (unsplashKey) {
+      // Use Unsplash API
+      const params = new URLSearchParams({
+        query,
+        per_page: String(Math.min(count, 30)),
+        ...(orientation ? { orientation } : {}),
+      });
+      const response = await fetch(`https://api.unsplash.com/search/photos?${params}`, {
+        headers: { Authorization: `Client-ID ${unsplashKey}` },
+      });
+      if (!response.ok) {
+        throw new Error(`Unsplash API returned ${response.status}`);
+      }
+      const data = await response.json();
+      images = (data.results || []).map(img => ({
+        url: img.urls?.regular || img.urls?.small,
+        alt: img.alt_description || img.description || query,
+        attribution: `Photo by ${img.user?.name || 'Unknown'} on Unsplash`,
+        width: img.width,
+        height: img.height,
+      }));
+    } else {
+      // Fallback to picsum.photos placeholders
+      console.log(`[Image Search] No UNSPLASH_ACCESS_KEY set, using picsum placeholders for "${query}"`);
+      const baseW = orientation === 'portrait' ? 600 : orientation === 'landscape' ? 1200 : 800;
+      const baseH = orientation === 'portrait' ? 900 : orientation === 'landscape' ? 800 : 800;
+      for (let i = 0; i < Math.min(count, 10); i++) {
+        const seed = Math.floor(Math.random() * 1000);
+        images.push({
+          url: `https://picsum.photos/seed/${seed}/${baseW}/${baseH}`,
+          alt: `${query} placeholder image ${i + 1}`,
+          attribution: 'Via picsum.photos (placeholder)',
+          width: baseW,
+          height: baseH,
+        });
+      }
+    }
+
+    res.json({ success: true, images });
+  } catch (error) {
+    console.error('[Image Search] Error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -3735,18 +5609,17 @@ app.post('/api/blender/execute', requireAuth, async (req, res) => {
     // Security checks
     // - blendFile (if provided) must be in allowed dirs
     // - outputPath (if provided) must be in allowed dirs OR temp dir
-    const isPathAllowed = (p) => {
+    const isBlenderPathAllowed = (p) => {
+      // Reuse the shared isPathAllowed + also allow tmpdir for Blender outputs
+      if (isPathAllowed(p)) return true;
       const rp = path.resolve(p);
-      const inAllowedDirs = ALLOWED_DIRS.some(d => rp.startsWith(d));
-      const inTmp = rp.startsWith(path.resolve(os.tmpdir()));
-      return inAllowedDirs || inTmp;
+      return rp.startsWith(path.resolve(os.tmpdir()));
     };
 
     let resolvedBlendPath = null;
     if (blendFile) {
       resolvedBlendPath = path.resolve(blendFile);
-      const allowedBlend = ALLOWED_DIRS.some(d => resolvedBlendPath.startsWith(d));
-      if (!allowedBlend) {
+      if (!isPathAllowed(resolvedBlendPath)) {
         return res.status(403).json({ success: false, error: 'blendFile path not allowed' });
       }
       if (!fsSync.existsSync(resolvedBlendPath)) {
@@ -3754,7 +5627,7 @@ app.post('/api/blender/execute', requireAuth, async (req, res) => {
       }
     }
 
-    if (outputPath && !isPathAllowed(tmpOutputBase)) {
+    if (outputPath && !isBlenderPathAllowed(tmpOutputBase)) {
       return res.status(403).json({ success: false, error: 'outputPath not allowed' });
     }
 
@@ -4028,7 +5901,7 @@ app.post('/api/claude', requireAuth, async (req, res) => {
     }
 
     const body = {
-      model: model || 'claude-haiku-4-5-20251001',
+      model: model || DEFAULT_MODELS.claudeHaiku,
       max_tokens: max_tokens || 100,
       messages: messages || [],
     };
@@ -4283,7 +6156,7 @@ app.get('/api/self-model/outcomes', requireAuth, (req, res) => {
 // --- Tool Reliability (shared across users — measures backend tool behavior) ---
 app.post('/api/self-model/tool-reliability', requireAuth, (req, res) => {
   try {
-    const { toolName, success, duration, errorReason } = req.body;
+    const { toolName, success, duration, errorReason, model } = req.body;
     // Build common_errors — append new error to existing array (max 10)
     let commonErrors = '[]';
     if (!success && errorReason) {
@@ -4305,6 +6178,16 @@ app.post('/api/self-model/tool-reliability', requireAuth, (req, res) => {
       commonErrors,
       (!success && errorReason) ? errorReason.slice(0, 500) : ''
     );
+    // Feature 6: Also track per-model success rates for adaptive routing
+    if (model && model !== 'unknown') {
+      stmts.upsertModelSuccessRate.run(
+        model,
+        success ? 1 : 0,
+        success ? 0 : 1,
+        duration || 0,
+        Date.now()
+      );
+    }
     res.json({ success: true });
   } catch (error) { sendError(res, 500, error.message); }
 });
@@ -4320,6 +6203,20 @@ app.get('/api/self-model/tool-reliability', requireAuth, (req, res) => {
       lastFailureReason: r.last_failure_reason || '',
     }));
     res.json({ success: true, tools: rows });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Model Success Rates (Feature 6 — adaptive routing) ---
+app.get('/api/self-model/model-success-rates', requireAuth, (req, res) => {
+  try {
+    const rows = stmts.getModelSuccessRates.all().map(r => ({
+      model: r.model,
+      successCount: r.success_count,
+      failureCount: r.failure_count,
+      totalCalls: r.total_calls,
+      avgDuration: r.avg_duration,
+    }));
+    res.json(rows);
   } catch (error) { sendError(res, 500, error.message); }
 });
 
@@ -4475,6 +6372,19 @@ const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 
 // --- User workspace registry ---
 const userWorkspaces = new Map(); // userId → { path, createdAt, lastAccessed }
 const WORKSPACE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_WORKSPACES = 500; // Prevent unbounded growth
+
+/** Evict least-recently-accessed workspaces when map exceeds size cap */
+function evictStaleWorkspaces() {
+  if (userWorkspaces.size <= MAX_WORKSPACES) return;
+  const entries = [...userWorkspaces.entries()].sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
+  const toEvict = entries.slice(0, userWorkspaces.size - MAX_WORKSPACES);
+  for (const [userId, ws] of toEvict) {
+    fs.rm(ws.path, { recursive: true, force: true }).catch(() => {});
+    userWorkspaces.delete(userId);
+    console.log(`[Workspace] Evicted LRU workspace: ${userId}`);
+  }
+}
 
 function getUserWorkspacePath(userId) {
   return path.join(os.tmpdir(), 'alin-workspaces', userId);
@@ -4494,30 +6404,43 @@ async function callClaudeSync({ model, messages, system, tools, maxTokens }) {
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
   const body = {
-    model: model || 'claude-sonnet-4-5-20250929',
-    max_tokens: maxTokens || 8192,
+    model: model || DEFAULT_MODELS.claudeSonnet,
+    max_tokens: maxTokens || 16384,
     stream: false,
     messages,
   };
   if (system) body.system = system;
   if (tools && tools.length > 0) body.tools = tools;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  });
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!response.ok) {
+    if (response.ok) {
+      return response.json();
+    }
+
+    // Retry on 429 (rate limit), 500 (transient API error), and 529 (overloaded)
+    if ((response.status === 429 || response.status === 500 || response.status === 529) && attempt < MAX_RETRIES) {
+      const retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+      const jitter = Math.random() * 500;
+      const delay = retryAfter > 0 ? retryAfter * 1000 : Math.min(1000 * Math.pow(2, attempt), 10000) + jitter;
+      console.warn(`[callClaudeSync] ${response.status} — retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+
     const text = await response.text();
     throw new Error(`Anthropic API ${response.status}: ${text.slice(0, 500)}`);
   }
-
-  return response.json();
 }
 
 // --- Compress tool result (cap at 70K chars) ---
@@ -4785,18 +6708,24 @@ async function toolExecuteCode(input) {
     const { language, code } = input;
     if (!code) return { success: false, error: 'Code is required' };
     const tempDir = os.tmpdir();
-    const ext = language === 'python' ? 'py' : 'js';
+    const lang = (language || 'python').toLowerCase();
+    const ext = (lang === 'python' || lang === 'py') ? 'py' : 'js';
     const tempFile = path.join(tempDir, `alin-exec-${Date.now()}.${ext}`);
     await fs.writeFile(tempFile, code);
-    const cmd = language === 'python' ? `python "${tempFile}"` : `node "${tempFile}"`;
+    const pyCmd = getPythonCommand();
+    const cmd = (lang === 'python' || lang === 'py') ? `${pyCmd} "${tempFile}"` : `node "${tempFile}"`;
 
     const result = await new Promise((resolve, reject) => {
-      const child = spawn(cmd, { shell: true, timeout: 30000 });
+      let settled = false;
+      const child = spawn(cmd, { shell: true, timeout: 35000 });
       let stdout = '', stderr = '';
-      child.stdout.on('data', d => { stdout += d.toString(); });
-      child.stderr.on('data', d => { stderr += d.toString(); });
-      child.on('close', exitCode => resolve({ stdout, stderr, exitCode }));
-      child.on('error', reject);
+      child.stdout.on('data', d => { if (stdout.length < 512000) stdout += d.toString(); });
+      child.stderr.on('data', d => { if (stderr.length < 128000) stderr += d.toString(); });
+      child.on('close', exitCode => { if (!settled) { settled = true; resolve({ stdout, stderr, exitCode }); } });
+      child.on('error', err => { if (!settled) { settled = true; reject(err); } });
+      setTimeout(() => {
+        if (!settled) { settled = true; try { child.kill('SIGTERM'); } catch {} resolve({ stdout, stderr: stderr + '\n[Timed out after 30s]', exitCode: 124 }); }
+      }, 30000);
     });
 
     try { await fs.unlink(tempFile); } catch {}
@@ -4854,6 +6783,50 @@ async function toolMemoryRecall(input, userId) {
   }
 }
 
+// --- Template library tools ---
+async function toolListTemplates() {
+  try {
+    const manifest = await cfR2.getTemplateManifest();
+    if (!manifest.templates || manifest.templates.length === 0) {
+      return { success: true, templates: [], message: 'No templates available. Build from scratch using design standards.' };
+    }
+    // Return summary (don't include file contents, just metadata)
+    const templates = manifest.templates.map(t => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      pages: t.pages,
+      components: t.components,
+      tags: t.tags,
+      tier: t.tier,
+    }));
+    return { success: true, templates };
+  } catch (err) {
+    return { success: false, error: `Failed to list templates: ${err.message}` };
+  }
+}
+
+async function toolGetTemplate(input) {
+  const templateId = input.template_id || input.templateId || input.id;
+  if (!templateId) return { success: false, error: 'template_id is required' };
+
+  try {
+    const result = await cfR2.getTemplate(templateId);
+    if (!result) {
+      return { success: false, error: `Template "${templateId}" not found. Use list_templates to see available options.` };
+    }
+    return {
+      success: true,
+      template: result.template,
+      files: result.files,
+      instructions: 'Replace ALL {{VARIABLE}} placeholders with real content. Customize colors in CSS :root variables. Adapt copy to match the user\'s brand voice. Add/remove sections as needed. NEVER deploy with placeholder variables still present.',
+    };
+  } catch (err) {
+    return { success: false, error: `Failed to fetch template: ${err.message}` };
+  }
+}
+
 // --- Main tool dispatcher ---
 async function executeToolServerSide(toolName, toolInput, workspacePath, userId) {
   switch (toolName) {
@@ -4867,9 +6840,12 @@ async function executeToolServerSide(toolName, toolInput, workspacePath, userId)
     case 'execute_code': return toolExecuteCode(toolInput);
     case 'git': return toolGit(toolInput, workspacePath);
     case 'web_search': return toolWebSearch(toolInput);
+    case 'web_fetch': return toolWebFetch(toolInput);
     case 'memory_store': return toolMemoryStore(toolInput, userId);
     case 'memory_recall': return toolMemoryRecall(toolInput, userId);
     case 'spawn_scan_agent': return runScanAgent(toolInput.task || toolInput.query || '', workspacePath, userId);
+    case 'list_templates': return toolListTemplates();
+    case 'get_template': return toolGetTemplate(toolInput);
     default:
       return { success: false, error: `Unknown tool: ${toolName}` };
   }
@@ -4887,12 +6863,16 @@ const CODING_TOOLS = [
   { name: 'execute_code', description: 'Execute Python or JavaScript code', input_schema: { type: 'object', properties: { language: { type: 'string', enum: ['python', 'javascript'] }, code: { type: 'string' } }, required: ['language', 'code'] } },
   { name: 'git', description: 'Execute git operations (status, diff, log, add, commit, etc.)', input_schema: { type: 'object', properties: { operation: { type: 'string' }, args: { type: 'array', items: { type: 'string' } } }, required: ['operation'] } },
   { name: 'web_search', description: 'Search the web for information', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'web_fetch', description: 'Fetch the contents of a URL directly. Returns the text/HTML content of any publicly accessible web page.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'Full URL to fetch (must start with http:// or https://)' } }, required: ['url'] } },
   { name: 'memory_store', description: 'Store information for later recall', input_schema: { type: 'object', properties: { content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, category: { type: 'string' } }, required: ['content'] } },
   { name: 'memory_recall', description: 'Search stored memories', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'spawn_scan_agent', description: 'Spawn a fast read-only subagent (Haiku) to explore and analyze the codebase. Returns a summary. Use for large-scale code understanding without consuming main context.', input_schema: { type: 'object', properties: { task: { type: 'string', description: 'What to explore/analyze (e.g., "Find all React components that use useState")' } }, required: ['task'] } },
+  { name: 'list_templates', description: 'List all available website templates from the ALIN template library. Returns template IDs, names, descriptions, categories, and which components each includes. Use this FIRST when a user wants to build a website — check if a template matches before building from scratch.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_template', description: 'Fetch a specific website template by ID. Returns all template files (HTML, CSS, JS) with {{VARIABLE}} placeholders. Adapt the template to the user\'s needs by replacing all variables with real content, adjusting colors/fonts, and customizing copy. NEVER deploy a raw template — always customize it.', input_schema: { type: 'object', properties: { template_id: { type: 'string', description: 'Template ID from list_templates (e.g., "saas-landing", "portfolio", "restaurant")' } }, required: ['template_id'] } },
 ];
 
-// --- Coding mode system prompt ---
+// DEPRECATED: Coding mode prompt now served by server/prompts/codingMode.js
+// Kept as fallback — will be removed in a future cleanup pass.
 const CODING_SERVER_SYSTEM_PROMPT = `You are ALIN in coding mode — an expert autonomous software engineer. You solve coding tasks by working through them methodically: reading, understanding, planning, implementing, and verifying.
 
 CORE PRINCIPLES:
@@ -4931,11 +6911,11 @@ Be thorough but concise. Return a structured summary answering the user's questi
 
   for (let i = 0; i < MAX_SCAN_ITERATIONS; i++) {
     const response = await callClaudeSync({
-      model: 'claude-haiku-4-5-20251001',
+      model: DEFAULT_MODELS.claudeHaiku,
       messages,
       system: scanSystem,
       tools: scanTools,
-      maxTokens: 4096,
+      maxTokens: 16384,
     });
 
     // Extract text
@@ -4990,13 +6970,15 @@ app.post('/api/coding/stream', requireAuth, checkPlanLimits, async (req, res) =>
   });
 
   setupSSE(res);
-  sendSSE(res, 'start', { model: model || 'claude-sonnet-4-5-20250929', provider: 'anthropic' });
+  sendSSE(res, 'start', { model: model || DEFAULT_MODELS.claudeSonnet, provider: 'anthropic' });
 
   const MAX_ITERATIONS = 25;
   const MAX_DURATION_MS = 5 * 60 * 1000; // 5-minute time budget
   const streamStartTime = Date.now();
-  const systemPrompt = system || CODING_SERVER_SYSTEM_PROMPT;
-  const selectedModel = model || 'claude-sonnet-4-5-20250929';
+  const systemPrompt = (system && system !== '[DEPRECATED]')
+      ? system
+      : assemblePrompt('coding', { additionalContext: req.body.additionalContext || '' });
+  const selectedModel = model || DEFAULT_MODELS.claudeSonnet;
   let conversationMessages = [...messages];
 
   try {
@@ -5014,7 +6996,7 @@ app.post('/api/coding/stream', requireAuth, checkPlanLimits, async (req, res) =>
         messages: conversationMessages,
         system: systemPrompt,
         tools: CODING_TOOLS,
-        maxTokens: 8192,
+        maxTokens: 16384,
       });
 
       const contentBlocks = response.content || [];
@@ -5304,7 +7286,7 @@ app.delete('/api/workspace', requireAuth, async (req, res) => {
   }
 });
 
-// --- Workspace TTL cleanup (daily) ---
+// --- Workspace TTL cleanup (every 6 hours) + LRU eviction ---
 setInterval(() => {
   const now = Date.now();
   for (const [userId, ws] of userWorkspaces) {
@@ -5314,7 +7296,875 @@ setInterval(() => {
       console.log(`[Workspace] Cleaned up stale workspace: ${userId}`);
     }
   }
-}, 24 * 60 * 60 * 1000);
+  evictStaleWorkspaces();
+}, 6 * 60 * 60 * 1000);
+
+// ============================================================================
+// WEB_FETCH TOOL HANDLER
+// ============================================================================
+
+async function toolWebFetch(input) {
+  try {
+    const url = input.url;
+    if (!url) return { success: false, error: 'URL is required' };
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return { success: false, error: 'URL must start with http:// or https://' };
+    }
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'ALIN/1.0 (AI Assistant)' },
+      signal: AbortSignal.timeout(15000),
+      redirect: 'follow',
+    });
+    if (!resp.ok) return { success: false, error: `HTTP ${resp.status}: ${resp.statusText}` };
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('image') || contentType.includes('audio') || contentType.includes('video')) {
+      return { success: true, result: `[Binary content: ${contentType}]` };
+    }
+    let result = await resp.text();
+    if (contentType.includes('html')) {
+      result = result.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+    }
+    return { success: true, result: result.slice(0, 100000) };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+// ============================================================================
+// TOOL HANDLERS — GPU, WEBCAM, BLENDER (for unified executor)
+// ============================================================================
+
+async function toolGpuCompute(input) {
+  try {
+    const { script, framework, timeout } = input;
+    if (!script) return { success: false, error: 'Script is required' };
+    const pyCmd = getPythonCommand();
+    const tempFile = path.join(os.tmpdir(), `alin-gpu-${Date.now()}.py`);
+    await fs.writeFile(tempFile, script);
+    const result = await executeWithTimeout(pyCmd, [tempFile], timeout || 120000);
+    try { await fs.unlink(tempFile); } catch {}
+    let output = result.stdout.slice(0, 100000);
+    if (result.stderr) output += '\n--- stderr ---\n' + result.stderr.slice(0, 20000);
+    return { success: result.exitCode === 0, result: output, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolWebcamCapture(input) {
+  try {
+    const device = input.device ?? 0;
+    const pyCmd = getPythonCommand();
+    const outFile = path.join(os.tmpdir(), `alin_webcam_${Date.now()}.jpg`);
+    const pyScript = `import cv2, base64, sys\ncap=cv2.VideoCapture(${device})\nret,frame=cap.read()\ncap.release()\nif not ret: sys.exit(1)\ncv2.imwrite("${outFile.replace(/\\/g, '/')}",frame)\nwith open("${outFile.replace(/\\/g, '/')}","rb") as f: print(base64.b64encode(f.read()).decode())`;
+    const tempPy = path.join(os.tmpdir(), `alin_webcam_${Date.now()}.py`);
+    await fs.writeFile(tempPy, pyScript);
+    const result = await executeWithTimeout(pyCmd, [tempPy], 15000);
+    try { await fs.unlink(tempPy); } catch {}
+    try { await fs.unlink(outFile); } catch {}
+    if (result.exitCode !== 0) return { success: false, error: result.stderr || 'Webcam capture failed (is OpenCV installed?)' };
+    return { success: true, result: `data:image/jpeg;base64,${result.stdout.trim()}` };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolBlenderExecute(input) {
+  try {
+    const { script, blendFile, timeout } = input;
+    if (!script) return { success: false, error: 'Script is required' };
+    const tempScript = path.join(os.tmpdir(), `alin-blender-${Date.now()}.py`);
+    await fs.writeFile(tempScript, script);
+    const args = ['--background'];
+    if (blendFile) args.push(blendFile);
+    args.push('--python', tempScript);
+    const result = await executeWithTimeout('blender', args, timeout || 120000);
+    try { await fs.unlink(tempScript); } catch {}
+    let output = result.stdout.slice(0, 100000);
+    if (result.stderr) output += '\n--- stderr ---\n' + result.stderr.slice(0, 20000);
+    return { success: result.exitCode === 0, result: output, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolBlenderRender(input) {
+  try {
+    const { blendFile, outputPath, engine, format, frame } = input;
+    if (!blendFile) return { success: false, error: 'blendFile is required' };
+    if (!outputPath) return { success: false, error: 'outputPath is required' };
+    const args = ['--background', blendFile, '--render-output', outputPath];
+    if (engine) args.push('--engine', engine);
+    if (format) args.push('--render-format', format);
+    args.push('--render-frame', String(frame || 1));
+    const result = await executeWithTimeout('blender', args, 300000);
+    let output = result.stdout.slice(0, 50000);
+    if (result.stderr) output += '\n--- stderr ---\n' + result.stderr.slice(0, 10000);
+    return { success: result.exitCode === 0, result: output || `Rendered to ${outputPath}`, error: result.exitCode !== 0 ? output : undefined };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolGenerateImage(input) {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return { success: false, error: 'OPENAI_API_KEY not configured for image generation' };
+    const { prompt, size, quality, style } = input;
+    if (!prompt) return { success: false, error: 'Prompt is required' };
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'dall-e-3', prompt, n: 1,
+        size: size || '1024x1024', quality: quality || 'standard', style: style || 'vivid',
+      }),
+    });
+    if (!resp.ok) { const t = await resp.text(); return { success: false, error: `DALL-E error ${resp.status}: ${t}` }; }
+    const data = await resp.json();
+    const img = data.data?.[0];
+    return { success: true, result: JSON.stringify({ url: img?.url, revised_prompt: img?.revised_prompt }) };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+async function toolSystemStatus() {
+  try {
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
+    return {
+      success: true,
+      result: JSON.stringify({
+        uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+        memory: { heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB', heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB', rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB' },
+        platform: process.platform, nodeVersion: process.version,
+      }),
+    };
+  } catch (error) { return { success: false, error: error.message }; }
+}
+
+// ============================================================================
+// UNIFIED TOOL EXECUTOR — /api/tools/execute
+// ============================================================================
+
+app.post('/api/tools/execute', requireAuth, async (req, res) => {
+  try {
+    const { toolName, toolInput, workspaceId } = req.body;
+    if (!toolName) return res.status(400).json({ error: 'toolName required' });
+    const userId = req.user.id;
+    const workspacePath = getUserWorkspacePath(workspaceId || userId);
+    try { await fs.mkdir(workspacePath, { recursive: true }); } catch {}
+    const startTime = Date.now();
+    let result;
+    switch (toolName) {
+      case 'file_read': result = await toolFileRead(toolInput, workspacePath); break;
+      case 'file_write': result = await toolFileWrite(toolInput, workspacePath); break;
+      case 'file_list': result = await toolFileList(toolInput, workspacePath); break;
+      case 'scan_directory': result = await toolScanDirectory(toolInput, workspacePath); break;
+      case 'code_search': result = await toolCodeSearch(toolInput, workspacePath); break;
+      case 'edit_file': result = await toolEditFile(toolInput, workspacePath); break;
+      case 'run_command': result = await toolRunCommand(toolInput, workspacePath); break;
+      case 'execute_code': result = await toolExecuteCode(toolInput); break;
+      case 'git': result = await toolGit(toolInput, workspacePath); break;
+      case 'web_search': result = await toolWebSearch(toolInput); break;
+      case 'web_fetch': result = await toolWebFetch(toolInput); break;
+      case 'memory_store': result = await toolMemoryStore(toolInput, userId); break;
+      case 'memory_recall': result = await toolMemoryRecall(toolInput, userId); break;
+      case 'spawn_scan_agent': result = await runScanAgent(toolInput.task || toolInput.query || '', workspacePath, userId); break;
+      case 'list_templates': result = await toolListTemplates(); break;
+      case 'get_template': result = await toolGetTemplate(toolInput); break;
+      case 'gpu_compute': result = await toolGpuCompute(toolInput); break;
+      case 'webcam_capture': result = await toolWebcamCapture(toolInput); break;
+      case 'blender_execute': result = await toolBlenderExecute(toolInput); break;
+      case 'blender_render': result = await toolBlenderRender(toolInput); break;
+      case 'generate_image': result = await toolGenerateImage(toolInput); break;
+      case 'system_status': result = await toolSystemStatus(toolInput); break;
+      default: result = { success: false, error: `Unknown tool: ${toolName}` };
+    }
+    const durationMs = Date.now() - startTime;
+    try {
+      db.prepare('INSERT INTO telemetry_tool_usage (id, user_id, session_id, conversation_id, tool_name, success, duration_ms, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(randomUUID(), userId, '', req.body.conversationId || '', toolName, result.success ? 1 : 0, durationMs, result.error || null, Date.now());
+    } catch {}
+    res.json(result);
+  } catch (error) {
+    console.error('[ToolExecutor] Error:', error.message);
+    sendError(res, 500, error.message);
+  }
+});
+
+// ============================================================================
+// CAPABILITIES ENDPOINT
+// ============================================================================
+
+app.get('/api/capabilities', requireAuth, (req, res) => {
+  // Admin users get admin-level access (every ability maxed out)
+  const plan = req.user.isAdmin ? 'admin' : (req.user.plan || 'free');
+  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  res.json({
+    canChat: true,
+    canWebSearch: !!process.env.BRAVE_API_KEY,
+    canWebFetch: true,
+    canMemory: true,
+    canExecuteCode: limits.codeLabEnabled,
+    canFileExplore: limits.codeLabEnabled,
+    canGitOps: limits.codeLabEnabled,
+    canImageGen: !!process.env.OPENAI_API_KEY && limits.imageStudioEnabled,
+    canTBWO: limits.tbwoEnabled,
+    canComputerUse: limits.computerUse,
+    canHardwareMonitor: false,
+    canBlender: false,
+    canSiteDeploy: !!limits.sitesEnabled && (cfR2.isConfigured || cfDeploy.isConfigured),
+    canCfImages: !!limits.cfImagesEnabled && cfImages.isConfigured,
+    canCfStream: !!limits.cfStreamEnabled && cfStream.isConfigured,
+    canVectorize: !!limits.vectorizeEnabled && cfVectorize.isConfigured,
+    canSites: !!limits.sitesEnabled,
+    sitesDomain: 'alinai.dev',
+    plan,
+    limits: {
+      messagesPerHour: limits.messagesPerHour,
+      maxConversations: limits.maxConversations,
+      maxTokens: limits.maxTokens,
+      allowedModels: limits.allowedModels,
+    },
+  });
+});
+
+// ============================================================================
+// AUDIT TRACKING HELPER
+// ============================================================================
+
+function recordAuditEntry(userId, model, inputTokens, outputTokens, source) {
+  try {
+    const costs = {
+      'claude-opus-4-6': { input: 15, output: 75 },
+      'claude-sonnet-4-5-20250929': { input: 3, output: 15 },
+      'gpt-4o': { input: 2.5, output: 10 },
+      'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    };
+    const rate = costs[model] || { input: 3, output: 15 };
+    const cost = ((inputTokens / 1000000) * rate.input) + ((outputTokens / 1000000) * rate.output);
+    db.prepare('INSERT INTO audit_entries (id, conversation_id, message_id, model, tokens_prompt, tokens_completion, tokens_total, cost, tools_used, duration_ms, timestamp, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(randomUUID(), '', '', model, inputTokens, outputTokens, inputTokens + outputTokens, cost, '[]', 0, Date.now(), userId);
+  } catch (err) { console.warn('[Audit] Failed:', err.message); }
+}
+
+// ============================================================================
+// 3D ASSET ENDPOINTS
+// ============================================================================
+
+const ASSETS_DIR = path.join(__dirname, 'data', 'assets');
+
+// Upload .glb asset
+app.post('/api/assets/upload', requireAuth, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const originalName = req.file.originalname || 'model.glb';
+    if (!originalName.toLowerCase().endsWith('.glb')) {
+      fsSync.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Only .glb files are accepted' });
+    }
+
+    // Validate magic bytes (glTF binary starts with "glTF")
+    const fd = fsSync.openSync(req.file.path, 'r');
+    const magic = Buffer.alloc(4);
+    fsSync.readSync(fd, magic, 0, 4, 0);
+    fsSync.closeSync(fd);
+    if (magic.toString('ascii') !== 'glTF') {
+      fsSync.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Invalid GLB file (bad magic bytes)' });
+    }
+
+    // Size check (15MB pro, 50MB elite/admin)
+    const user = req.user;
+    const maxSize = (user?.plan === 'elite' || user?.isAdmin) ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
+    if (req.file.size > maxSize) {
+      fsSync.unlinkSync(req.file.path);
+      return res.status(400).json({ error: `File too large (max ${maxSize / 1024 / 1024}MB for your plan)` });
+    }
+
+    // Move to assets dir
+    fsSync.mkdirSync(ASSETS_DIR, { recursive: true });
+    const assetId = randomUUID();
+    const destPath = path.join(ASSETS_DIR, `${assetId}.glb`);
+    fsSync.renameSync(req.file.path, destPath);
+
+    res.json({
+      id: assetId,
+      name: originalName.replace('.glb', ''),
+      polycount: 0, // Would need a GLB parser to compute
+      url: `/api/assets/${assetId}`,
+    });
+  } catch (err) {
+    console.error('[Assets] Upload error:', err);
+    if (req.file?.path && fsSync.existsSync(req.file.path)) fsSync.unlinkSync(req.file.path);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
+// Serve uploaded .glb asset
+app.get('/api/assets/:id', requireAuth, (req, res) => {
+  const filePath = path.join(ASSETS_DIR, `${req.params.id}.glb`);
+  if (!fsSync.existsSync(filePath)) return res.status(404).json({ error: 'Asset not found' });
+  res.set('Content-Type', 'model/gltf-binary');
+  res.sendFile(filePath);
+});
+
+// List user's uploaded assets
+app.get('/api/assets', requireAuth, (req, res) => {
+  try {
+    if (!fsSync.existsSync(ASSETS_DIR)) return res.json([]);
+    const files = fsSync.readdirSync(ASSETS_DIR).filter(f => f.endsWith('.glb'));
+    const assets = files.map(f => ({
+      id: f.replace('.glb', ''),
+      name: f.replace('.glb', ''),
+      url: `/api/assets/${f.replace('.glb', '')}`,
+    }));
+    res.json(assets);
+  } catch (err) {
+    console.error('[Assets] List error:', err);
+    res.status(500).json({ error: 'Failed to list assets' });
+  }
+});
+
+// ============================================================================
+// R2 DEPLOY + FILE ROUTES
+// ============================================================================
+
+// --- Deploy via R2 (explicit R2 deploy endpoint) ---
+app.post('/api/sites/:siteId/deploy-r2', requireAuth, deployLimiter, async (req, res) => {
+  try {
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (!limits.sitesEnabled) {
+      return res.status(403).json({ error: 'Site deployment not available on your plan', code: 'SITES_DISABLED' });
+    }
+    const userId = req.user.id;
+    const site = stmts.getSite.get(req.params.siteId, userId);
+    if (!site) return sendError(res, 404, 'Site not found');
+    if (!cfR2.isConfigured) return sendError(res, 503, 'R2 storage not configured');
+
+    const siteDir = site.storage_path;
+    if (!siteDir) return sendError(res, 400, 'No site files found');
+
+    const deployId = randomUUID();
+    const now = Date.now();
+    const cfProjectName = site.cloudflare_project_name ||
+      site.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 58);
+
+    stmts.insertDeployment.run(deployId, site.id, userId, cfProjectName, null, null, 'queued', null, null, now);
+    res.json({ success: true, deployment: { id: deployId, status: 'queued' } });
+
+    const emitter = createDeployEmitter(deployId);
+
+    // Async deploy
+    (async () => {
+      try {
+        emitDeployEvent(deployId, 'status', { step: 'building', message: 'Building static site...' });
+        stmts.updateDeploymentStatus.run('building', null, null, null, null, deployId, userId);
+        const { outputDir, buildLog } = await buildStaticSite(siteDir, (step, detail) => {
+          emitDeployEvent(deployId, 'status', { step, message: step === 'installing' ? 'Installing dependencies...' : step === 'compiling' ? 'Running build command...' : step === 'built' ? `Build complete. Output: ${detail?.outputDir || 'dist'}/` : step });
+        });
+
+        emitDeployEvent(deployId, 'status', { step: 'uploading', message: 'Uploading to R2...' });
+        stmts.updateDeploymentStatus.run('deploying', null, null, buildLog, null, deployId, userId);
+        const latestRow = stmts.getLatestVersion.get(site.id, userId);
+        const nextVersion = latestRow ? latestRow.version + 1 : 1;
+        const r2Result = await cfR2.deploySite(site.id, outputDir, nextVersion);
+        const subdomain = cfProjectName;
+        const liveUrl = `https://${subdomain}.alinai.dev`;
+
+        emitDeployEvent(deployId, 'status', { step: 'registering', message: 'Registering domain...' });
+        if (cfKV.isConfigured) {
+          await cfKV.registerDomain(subdomain, userId, site.id, nextVersion);
+          await cfKV.setActiveVersion(site.id, nextVersion, deployId);
+        }
+
+        stmts.insertSiteVersion.run(randomUUID(), site.id, userId, nextVersion, r2Result.fileCount, r2Result.totalBytes, deployId, Date.now());
+        stmts.updateDeploymentStatus.run('success', deployId, liveUrl, buildLog, null, deployId, userId);
+        stmts.updateSite.run(site.name, 'deployed', cfProjectName, liveUrl, site.manifest, Date.now(), site.id, userId);
+        emitDeployEvent(deployId, 'status', { step: 'success', message: `Live at ${liveUrl}`, url: liveUrl, fileCount: r2Result.fileCount });
+        emitDeployEvent(deployId, 'done', {});
+        cleanupDeployEmitter(deployId);
+        console.log(`[Deploy-R2] Site ${site.id} v${nextVersion}: ${liveUrl}`);
+      } catch (err) {
+        console.error(`[Deploy-R2] Failed:`, err.message);
+        stmts.updateDeploymentStatus.run('failed', null, null, null, err.message, deployId, userId);
+        emitDeployEvent(deployId, 'error', { message: err.message });
+        emitDeployEvent(deployId, 'done', {});
+        cleanupDeployEmitter(deployId);
+      }
+    })();
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- List site files (from R2) ---
+app.get('/api/sites/:siteId/files', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const site = stmts.getSite.get(req.params.siteId, userId);
+    if (!site) return sendError(res, 404, 'Site not found');
+
+    const versionRow = stmts.getLatestVersion.get(site.id, userId);
+    if (!versionRow) return res.json({ success: true, files: [], version: 0 });
+
+    const files = await cfR2.listSiteFiles(site.id, versionRow.version);
+    res.json({ success: true, files, version: versionRow.version });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Get a specific site file (from R2) ---
+app.get('/api/sites/:siteId/files/*', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const site = stmts.getSite.get(req.params.siteId, userId);
+    if (!site) return sendError(res, 404, 'Site not found');
+
+    const versionRow = stmts.getLatestVersion.get(site.id, userId);
+    if (!versionRow) return sendError(res, 404, 'No versions found');
+
+    const filePath = req.params[0];
+    const file = await cfR2.getSiteFile(site.id, versionRow.version, filePath);
+    if (!file) return sendError(res, 404, 'File not found');
+
+    res.setHeader('Content-Type', file.contentType);
+    res.send(file.buffer);
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- List site versions ---
+app.get('/api/sites/:siteId/versions', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const versions = stmts.listSiteVersions.all(req.params.siteId, req.user.id, limit);
+    res.json({ success: true, versions });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// --- Rollback to a previous version ---
+app.post('/api/sites/:siteId/rollback/:version', requireAuth, deployLimiter, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const site = stmts.getSite.get(req.params.siteId, userId);
+    if (!site) return sendError(res, 404, 'Site not found');
+
+    const targetVersion = parseInt(req.params.version);
+    if (isNaN(targetVersion) || targetVersion < 1) return sendError(res, 400, 'Invalid version number');
+
+    // Verify version exists
+    const versions = stmts.listSiteVersions.all(site.id, userId, 100);
+    const versionExists = versions.some(v => v.version === targetVersion);
+    if (!versionExists) return sendError(res, 404, 'Version not found');
+
+    const deployId = randomUUID();
+    const cfProjectName = site.cloudflare_project_name ||
+      site.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 58);
+    const subdomain = cfProjectName;
+
+    if (cfKV.isConfigured) {
+      await cfKV.setActiveVersion(site.id, targetVersion, deployId);
+      await cfKV.registerDomain(subdomain, userId, site.id, targetVersion);
+    }
+
+    const liveUrl = `https://${subdomain}.alinai.dev`;
+    stmts.insertDeployment.run(deployId, site.id, userId, cfProjectName, deployId, liveUrl, 'success', `Rollback to v${targetVersion}`, null, Date.now());
+    stmts.updateSite.run(site.name, 'deployed', cfProjectName, liveUrl, site.manifest, Date.now(), site.id, userId);
+
+    res.json({ success: true, deployment: { id: deployId, version: targetVersion, url: liveUrl, status: 'success' } });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// CLOUDFLARE IMAGES ROUTES
+// ============================================================================
+
+app.post('/api/images/cf/upload', requireAuth, mediaUploadLimiter, upload.single('image'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    if (!limits.cfImagesEnabled) return sendError(res, 403, 'CF Images not available on your plan');
+
+    if (!req.file) return sendError(res, 400, 'No image file uploaded');
+    if (!cfImages.isConfigured) return sendError(res, 503, 'CF Images not configured');
+
+    const buffer = await fs.readFile(req.file.path);
+    const result = await cfImages.upload(buffer, req.file.originalname, {
+      userId,
+      siteId: req.body.siteId || null,
+    });
+
+    // Clean up temp file
+    try { await fs.unlink(req.file.path); } catch {}
+
+    const id = randomUUID();
+    const deliveryUrl = cfImages.getDeliveryUrl(result.id, 'public');
+    stmts.insertCfImage.run(
+      id, userId, result.id, result.filename,
+      deliveryUrl, JSON.stringify(result.variants),
+      JSON.stringify({ siteId: req.body.siteId }), req.body.siteId || null, Date.now()
+    );
+
+    res.json({
+      success: true,
+      image: {
+        id, cfImageId: result.id, filename: result.filename,
+        url: deliveryUrl, variants: result.variants,
+      },
+    });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.get('/api/images/cf', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const rows = stmts.listCfImages.all(req.user.id, limit);
+    const images = rows.map(r => ({
+      ...r,
+      variants: r.variants ? JSON.parse(r.variants) : [],
+      metadata: r.metadata ? JSON.parse(r.metadata) : {},
+    }));
+    res.json({ success: true, images });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.delete('/api/images/cf/:imageId', requireAuth, async (req, res) => {
+  try {
+    const row = stmts.getCfImage.get(req.params.imageId, req.user.id);
+    if (!row) return sendError(res, 404, 'Image not found');
+
+    if (cfImages.isConfigured) {
+      try { await cfImages.delete(row.cf_image_id); } catch (e) { console.warn('[CF Images] Delete failed:', e.message); }
+    }
+    stmts.deleteCfImage.run(req.params.imageId, req.user.id);
+    res.json({ success: true });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// CLOUDFLARE STREAM ROUTES
+// ============================================================================
+
+app.post('/api/videos/upload-url', requireAuth, mediaUploadLimiter, async (req, res) => {
+  try {
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    if (!limits.cfStreamEnabled) return sendError(res, 403, 'CF Stream not available on your plan');
+    if (limits.maxCfVideos >= 0) {
+      const used = getQuotaCount(req.user.id, 'video_uploads');
+      if (used >= limits.maxCfVideos) {
+        return res.status(429).json({ error: 'Monthly video upload limit reached', used, limit: limits.maxCfVideos, code: 'VIDEO_QUOTA_EXCEEDED' });
+      }
+    }
+    if (!cfStream.isConfigured) return sendError(res, 503, 'CF Stream not configured');
+
+    const result = await cfStream.getDirectUploadUrl(
+      req.body.maxDurationSeconds || 3600,
+      { userId: req.user.id, siteId: req.body.siteId }
+    );
+
+    const id = randomUUID();
+    stmts.insertCfVideo.run(
+      id, req.user.id, result.uid, 'uploading',
+      null, null, null, JSON.stringify({ siteId: req.body.siteId }),
+      req.body.siteId || null, Date.now()
+    );
+
+    incrementQuota(req.user.id, 'video_uploads');
+    res.json({ success: true, video: { id, uid: result.uid, uploadUrl: result.uploadUrl } });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.post('/api/videos/upload-from-url', requireAuth, mediaUploadLimiter, async (req, res) => {
+  try {
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    if (!limits.cfStreamEnabled) return sendError(res, 403, 'CF Stream not available on your plan');
+    if (limits.maxCfVideos >= 0) {
+      const used = getQuotaCount(req.user.id, 'video_uploads');
+      if (used >= limits.maxCfVideos) {
+        return res.status(429).json({ error: 'Monthly video upload limit reached', used, limit: limits.maxCfVideos, code: 'VIDEO_QUOTA_EXCEEDED' });
+      }
+    }
+    if (!cfStream.isConfigured) return sendError(res, 503, 'CF Stream not configured');
+    if (!req.body.url) return sendError(res, 400, 'url is required');
+
+    const result = await cfStream.uploadFromUrl(req.body.url, {
+      userId: req.user.id,
+      siteId: req.body.siteId,
+    });
+
+    const id = randomUUID();
+    stmts.insertCfVideo.run(
+      id, req.user.id, result.uid, result.status,
+      result.thumbnail || null, result.preview || null,
+      result.duration || null, JSON.stringify({ siteId: req.body.siteId }),
+      req.body.siteId || null, Date.now()
+    );
+
+    incrementQuota(req.user.id, 'video_uploads');
+    res.json({ success: true, video: { id, uid: result.uid, status: result.status } });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.get('/api/videos/:videoId', requireAuth, async (req, res) => {
+  try {
+    const row = stmts.getCfVideo.get(req.params.videoId, req.user.id);
+    if (!row) return sendError(res, 404, 'Video not found');
+
+    // Refresh status from CF if not ready
+    if (row.status !== 'ready' && cfStream.isConfigured) {
+      try {
+        const cfVideo = await cfStream.getVideo(row.cf_uid);
+        if (cfVideo) {
+          stmts.updateCfVideo.run(
+            cfVideo.status, cfVideo.thumbnail || row.thumbnail,
+            cfVideo.preview || row.preview, cfVideo.duration || row.duration,
+            row.id, req.user.id
+          );
+          row.status = cfVideo.status;
+          row.thumbnail = cfVideo.thumbnail || row.thumbnail;
+          row.preview = cfVideo.preview || row.preview;
+          row.duration = cfVideo.duration || row.duration;
+        }
+      } catch {}
+    }
+
+    res.json({ success: true, video: { ...row, metadata: row.metadata ? JSON.parse(row.metadata) : {} } });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.delete('/api/videos/:videoId', requireAuth, async (req, res) => {
+  try {
+    const row = stmts.getCfVideo.get(req.params.videoId, req.user.id);
+    if (!row) return sendError(res, 404, 'Video not found');
+
+    if (cfStream.isConfigured) {
+      try { await cfStream.delete(row.cf_uid); } catch (e) { console.warn('[CF Stream] Delete failed:', e.message); }
+    }
+    stmts.deleteCfVideo.run(req.params.videoId, req.user.id);
+    res.json({ success: true });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.get('/api/videos/:videoId/embed', requireAuth, (req, res) => {
+  try {
+    const row = stmts.getCfVideo.get(req.params.videoId, req.user.id);
+    if (!row) return sendError(res, 404, 'Video not found');
+
+    res.json({
+      success: true,
+      embedUrl: cfStream.getEmbedUrl(row.cf_uid),
+      embedHtml: cfStream.getEmbedHtml(row.cf_uid),
+    });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// THREAD / VECTORIZE ROUTES
+// ============================================================================
+
+app.post('/api/threads/ingest', requireAuth, threadIngestLimiter, async (req, res) => {
+  try {
+    const plan = req.user.plan || 'free';
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+    if (!limits.vectorizeEnabled) return sendError(res, 403, 'Vectorize not available on your plan');
+    if (!cfVectorize.isConfigured) return sendError(res, 503, 'Vectorize not configured');
+
+    const { text, threadId: providedThreadId } = req.body;
+    if (!text || typeof text !== 'string') return sendError(res, 400, 'text is required');
+
+    const threadId = providedThreadId || randomUUID();
+    const userId = req.user.id;
+
+    // Chunk + embed + upsert
+    const result = await cfVectorize.ingestThread(threadId, text, userId);
+
+    // Store chunks in DB
+    const now = Date.now();
+    for (const chunk of result.chunks) {
+      stmts.insertThreadChunk.run(
+        randomUUID(), threadId, userId, chunk.index,
+        chunk.content, null, chunk.tokenCount,
+        `${threadId}-chunk-${chunk.index}`, null, now
+      );
+    }
+
+    res.json({
+      success: true,
+      threadId,
+      chunkCount: result.chunkCount,
+      chunks: result.chunks.map(c => ({
+        index: c.index,
+        tokenCount: c.tokenCount,
+        preview: c.content.slice(0, 200),
+      })),
+    });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.get('/api/threads', requireAuth, (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const threads = stmts.listUserThreads.all(req.user.id, limit);
+    res.json({ success: true, threads });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+app.post('/api/memory/semantic-search', requireAuth, async (req, res) => {
+  try {
+    if (!cfVectorize.isConfigured) return sendError(res, 503, 'Vectorize not configured');
+    const { query, topK } = req.body;
+    if (!query) return sendError(res, 400, 'query is required');
+
+    const results = await cfVectorize.searchMemory(query, req.user.id, topK || 10);
+    res.json({ success: true, results });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// VECTORIZE — TBWO Context Chunking
+// ============================================================================
+
+// POST /api/vectorize/ingest — Chunk and embed arbitrary text for TBWO context
+app.post('/api/vectorize/ingest', requireAuth, async (req, res) => {
+  try {
+    if (!cfVectorize.isConfigured) return sendError(res, 503, 'Vectorize not configured');
+    const { text, metadata = {} } = req.body;
+    if (!text) return sendError(res, 400, 'text is required');
+
+    const chunks = cfVectorize.chunkText(text, 500, 50);
+    const vectors = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const embedding = await cfVectorize.embedText(chunks[i]);
+      if (embedding) {
+        vectors.push({
+          id: `ctx-${Date.now()}-${i}`,
+          values: embedding,
+          metadata: { ...metadata, chunk_index: i, content: chunks[i].slice(0, 500), user_id: req.user.id },
+        });
+      }
+    }
+    if (vectors.length > 0) {
+      await cfVectorize.upsert('content', vectors);
+    }
+    res.json({ success: true, chunkCount: chunks.length, vectorCount: vectors.length });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// POST /api/vectorize/search-context — Search for relevant context chunks
+app.post('/api/vectorize/search-context', requireAuth, async (req, res) => {
+  try {
+    if (!cfVectorize.isConfigured) return sendError(res, 503, 'Vectorize not configured');
+    const { query, topK = 5 } = req.body;
+    if (!query) return sendError(res, 400, 'query is required');
+
+    const results = await cfVectorize.searchContent(query, req.user.id, topK);
+    res.json({ success: true, chunks: results });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// R2 — User Asset Management
+// ============================================================================
+
+// GET /api/assets/:filename — Get a user's uploaded asset (R2 backend)
+app.get('/api/assets/:filename', requireAuth, async (req, res) => {
+  try {
+    if (!cfR2 || !cfR2.isConfigured) return sendError(res, 503, 'R2 not configured');
+    const result = await cfR2.getAsset(req.user.id, req.params.filename);
+    if (!result) return res.status(404).json({ error: 'Asset not found' });
+    res.set('Content-Type', result.contentType || 'application/octet-stream');
+    res.send(result.body);
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// DELETE /api/sites/:siteId/versions/:version — Delete old site version from R2
+app.delete('/api/sites/:siteId/versions/:version', requireAuth, async (req, res) => {
+  try {
+    if (!cfR2 || !cfR2.isConfigured) return sendError(res, 503, 'R2 not configured');
+    await cfR2.deleteSiteVersion(req.params.siteId, parseInt(req.params.version));
+    res.json({ success: true });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// KV — Domain Management
+// ============================================================================
+
+// GET /api/sites/domain/:subdomain — Check domain availability
+app.get('/api/sites/domain/:subdomain', requireAuth, async (req, res) => {
+  try {
+    if (!cfKV || !cfKV.isConfigured) return sendError(res, 503, 'KV not configured');
+    const info = await cfKV.lookupDomain(req.params.subdomain);
+    res.json({ success: true, available: !info, info: info || null });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// DELETE /api/sites/domain/:subdomain — Remove domain registration
+app.delete('/api/sites/domain/:subdomain', requireAuth, async (req, res) => {
+  try {
+    if (!cfKV || !cfKV.isConfigured) return sendError(res, 503, 'KV not configured');
+    await cfKV.unregisterDomain(req.params.subdomain);
+    res.json({ success: true });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// GET /api/sites/:siteId/version-info — Get active version info from KV
+app.get('/api/sites/:siteId/version-info', requireAuth, async (req, res) => {
+  try {
+    if (!cfKV || !cfKV.isConfigured) return sendError(res, 503, 'KV not configured');
+    const info = await cfKV.getVersionInfo(req.params.siteId);
+    res.json({ success: true, info: info || null });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// GET /api/kv/list — Admin KV browser
+app.get('/api/kv/list', requireAuth, async (req, res) => {
+  try {
+    if (!cfKV || !cfKV.isConfigured) return sendError(res, 503, 'KV not configured');
+    const { prefix, limit, cursor } = req.query;
+    const result = await cfKV.list(prefix || '', parseInt(limit) || 1000, cursor || undefined);
+    res.json({ success: true, ...result });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+// ============================================================================
+// CF Images — Gallery & URL Upload
+// ============================================================================
+
+// POST /api/images/from-url — Import image from URL
+app.post('/api/images/from-url', requireAuth, async (req, res) => {
+  try {
+    if (!cfImages || !cfImages.isConfigured) return sendError(res, 503, 'CF Images not configured');
+    const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+    if (limits.maxCfImages >= 0) {
+      const used = getQuotaCount(req.user.id, 'image_generations');
+      if (used >= limits.maxCfImages) {
+        return res.status(429).json({ error: 'Monthly image generation limit reached', used, limit: limits.maxCfImages, code: 'IMAGE_QUOTA_EXCEEDED' });
+      }
+    }
+    const { url, metadata = {} } = req.body;
+    if (!url) return sendError(res, 400, 'url is required');
+
+    const result = await cfImages.uploadFromUrl(url, { ...metadata, userId: req.user.id });
+    // Store in DB
+    db.prepare(`INSERT INTO cf_images (id, user_id, cf_image_id, filename, url, variants, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      crypto.randomUUID(), req.user.id, result.id, url.split('/').pop() || 'image',
+      result.variants?.[0] || '', JSON.stringify(result.variants || []),
+      JSON.stringify(metadata), Date.now()
+    );
+    incrementQuota(req.user.id, 'image_generations');
+    res.json({ success: true, image: result });
+  } catch (error) { sendError(res, 500, error.message); }
+});
+
+
+// ============================================================================
+// CF Stream — Video Gallery
+// ============================================================================
+
+// GET /api/videos/list — List uploaded videos
+app.get('/api/videos/list', requireAuth, async (req, res) => {
+  try {
+    if (!cfStream || !cfStream.isConfigured) return sendError(res, 503, 'CF Stream not configured');
+    const limit = parseInt(req.query.limit) || 50;
+    const result = await cfStream.list(limit);
+    res.json({ success: true, videos: result });
+  } catch (error) { sendError(res, 500, error.message); }
+});
 
 // Start server
 app.listen(PORT, () => {

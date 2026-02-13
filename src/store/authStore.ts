@@ -9,7 +9,7 @@ interface User {
   id: string;
   email: string;
   displayName: string;
-  plan: 'free' | 'pro' | 'enterprise';
+  plan: 'free' | 'pro' | 'elite';
   isAdmin?: boolean;
   emailVerified?: boolean;
 }
@@ -26,6 +26,7 @@ interface AuthState {
   signup(email: string, password: string, displayName: string): Promise<void>;
   login(email: string, password: string): Promise<void>;
   logout(): void;
+  refreshToken(): Promise<void>;
   fetchProfile(): Promise<void>;
   updateProfile(updates: { displayName?: string; email?: string }): Promise<void>;
   changePassword(oldPassword: string, newPassword: string): Promise<void>;
@@ -91,7 +92,35 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const { token } = get();
+        // Fire-and-forget server-side token revocation
+        if (token) {
+          fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => {});
+        }
         set({ user: null, token: null, isAuthenticated: false, error: null });
+      },
+
+      refreshToken: async () => {
+        const { token } = get();
+        if (!token) return;
+        try {
+          const res = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            set({ token: data.token, user: data.user, isAuthenticated: true });
+          } else if (res.status === 401) {
+            set({ user: null, token: null, isAuthenticated: false });
+          }
+          // Other errors: no-op (keep current token, might be temporary)
+        } catch {
+          // Network error — no-op
+        }
       },
 
       fetchProfile: async () => {
@@ -103,7 +132,18 @@ export const useAuthStore = create<AuthState>()(
           });
           if (!res.ok) {
             if (res.status === 401) {
-              set({ user: null, token: null, isAuthenticated: false });
+              // Try refreshing the token before giving up
+              await get().refreshToken();
+              // If refreshToken cleared auth, we're done
+              if (!get().token) return;
+              // Retry with new token
+              const retryRes = await fetch('/api/auth/me', {
+                headers: { Authorization: `Bearer ${get().token}` },
+              });
+              if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                set({ user: retryData.user, isAuthenticated: true });
+              }
             }
             return;
           }

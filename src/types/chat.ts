@@ -161,6 +161,9 @@ export interface Message {
   // User feedback (thumbs up/down)
   feedback?: 'positive' | 'negative';
   feedbackNote?: string;
+
+  // Stop reason from API (e.g., 'end_turn', 'max_tokens', 'tool_use')
+  stopReason?: string;
 }
 
 export interface ConfidenceSignals {
@@ -176,7 +179,7 @@ export interface ConfidenceSignals {
  */
 export interface ToolActivitySummary {
   id: string;
-  type: 'web_search' | 'memory_recall' | 'memory_store' | 'code_execute' | 'file_read' | 'file_write' | 'image_generate' | 'directory_scan' | 'code_search' | 'terminal_command' | 'git_operation' | 'file_edit' | 'other';
+  type: 'web_search' | 'web_fetch' | 'image_search' | 'memory_recall' | 'memory_store' | 'code_execute' | 'file_read' | 'file_write' | 'image_generate' | 'directory_scan' | 'code_search' | 'terminal_command' | 'git_operation' | 'file_edit' | 'site_validate' | 'conversion_audit' | 'site_improve' | 'video_analyze' | 'motion_validate' | 'scene_validate' | 'output_guard' | 'other';
   label: string;
   status: 'pending' | 'running' | 'completed' | 'error';
   query?: string;

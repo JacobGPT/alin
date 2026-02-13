@@ -133,10 +133,10 @@ export default function ChatContainer() {
   if (!currentConversation) {
     return (
       <div className="flex h-full items-center justify-center bg-background-primary">
-        <div className="text-center">
-          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-background-elevated mx-auto">
+        <div className="text-center max-w-md">
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 border border-indigo-500/20 mx-auto">
             <svg
-              className="h-10 w-10 text-text-tertiary"
+              className="h-7 w-7 text-indigo-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -144,16 +144,16 @@ export default function ChatContainer() {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
+                strokeWidth={1.5}
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
           </div>
-          <h2 className="mb-2 text-xl font-semibold text-text-primary">
-            No conversation selected
+          <h2 className="mb-2 text-lg font-semibold text-text-primary">
+            Start a conversation
           </h2>
-          <p className="text-sm text-text-tertiary">
-            Select a conversation from the sidebar or create a new one
+          <p className="text-sm text-text-tertiary leading-relaxed">
+            Select a chat from the sidebar or start a new one. ALIN can write code, search the web, manage files, and more.
           </p>
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function ChatContainer() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 lg:gap-3">
           {/* Mode Selector */}
           <ModeSelector />
 
@@ -195,6 +195,7 @@ export default function ChatContainer() {
               size="sm"
               onClick={handleVision}
               leftIcon={<CameraIcon className="h-4 w-4" />}
+              className="hidden lg:inline-flex"
             >
               Vision
             </Button>
@@ -206,6 +207,7 @@ export default function ChatContainer() {
             size="sm"
             onClick={handleTimeline}
             leftIcon={<ClockIcon className="h-4 w-4" />}
+            className="hidden lg:inline-flex"
           >
             Timeline
           </Button>
@@ -215,6 +217,7 @@ export default function ChatContainer() {
             variant="ghost"
             size="sm"
             onClick={handleExport}
+            className="hidden lg:inline-flex"
             leftIcon={<DocumentArrowDownIcon className="h-4 w-4" />}
           >
             Export
@@ -225,6 +228,7 @@ export default function ChatContainer() {
             variant="ghost"
             size="sm"
             onClick={handleAudit}
+            className="hidden lg:inline-flex"
             leftIcon={<ChartBarIcon className="h-4 w-4" />}
           >
             Usage
@@ -238,6 +242,7 @@ export default function ChatContainer() {
             variant="ghost"
             size="sm"
             onClick={handleSettings}
+            title="Settings"
           >
             <Cog6ToothIcon className="h-5 w-5" />
           </Button>

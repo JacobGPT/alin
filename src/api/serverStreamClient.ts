@@ -16,6 +16,7 @@ export interface ServerStreamCallbacks {
   onText?: (text: string) => void;
   onThinking?: (thinking: string) => void;
   onToolUse?: (tool: { id: string; name: string; input: Record<string, unknown> }) => void;
+  onModeHint?: (hint: { suggestedMode: string; confidence: number; reason: string }) => void;
   onError?: (error: Error) => void;
 }
 
@@ -26,6 +27,8 @@ export interface ServerStreamParams {
     model: string;
     messages: any[];
     system?: string;
+    mode?: string;
+    additionalContext?: string;
     tools?: any[];
     thinking?: boolean;
     thinkingBudget?: number;
@@ -145,8 +148,12 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
             stopReason = data.stopReason || 'end_turn';
             if (data.inputTokens) usage.inputTokens = data.inputTokens;
             if (data.outputTokens) usage.outputTokens = data.outputTokens;
+          } else if (data.type === 'mode_hint') {
+            callbacks.onModeHint?.(data);
           } else if (data.type === 'error') {
-            throw new Error(data.error || 'Stream error');
+            const errMsg = data.error || 'Stream error';
+            console.error('[StreamClient] Server error:', errMsg, data.details ? data.details.slice(0, 300) : '');
+            throw new Error(errMsg);
           }
         } catch (parseErr: any) {
           if (parseErr.message && !parseErr.message.includes('JSON')) {

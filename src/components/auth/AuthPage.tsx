@@ -1,5 +1,7 @@
 /**
  * AuthPage - Login/Signup/Verification for ALIN
+ *
+ * Clean, professional auth screen. No flashy gradients or gimmicks.
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -23,7 +25,6 @@ export default function AuthPage() {
   const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Resend cooldown timer
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
@@ -44,17 +45,11 @@ export default function AuthPage() {
   };
 
   const handleCodeChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return; // digits only
+    if (!/^\d*$/.test(value)) return;
     const newCode = [...code];
-    newCode[index] = value.slice(-1); // single digit
+    newCode[index] = value.slice(-1);
     setCode(newCode);
-
-    // Auto-focus next input
-    if (value && index < 5) {
-      codeRefs.current[index + 1]?.focus();
-    }
-
-    // Auto-submit when all 6 digits entered
+    if (value && index < 5) codeRefs.current[index + 1]?.focus();
     if (newCode.every(d => d !== '') && newCode.join('').length === 6) {
       handleVerify(newCode.join(''));
     }
@@ -70,8 +65,7 @@ export default function AuthPage() {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (pasted.length === 6) {
-      const newCode = pasted.split('');
-      setCode(newCode);
+      setCode(pasted.split(''));
       handleVerify(pasted);
     }
   };
@@ -99,28 +93,27 @@ export default function AuthPage() {
   if (needsVerification) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background-primary p-4">
-        <div className="w-full max-w-md">
-          <div className="mb-8 text-center">
-            <h1 className="text-4xl font-bold text-text-primary tracking-tight">ALIN</h1>
-            <p className="mt-2 text-sm text-text-tertiary">Verify your email</p>
+        <div className="w-full max-w-sm">
+          <div className="mb-10 text-center">
+            <h1 className="text-2xl font-semibold text-text-primary tracking-tight">ALIN</h1>
           </div>
 
-          <div className="rounded-xl border border-border-primary bg-background-secondary p-6 shadow-lg">
-            <p className="mb-1 text-sm text-text-secondary text-center">
-              We sent a 6-digit code to
+          <div className="rounded-lg border border-border-primary bg-background-secondary p-8">
+            <h2 className="mb-2 text-base font-medium text-text-primary text-center">Check your email</h2>
+            <p className="mb-1 text-sm text-text-tertiary text-center">
+              Enter the 6-digit code sent to
             </p>
-            <p className="mb-6 text-sm font-medium text-text-primary text-center">
+            <p className="mb-8 text-sm font-medium text-text-primary text-center">
               {verificationEmail}
             </p>
 
             {error && (
-              <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 text-center">
+              <div className="mb-6 rounded border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
                 {error}
               </div>
             )}
 
-            {/* 6-digit code input */}
-            <div className="flex justify-center gap-2 mb-6" onPaste={handleCodePaste}>
+            <div className="flex justify-center gap-2 mb-8" onPaste={handleCodePaste}>
               {code.map((digit, i) => (
                 <input
                   key={i}
@@ -131,7 +124,7 @@ export default function AuthPage() {
                   value={digit}
                   onChange={(e) => handleCodeChange(i, e.target.value)}
                   onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                  className="w-12 h-14 rounded-lg border border-border-primary bg-background-primary text-center text-xl font-bold text-text-primary outline-none transition-colors focus:border-brand-primary"
+                  className="w-11 h-12 rounded border border-border-primary bg-background-primary text-center text-lg font-mono text-text-primary outline-none transition-colors focus:border-text-secondary focus:ring-1 focus:ring-text-secondary/20"
                   autoFocus={i === 0}
                 />
               ))}
@@ -145,11 +138,11 @@ export default function AuthPage() {
               <button
                 onClick={handleResend}
                 disabled={resendCooldown > 0}
-                className="text-xs text-text-tertiary hover:text-brand-primary transition-colors disabled:opacity-40"
+                className="text-sm text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
               >
                 {resendCooldown > 0
-                  ? `Resend code in ${resendCooldown}s`
-                  : "Didn't get the code? Resend"}
+                  ? `Resend in ${resendCooldown}s`
+                  : "Resend code"}
               </button>
             </div>
           </div>
@@ -161,36 +154,32 @@ export default function AuthPage() {
   // ── Login / Signup Screen ──
   return (
     <div className="flex min-h-screen items-center justify-center bg-background-primary p-4">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-text-primary tracking-tight">ALIN</h1>
-          <p className="mt-2 text-sm text-text-tertiary">
-            Artificial Life Intelligence Network
+      <div className="w-full max-w-sm">
+        <div className="mb-10 text-center">
+          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">ALIN</h1>
+          <p className="mt-1 text-sm text-text-tertiary">
+            {isSignup ? 'Create your account' : 'Sign in to your account'}
           </p>
         </div>
 
-        <div className="rounded-xl border border-border-primary bg-background-secondary p-6 shadow-lg">
-          <h2 className="mb-6 text-lg font-semibold text-text-primary">
-            {isSignup ? 'Create Account' : 'Welcome Back'}
-          </h2>
-
+        <div className="rounded-lg border border-border-primary bg-background-secondary p-8">
           {error && (
-            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <div className="mb-6 rounded border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {isSignup && (
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                  Display Name
+                <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                  Name
                 </label>
                 <input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full rounded-lg border border-border-primary bg-background-primary px-3 py-2.5 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-brand-primary"
+                  className="w-full rounded border border-border-primary bg-background-primary px-3 py-2 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-text-secondary focus:ring-1 focus:ring-text-secondary/20"
                   placeholder="Your name"
                   required
                 />
@@ -198,21 +187,21 @@ export default function AuthPage() {
             )}
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                Email
+              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                Email address
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-border-primary bg-background-primary px-3 py-2.5 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-brand-primary"
+                className="w-full rounded border border-border-primary bg-background-primary px-3 py-2 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-text-secondary focus:ring-1 focus:ring-text-secondary/20"
                 placeholder="you@example.com"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
                 Password
               </label>
               <div className="relative">
@@ -220,25 +209,25 @@ export default function AuthPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border-primary bg-background-primary px-3 py-2.5 pr-10 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-brand-primary"
-                  placeholder="Min 6 characters"
+                  className="w-full rounded border border-border-primary bg-background-primary px-3 py-2 pr-10 text-sm text-text-primary placeholder-text-quaternary outline-none transition-colors focus:border-text-secondary focus:ring-1 focus:ring-text-secondary/20"
+                  placeholder={isSignup ? 'Min 6 characters' : 'Password'}
                   minLength={6}
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-quaternary hover:text-text-secondary transition-colors"
                   tabIndex={-1}
                 >
                   {showPassword ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
                       <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
                       <line x1="1" y1="1" x2="23" y2="23"/>
                     </svg>
                   ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                       <circle cx="12" cy="12" r="3"/>
                     </svg>
@@ -250,26 +239,25 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-primary-hover disabled:opacity-50"
+              className="w-full rounded bg-text-primary px-4 py-2 text-sm font-medium text-background-primary transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {isLoading ? 'Please wait...' : isSignup ? 'Create Account' : 'Sign In'}
+              {isLoading ? 'Please wait...' : isSignup ? 'Create account' : 'Continue'}
             </button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-6 pt-5 border-t border-border-primary text-center">
             <button
               onClick={toggleMode}
-              className="text-xs text-text-tertiary hover:text-brand-primary transition-colors"
+              className="text-sm text-text-tertiary hover:text-text-primary transition-colors"
             >
               {isSignup ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
             </button>
           </div>
         </div>
 
-        <div className="mt-6 text-center text-xs text-text-quaternary">
-          <p>Free tier: 10 messages/hour with Claude 3.5 Sonnet</p>
-          <p className="mt-1">Upgrade to Pro for unlimited access</p>
-        </div>
+        <p className="mt-8 text-center text-xs text-text-quaternary">
+          By continuing, you agree to ALIN's Terms of Service and Privacy Policy.
+        </p>
       </div>
     </div>
   );

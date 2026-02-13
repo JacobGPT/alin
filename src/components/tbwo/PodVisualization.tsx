@@ -25,12 +25,15 @@ import {
 // Components
 import { PodVisualization3D } from './PodVisualization3D';
 
-// Store
-import { useTBWOStore } from '@store/tbwoStore';
+// Stores
+import { usePodPoolStore } from '@store/podPoolStore';
+import type { PooledPod } from '@store/podPoolStore';
 
 // Types
 import type { TBWO, AgentPod, PodRole } from '../../types/tbwo';
-import { PodStatus } from '../../types/tbwo';
+import { PodStatus, getPodRoleDisplayName } from '../../types/tbwo';
+import { ModelBadge } from './PodActivityTabs';
+import { resolveModelForPod } from '../../services/tbwo/modelRouter';
 
 // ============================================================================
 // POD ROLE CONFIG
@@ -82,7 +85,23 @@ const POD_ROLE_CONFIG: Record<string, {
     borderColor: 'border-orange-500/30',
     icon: '✨',
     label: 'Motion',
-    description: 'Animations and interactions',
+    description: 'Micro-interactions and transitions',
+  },
+  animation: {
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+    icon: '🎬',
+    label: 'Animation',
+    description: 'Scroll animations, parallax, choreography',
+  },
+  three_d: {
+    color: 'text-violet-400',
+    bgColor: 'bg-violet-500/10',
+    borderColor: 'border-violet-500/30',
+    icon: '🖥️',
+    label: '3D Scene',
+    description: 'Three.js WebGL scenes and effects',
   },
   copy: {
     color: 'text-yellow-400',
@@ -108,6 +127,22 @@ const POD_ROLE_CONFIG: Record<string, {
     label: 'DevOps',
     description: 'Deployment and infrastructure',
   },
+  deployment: {
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/30',
+    icon: '🚀',
+    label: 'DevOps',
+    description: 'Deployment and infrastructure',
+  },
+  research: {
+    color: 'text-indigo-400',
+    bgColor: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/30',
+    icon: '🔬',
+    label: 'Research',
+    description: 'Research and analysis',
+  },
 };
 
 const POD_STATUS_CONFIG: Record<string, {
@@ -116,6 +151,12 @@ const POD_STATUS_CONFIG: Record<string, {
   icon: React.ReactNode;
   label: string;
 }> = {
+  ['ready']: {
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    icon: <ClockIcon className="h-4 w-4" />,
+    label: 'Ready to begin...',
+  },
   [PodStatus.INITIALIZING]: {
     color: 'text-blue-400',
     bgColor: 'bg-blue-500/10',
@@ -150,7 +191,7 @@ const POD_STATUS_CONFIG: Record<string, {
     color: 'text-semantic-success',
     bgColor: 'bg-semantic-success/10',
     icon: <CheckCircleIcon className="h-4 w-4" />,
-    label: 'Complete',
+    label: 'Done',
   },
   [PodStatus.FAILED]: {
     color: 'text-semantic-error',
@@ -174,12 +215,98 @@ interface PodVisualizationProps {
   tbwo: TBWO;
 }
 
+/** Infer a pod role from its display name when role field is missing/default. */
+function inferRoleFromName(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (lower.includes('orchestrat')) return 'orchestrator';
+  if (lower.includes('qa') || lower.includes('quality')) return 'qa';
+  if (lower.includes('frontend') || lower.includes('front')) return 'frontend';
+  if (lower.includes('backend') || lower.includes('back')) return 'backend';
+  if (lower.includes('design')) return 'design';
+  if (lower.includes('copy') || lower.includes('content') || lower.includes('write')) return 'copy';
+  if (lower.includes('motion') || lower.includes('anim')) return 'motion';
+  if (lower.includes('devops') || lower.includes('deploy') || lower.includes('delivery')) return 'devops';
+  if (lower.includes('research')) return 'research';
+  return null;
+}
+
+/** Convert a PooledPod with runtime state to the AgentPod shape the UI expects. */
+function pooledPodToAgentPod(pp: PooledPod, tbwoId: string): AgentPod {
+  const r = pp.runtime;
+  const resolvedRole = pp.role || inferRoleFromName(pp.name) || 'frontend';
+  return {
+    id: pp.id,
+    role: resolvedRole as PodRole,
+    name: pp.name,
+    status: (r?.podStatus || PodStatus.INITIALIZING) as any,
+    health: (r?.health || { status: 'healthy', lastHeartbeat: Date.now(), errorCount: 0, consecutiveFailures: 0, warnings: [] }) as any,
+    modelConfig: r?.modelConfig || { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    toolWhitelist: r?.toolWhitelist || [],
+    memoryScope: [],
+    taskQueue: [],
+    completedTasks: (r?.completedTasks || []) as any[],
+    outputs: [],
+    resourceUsage: r?.resourceUsage || { cpuPercent: 0, memoryMB: 0, tokensUsed: 0, apiCalls: 0, executionTime: 0 },
+    messageLog: (r?.messageLog || []) as any[],
+    currentTask: r?.currentTask as any,
+    createdAt: pp.createdAt,
+    startedAt: r?.startedAt,
+    tbwoId,
+  };
+}
+
 export function PodVisualization({ tbwo }: PodVisualizationProps) {
   const [selectedPod, setSelectedPod] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'network' | '3d'>('grid');
 
-  // Convert pods map to array
-  const pods = useMemo(() => Array.from(tbwo.pods?.values() || []), [tbwo.pods]);
+  // Read runtime pods from podPoolStore (single source of truth)
+  const poolPods = usePodPoolStore(state =>
+    [...state.pool.values()].filter(p =>
+      p.activeTBWOId === tbwo.id && p.status === 'active' && !!p.runtime
+    )
+  );
+
+  // Convert pool pods to AgentPod shape for existing UI components
+  const runtimePods: AgentPod[] = useMemo(
+    () => poolPods.map(pp => pooledPodToAgentPod(pp, tbwo.id)),
+    [poolPods, tbwo.id]
+  );
+
+  // Planned definition pods (from tbwo.pods) — shown when no runtime pods exist
+  // Overlay the routed model config so the UI shows correct model per role
+  const definitionPods = useMemo(
+    () => Array.from(tbwo.pods?.values() || []).map(pod => {
+      const routed = resolveModelForPod(pod.role);
+      return {
+        ...pod,
+        modelConfig: {
+          ...pod.modelConfig,
+          provider: routed.provider,
+          model: routed.model,
+        },
+      };
+    }),
+    [tbwo.pods]
+  );
+
+  // Determine if TBWO has started or completed
+  const hasStarted = !['draft', 'planning', 'awaiting_approval'].includes(tbwo.status);
+  const isCompleted = tbwo.status === 'completed' || tbwo.status === 'cancelled' || tbwo.status === 'failed';
+
+  // Use runtime pods when executing, fall back to definitions when awaiting/planning
+  // Apply contextual status: "ready" before start, "complete" after end
+  const rawPods = runtimePods.length > 0 ? runtimePods : definitionPods;
+  const pods = rawPods.map(p => {
+    if (!hasStarted) {
+      // Before TBWO starts, all pods show "Ready to begin..."
+      return { ...p, status: 'ready' as any };
+    }
+    if (isCompleted && p.status !== PodStatus.FAILED) {
+      // After TBWO ends, all non-failed pods show "Done"
+      return { ...p, status: PodStatus.COMPLETE };
+    }
+    return p;
+  });
   const activePods = useMemo(
     () => pods.filter((p) => p.status !== PodStatus.TERMINATED),
     [pods]
@@ -271,14 +398,23 @@ export function PodVisualization({ tbwo }: PodVisualizationProps) {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-6 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <StatCard label="Total Pods" value={stats.totalPods} icon={<CpuChipIcon className="h-5 w-5" />} />
         <StatCard label="Active" value={stats.activePods} icon={<PlayCircleIcon className="h-5 w-5" />} color="text-semantic-success" />
         <StatCard label="API Calls" value={stats.totalApiCalls} icon={<BoltIcon className="h-5 w-5" />} />
         <StatCard label="Tokens Used" value={`${(stats.totalTokens / 1000).toFixed(1)}k`} icon={<CodeBracketIcon className="h-5 w-5" />} />
-        <StatCard label="Avg CPU" value={`${stats.avgCpu.toFixed(1)}%`} icon={<CpuChipIcon className="h-5 w-5" />} />
-        <StatCard label="Memory" value={`${stats.totalMemory}MB`} icon={<SignalIcon className="h-5 w-5" />} />
       </div>
+
+      {/* Source Label */}
+      {runtimePods.length > 0 ? (
+        <p className="text-xs text-text-tertiary">
+          Showing {runtimePods.length} runtime pods (live execution state)
+        </p>
+      ) : definitionPods.length > 0 ? (
+        <p className="text-xs text-text-tertiary">
+          Showing {definitionPods.length} planned pods (execution not started)
+        </p>
+      ) : null}
 
       {/* Main Content */}
       <div className="flex gap-6">
@@ -388,8 +524,13 @@ function PodCard({ pod, isSelected, onClick }: PodCardProps) {
             {roleConfig.icon}
           </div>
           <div>
-            <p className={`font-semibold ${roleConfig.color}`}>{roleConfig.label}</p>
-            <p className="text-xs text-text-tertiary">{pod.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className={`font-semibold ${roleConfig.color}`}>{roleConfig.label}</p>
+              {pod.modelConfig?.model && (
+                <ModelBadge model={pod.modelConfig.model} animate={pod.status === PodStatus.WORKING} />
+              )}
+            </div>
+            <p className="text-xs text-text-tertiary">{pod.name || getPodRoleDisplayName(pod.role)}</p>
           </div>
         </div>
 
@@ -427,14 +568,6 @@ function PodCard({ pod, isSelected, onClick }: PodCardProps) {
 
       {/* Resource Usage */}
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <span className="text-text-tertiary">CPU: </span>
-          <span className="font-medium text-text-primary">{pod.resourceUsage?.cpuPercent || 0}%</span>
-        </div>
-        <div>
-          <span className="text-text-tertiary">Memory: </span>
-          <span className="font-medium text-text-primary">{pod.resourceUsage?.memoryMB || 0}MB</span>
-        </div>
         <div>
           <span className="text-text-tertiary">Tokens: </span>
           <span className="font-medium text-text-primary">{(pod.resourceUsage?.tokensUsed || 0).toLocaleString()}</span>
@@ -593,7 +726,7 @@ function PodDetailPanel({ pod, onClose }: PodDetailPanelProps) {
             <span className="text-2xl">{roleConfig.icon}</span>
             <div>
               <h3 className={`font-bold ${roleConfig.color}`}>{roleConfig.label}</h3>
-              <p className="text-xs text-text-tertiary">{pod.name}</p>
+              <p className="text-xs text-text-tertiary">{pod.name || getPodRoleDisplayName(pod.role)}</p>
             </div>
           </div>
           <button
@@ -651,8 +784,7 @@ function PodDetailPanel({ pod, onClose }: PodDetailPanelProps) {
         <div>
           <p className="mb-2 text-xs font-medium text-text-tertiary">Resource Usage</p>
           <div className="space-y-2">
-            <ResourceBar label="CPU" value={pod.resourceUsage?.cpuPercent || 0} max={100} unit="%" />
-            <ResourceBar label="Memory" value={pod.resourceUsage?.memoryMB || 0} max={512} unit="MB" />
+            {/* CPU/Memory removed — not tracked in browser-based execution */}
             <div className="flex items-center justify-between text-sm">
               <span className="text-text-tertiary">Tokens Used</span>
               <span className="font-medium text-text-primary">{(pod.resourceUsage?.tokensUsed || 0).toLocaleString()}</span>

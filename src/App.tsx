@@ -45,8 +45,10 @@ const HardwareDashboard = lazy(() => import('@components/hardware/HardwareDashbo
 // Settings Modal
 const SettingsView = lazy(() => import('@components/settings/SettingsModal'));
 
-// Trust Center Dashboard
-const TrustCenterDashboard = lazy(() => import('@components/trust/TrustCenterDashboard'));
+// Sites Dashboard (Deploy v1)
+const SiteDashboard = lazy(() => import('@components/sites/SiteDashboard'));
+const ThreadIngestPanel = lazy(() => import('@components/threads/ThreadIngestPanel'));
+
 
 // ============================================================================
 // MAIN APP COMPONENT
@@ -88,12 +90,16 @@ function App() {
       }
 
       // Auto-scan project if not scanned recently (> 1 hour)
-      const projectStore = useProjectStore.getState();
-      const activeProject = projectStore.getActiveProject();
-      const ALIN_ROOT = 'C:/Users/jacob/Downloads/ALIN';
-      const ONE_HOUR = 3600000;
-      if (!activeProject || Date.now() - activeProject.lastScanned > ONE_HOUR) {
-        projectStore.scanProject(ALIN_ROOT).catch(() => {});
+      // Only scan on localhost (desktop) — deployed version doesn't have a local project
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isLocal) {
+        const projectStore = useProjectStore.getState();
+        const activeProject = projectStore.getActiveProject();
+        const ONE_HOUR = 3600000;
+        if (!activeProject || Date.now() - activeProject.lastScanned > ONE_HOUR) {
+          // Use CWD-relative path or env var; falls back gracefully if unavailable
+          projectStore.scanProject('.').catch(() => {});
+        }
       }
     }).catch((err) => {
       console.warn('[ALIN] DB init failed, using localStorage:', err);
@@ -237,8 +243,12 @@ function App() {
                 {/* Hardware monitoring */}
                 <Route path="/hardware" element={<HardwareDashboard />} />
 
-                {/* Trust Center */}
-                <Route path="/trust" element={<TrustCenterDashboard />} />
+                {/* Sites Dashboard */}
+                <Route path="/sites" element={<SiteDashboard />} />
+                <Route path="/sites/:siteId" element={<SiteDashboard />} />
+
+                {/* Thread Ingestion */}
+                <Route path="/threads" element={<ThreadIngestPanel />} />
 
                 {/* Settings */}
                 <Route path="/settings" element={<SettingsView />} />

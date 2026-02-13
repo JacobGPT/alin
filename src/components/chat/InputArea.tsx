@@ -39,12 +39,10 @@ import { useUIStore } from '@store/uiStore';
 import { Button } from '@components/ui/Button';
 import { ProactiveSuggestions } from './ProactiveSuggestions';
 
-// formatFileSize is defined locally at the bottom of this file
-
 import { getAPIService, initializeAPIService } from '@api/apiService';
 import { ModelProvider, MessageRole } from '../../types/chat';
 import type { ContentBlock } from '../../types/chat';
-import { useArtifactStore, type ArtifactType } from '../../store/artifactStore';
+import { useArtifactStore } from '../../store/artifactStore';
 import { RightPanelContent } from '../../types/ui';
 import { nanoid } from 'nanoid';
 import { proactiveService } from '../../services/proactiveService';
@@ -54,115 +52,10 @@ import { useWorkspaceStore } from '../../store/workspaceStore';
 import { getModeConfig } from '../../config/modes';
 import { ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 
-
-
-// ============================================================================
-// AUTO-ARTIFACT DETECTION
-// ============================================================================
-
-interface DetectedArtifact {
-  type: ArtifactType;
-  language: string;
-  content: string;
-  title: string;
-}
-
-const ARTIFACT_LANG_MAP: Record<string, ArtifactType> = {
-  html: 'html',
-  svg: 'svg',
-  mermaid: 'mermaid',
-  jsx: 'react',
-  tsx: 'react',
-  react: 'react',
-  chart: 'chart',
-  markdown: 'markdown',
-  md: 'markdown',
-};
-
-function detectArtifact(text: string): DetectedArtifact | null {
-  // Match completed code fences: ```lang\n...\n```
-  const fenceRegex = /```(\w+)\n([\s\S]*?)```/g;
-  let match: RegExpExecArray | null;
-  let lastArtifact: DetectedArtifact | null = null;
-
-  while ((match = fenceRegex.exec(text)) !== null) {
-    const lang = (match[1] || '').toLowerCase();
-    const codeContent = (match[2] || '').trim();
-
-    // Skip small snippets
-    if (codeContent.length < 100) continue;
-
-    // Direct language match
-    if (ARTIFACT_LANG_MAP[lang]) {
-      lastArtifact = {
-        type: ARTIFACT_LANG_MAP[lang],
-        language: lang,
-        content: codeContent,
-        title: getTitleFromContent(ARTIFACT_LANG_MAP[lang], codeContent, lang),
-      };
-      continue;
-    }
-
-    // Check if JSON content looks like a chart spec
-    if (lang === 'json') {
-      try {
-        const parsed = JSON.parse(codeContent);
-        if (parsed.type && parsed.data && Array.isArray(parsed.data)) {
-          lastArtifact = {
-            type: 'chart',
-            language: 'chart',
-            content: codeContent,
-            title: parsed.title || 'Chart',
-          };
-          continue;
-        }
-      } catch { /* not chart JSON */ }
-    }
-  }
-
-  return lastArtifact;
-}
-
-function getTitleFromContent(type: ArtifactType, content: string, lang: string): string {
-  switch (type) {
-    case 'html': {
-      const titleMatch = content.match(/<title>(.*?)<\/title>/i);
-      return titleMatch?.[1] || 'HTML App';
-    }
-    case 'mermaid': return 'Mermaid Diagram';
-    case 'react': return 'React Component';
-    case 'svg': return 'SVG Graphic';
-    case 'markdown': return 'Document';
-    case 'chart': return 'Chart';
-    default: return `${lang.toUpperCase()} Artifact`;
-  }
-}
-
-// ============================================================================
-// ERROR CATEGORIZATION
-// ============================================================================
-
-function categorizeError(error: any): string {
-  const msg = error?.message || String(error);
-  const status = error?.status || error?.response?.status;
-
-  if (status === 401 || msg.includes('401') || msg.includes('Unauthorized') || msg.includes('Invalid or expired token'))
-    return 'Session expired. Please log in again.';
-  if (status === 429 || msg.includes('429') || msg.includes('rate limit') || msg.includes('Rate limit'))
-    return 'Rate limit reached. Please wait a moment before sending another message.';
-  if (status === 403 || msg.includes('403') || msg.includes('Forbidden'))
-    return 'Access denied. This feature may not be available on your plan.';
-  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION'))
-    return "Can't reach the server. Check your connection and make sure the backend is running.";
-  if (msg.includes('API key') || msg.includes('api_key') || msg.includes('invalid_api_key'))
-    return 'API key error. Please check your API key configuration in Settings.';
-  if (status === 413 || msg.includes('too large') || msg.includes('payload'))
-    return 'Message too large. Try shortening your message or reducing attachments.';
-  if (msg.includes('timeout') || msg.includes('Timeout'))
-    return 'Request timed out. The server may be busy — try again.';
-
-  return `Error: ${msg}`;
-}
+// Extracted utilities
+import { detectArtifact } from './utils/artifactDetector';
+import { categorizeError } from './utils/errorCategorizer';
+import { formatFileSize } from './utils/contentSegments';
 
 // ============================================================================
 // INPUTAREA COMPONENT
@@ -176,6 +69,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   
   // Store state
   const inputValue = useChatStore((state) => state.inputValue);
@@ -775,6 +669,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
               cost: response?.cost,
               confidence: (response as any)?.confidence,
               confidenceSignals: (response as any)?.confidenceSignals,
+              stopReason: response?.stopReason || response?.finishReason,
             });
             chatStore.completeStreaming();
             clearTimeout(safetyTimeout);
@@ -941,11 +836,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
     }
   };
   
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
+  const handleDropFiles = async (files: File[]) => {
     const currentMode = useModeStore.getState().currentMode;
     const modeConfig = getModeConfig(currentMode);
 
@@ -962,6 +853,46 @@ export function InputArea({ conversationId }: InputAreaProps) {
 
     files.forEach((file) => attachFile(file));
   };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    await handleDropFiles(Array.from(e.dataTransfer.files));
+  };
+
+  // Full-screen drag-and-drop with counter-based flicker fix
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current++;
+      if (dragCounter.current === 1) setIsDragging(true);
+    };
+    const handleDragLeave = () => {
+      dragCounter.current--;
+      if (dragCounter.current === 0) setIsDragging(false);
+    };
+    const handleDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const handleWindowDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      setIsDragging(false);
+      if (e.dataTransfer?.files.length) {
+        await handleDropFiles(Array.from(e.dataTransfer.files));
+      }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
+    };
+  }, []);
   
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items);
@@ -1089,43 +1020,26 @@ export function InputArea({ conversationId }: InputAreaProps) {
         )}
       </AnimatePresence>
       
+      {/* Full-Screen Drag Overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background-primary/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brand-primary bg-background-secondary p-12">
+            <ArrowUpTrayIcon className="h-16 w-16 text-brand-primary" />
+            <p className="text-lg font-semibold text-text-primary">Drop files here</p>
+            <p className="text-sm text-text-tertiary">
+              {getModeConfig(useModeStore.getState().currentMode).features.useServerSideToolLoop
+                ? 'Files will be uploaded to your workspace'
+                : 'Files will be attached to your message'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Input Container */}
       <div className="p-4">
         <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          className={`relative rounded-lg border transition-colors ${
-            isDragging
-              ? 'border-brand-primary bg-brand-primary/5'
-              : 'border-border-primary bg-background-tertiary'
-          }`}
+          className="relative rounded-lg border transition-colors border-border-primary bg-background-tertiary"
         >
-          {/* Drag Overlay */}
-          {isDragging && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-brand-primary/10 backdrop-blur-sm">
-              <div className="text-center">
-                {getModeConfig(useModeStore.getState().currentMode).features.useServerSideToolLoop ? (
-                  <>
-                    <ArrowUpTrayIcon className="mx-auto mb-2 h-12 w-12 text-green-400" />
-                    <p className="text-sm font-medium text-green-400">
-                      Drop files to upload to workspace
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <PhotoIcon className="mx-auto mb-2 h-12 w-12 text-brand-primary" />
-                    <p className="text-sm font-medium text-brand-primary">
-                      Drop files to attach
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
           
           {/* Textarea */}
           <textarea
@@ -1293,14 +1207,3 @@ export function InputArea({ conversationId }: InputAreaProps) {
   );
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}

@@ -311,7 +311,7 @@ export function ModalRenderer() {
           onClose={closeModal}
           title="Create New TBWO"
           description="Select a template to create a Time-Budgeted Work Order"
-          size="lg"
+          size="2xl"
         >
           <Suspense
             fallback={

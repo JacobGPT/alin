@@ -145,7 +145,13 @@ export default defineConfig(({ command }) => ({
       '@api': path.resolve(__dirname, './src/api'),
       '@db': path.resolve(__dirname, './src/db'),
       '@styles': path.resolve(__dirname, './src/styles'),
-      '@tools': path.resolve(__dirname, './src/tools')
+      '@tools': path.resolve(__dirname, './src/tools'),
+      '@shared': path.resolve(__dirname, './src/shared'),
+      '@kernel': path.resolve(__dirname, './src/alin-kernel'),
+      '@executive': path.resolve(__dirname, './src/alin-executive'),
+      '@memory': path.resolve(__dirname, './src/alin-memory'),
+      '@surface': path.resolve(__dirname, './src/alin-surface'),
+      '@products': path.resolve(__dirname, './src/products')
     }
   },
   

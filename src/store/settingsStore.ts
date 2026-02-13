@@ -76,6 +76,7 @@ export interface TBWOPreferences {
   autoApprove: boolean;
   verboseReceipts: boolean;
   showPodVisualization: boolean;
+  modelRouting: import('../types/tbwo').ModelRoutingConfig;
 }
 
 export interface MemoryPreferences {
@@ -145,6 +146,10 @@ interface SettingsState {
   enableComputerUse: boolean;
   enableTextEditor: boolean;
 
+  // Auto-continuation (when response hits token limit)
+  enableAutoContinuation: boolean;
+  maxContinuationRounds: number; // 1-5, default 3
+
   // Preferences
   model: ModelPreferences;
   ui: UIPreferences;
@@ -181,6 +186,10 @@ interface SettingsActions {
   // Claude specialized tools
   toggleComputerUse: () => void;
   toggleTextEditor: () => void;
+
+  // Auto-continuation
+  setAutoContinuation: (enabled: boolean) => void;
+  setMaxContinuationRounds: (rounds: number) => void;
 
   // Model Preferences
   updateModelPreferences: (updates: Partial<ModelPreferences>) => void;
@@ -238,7 +247,7 @@ const DEFAULT_MODEL_PREFERENCES: ModelPreferences = {
     supportsStreaming: true,
   },
   temperature: 0.7,
-  maxTokens: 4096,
+  maxTokens: 16384,
 };
 
 const DEFAULT_UI_PREFERENCES: UIPreferences = {
@@ -277,6 +286,20 @@ const DEFAULT_TBWO_PREFERENCES: TBWOPreferences = {
   autoApprove: false,
   verboseReceipts: true,
   showPodVisualization: true,
+  modelRouting: {
+    enabled: true,
+    rules: [
+      { podRole: 'design' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Creative design' },
+      { podRole: 'frontend' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Code generation' },
+      { podRole: 'copy' as any, provider: 'openai', model: 'gpt-4o', reason: 'Natural language copy' },
+      { podRole: 'qa' as any, provider: 'anthropic', model: 'claude-haiku-4-5-20251001', reason: 'Fast validation' },
+      { podRole: 'animation' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Animation code' },
+      { podRole: 'three_d' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: '3D scene code' },
+      { podRole: 'deployment' as any, provider: 'anthropic', model: 'claude-haiku-4-5-20251001', reason: 'Config generation' },
+      { podRole: 'orchestrator' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Good reasoning, cost-effective' },
+    ],
+    fallback: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+  },
 };
 
 const DEFAULT_MEMORY_PREFERENCES: MemoryPreferences = {
@@ -336,6 +359,8 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       reasoningEffort: 'medium' as const,
       enableComputerUse: false,
       enableTextEditor: false,
+      enableAutoContinuation: true,
+      maxContinuationRounds: 3,
       model: DEFAULT_MODEL_PREFERENCES,
       ui: DEFAULT_UI_PREFERENCES,
       chat: DEFAULT_CHAT_PREFERENCES,
@@ -426,6 +451,20 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       toggleTextEditor: () => {
         set((state) => {
           state.enableTextEditor = !state.enableTextEditor;
+          state.lastUpdated = Date.now();
+        });
+      },
+
+      setAutoContinuation: (enabled) => {
+        set((state) => {
+          state.enableAutoContinuation = enabled;
+          state.lastUpdated = Date.now();
+        });
+      },
+
+      setMaxContinuationRounds: (rounds) => {
+        set((state) => {
+          state.maxContinuationRounds = Math.max(1, Math.min(5, rounds));
           state.lastUpdated = Date.now();
         });
       },
@@ -640,6 +679,7 @@ import * as dbService from '../api/dbService';
 const _settingsDbSyncKeys = [
   'modelMode', 'selectedModelVersions', 'enableThinking', 'thinkingBudget',
   'reasoningEffort', 'enableComputerUse', 'enableTextEditor',
+  'enableAutoContinuation', 'maxContinuationRounds',
   'model', 'ui', 'chat', 'voice', 'tbwo', 'memory',
   'privacy', 'performance', 'experimental',
 ] as const;

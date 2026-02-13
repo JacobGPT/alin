@@ -49,7 +49,14 @@
       "@utils/*": ["./src/utils/*"],
       "@api/*": ["./src/api/*"],
       "@db/*": ["./src/db/*"],
-      "@styles/*": ["./src/styles/*"]
+      "@styles/*": ["./src/styles/*"],
+      "@tools/*": ["./src/tools/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@kernel/*": ["./src/alin-kernel/*"],
+      "@executive/*": ["./src/alin-executive/*"],
+      "@memory/*": ["./src/alin-memory/*"],
+      "@surface/*": ["./src/alin-surface/*"],
+      "@products/*": ["./src/products/*"]
     },
     
     // Performance

@@ -1,0 +1,18 @@
+name = "alin-site-server"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+ENVIRONMENT = "production"
+
+[[r2_buckets]]
+binding = "SITES_BUCKET"
+bucket_name = "alin-sites"
+
+[[kv_namespaces]]
+binding = "DOMAIN_KV"
+id = "58495b0fc5ab4f8aa607a3464481a4c1"
+
+[routes]
+pattern = "*.alinai.dev/*"
+zone_name = "alinai.dev"

@@ -45,6 +45,17 @@ export interface Capabilities {
   allowedModels: string[];
   messagesPerHour: number;
   planLimits: PlanLimits;
+
+  // 3D plan-gated
+  plan3DTemplates: number;
+  plan3DUpload: boolean;
+  plan3DImmersive: boolean;
+
+  // Sites + CF plan-gated
+  canSites: boolean;
+  canCfImages: boolean;
+  canCfStream: boolean;
+  canVectorize: boolean;
 }
 
 /** Returns true when running on localhost (desktop app) */
@@ -60,22 +71,23 @@ export function useCapabilities(): Capabilities {
   return useMemo(() => {
     const isApp = isLocalEnvironment();
     const isWeb = !isApp;
-    const plan = user?.plan || 'free';
-    const limits = getPlanLimits(plan);
+    // Admin users get admin-level access (every ability maxed out)
+    const effectivePlan = user?.isAdmin ? 'admin' : (user?.plan || 'free');
+    const limits = getPlanLimits(effectivePlan);
 
     return {
       isApp,
       isWeb,
       isPWA: typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
 
-      // Desktop-only: require local environment
-      canFileExplore: isApp,
-      canExecuteCode: isApp && limits.codeLabEnabled,
-      canGitOps: isApp,
+      // Server-supported: available on web when plan allows (server handles execution)
+      canFileExplore: limits.codeLabEnabled,
+      canExecuteCode: limits.codeLabEnabled,
+      canGitOps: limits.codeLabEnabled,
       canHardwareMonitor: isApp,
       canComputerUse: isApp && limits.computerUse,
       canBlender: isApp,
-      canTBWO: isApp && limits.tbwoEnabled,
+      canTBWO: limits.tbwoEnabled,
 
       // Always available
       canChat: !!user,
@@ -94,6 +106,15 @@ export function useCapabilities(): Capabilities {
       allowedModels: limits.allowedModels,
       messagesPerHour: limits.messagesPerHour,
       planLimits: limits,
+
+      plan3DTemplates: limits.scene3DTemplates,
+      plan3DUpload: limits.scene3DUpload,
+      plan3DImmersive: limits.scene3DImmersive,
+
+      canSites: limits.sitesEnabled,
+      canCfImages: limits.cfImagesEnabled,
+      canCfStream: limits.cfStreamEnabled,
+      canVectorize: limits.vectorizeEnabled,
     };
   }, [user]);
 }
@@ -103,21 +124,22 @@ export function useCapabilities(): Capabilities {
  */
 export function getCapabilitiesSnapshot(): Capabilities {
   const user = useAuthStore.getState().user;
-  const plan = user?.plan || 'free';
-  const limits = getPlanLimits(plan);
+  // Admin users get admin-level access (every ability maxed out)
+  const effectivePlan = user?.isAdmin ? 'admin' : (user?.plan || 'free');
+  const limits = getPlanLimits(effectivePlan);
   const isApp = isLocalEnvironment();
 
   return {
     isApp,
     isWeb: !isApp,
     isPWA: false,
-    canFileExplore: isApp,
-    canExecuteCode: isApp && limits.codeLabEnabled,
-    canGitOps: isApp,
+    canFileExplore: limits.codeLabEnabled,
+    canExecuteCode: limits.codeLabEnabled,
+    canGitOps: limits.codeLabEnabled,
     canHardwareMonitor: isApp,
     canComputerUse: isApp && limits.computerUse,
     canBlender: isApp,
-    canTBWO: isApp && limits.tbwoEnabled,
+    canTBWO: limits.tbwoEnabled,
     canChat: !!user,
     canMemory: true,
     canImageGen: !!user && limits.imageStudioEnabled,
@@ -131,5 +153,14 @@ export function getCapabilitiesSnapshot(): Capabilities {
     allowedModels: limits.allowedModels,
     messagesPerHour: limits.messagesPerHour,
     planLimits: limits,
+
+    plan3DTemplates: limits.scene3DTemplates,
+    plan3DUpload: limits.scene3DUpload,
+    plan3DImmersive: limits.scene3DImmersive,
+
+    canSites: limits.sitesEnabled,
+    canCfImages: limits.cfImagesEnabled,
+    canCfStream: limits.cfStreamEnabled,
+    canVectorize: limits.vectorizeEnabled,
   };
 }

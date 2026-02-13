@@ -414,15 +414,15 @@ export const MessageComponent = memo(function MessageComponent({
       )}>
         {/* Avatar - assistant only */}
         {showAvatar && !isUser && (
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-accent to-brand-secondary">
-            <SparklesIcon className="h-5 w-5 text-white" />
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 shadow-sm shadow-indigo-500/20">
+            <SparklesIcon className="h-4 w-4 text-white" />
           </div>
         )}
 
         {/* Content */}
         <div className={cn(
           'min-w-0 space-y-2',
-          isUser ? 'rounded-xl bg-background-tertiary px-4 py-3 w-fit max-w-full' : 'flex-1'
+          isUser ? 'rounded-2xl bg-background-tertiary/80 px-4 py-3 w-fit max-w-full border border-border-primary/30' : 'flex-1'
         )}>
           {/* Role Badge - assistant/system only */}
           {showAvatar && !isUser && (
@@ -446,25 +446,13 @@ export const MessageComponent = memo(function MessageComponent({
             {message.content.map((block, index) => renderContentBlock(block, index))}
           </div>
           
-          {/* Metadata */}
-          {(showTimestamp || message.tokens) && (
+          {/* Metadata — only timestamp, no internal metrics */}
+          {showTimestamp && chatPreferences.showTimestamps && (
             <div className={cn(
               'flex items-center gap-3 text-xs text-text-quaternary',
               isUser && 'justify-end'
             )}>
-              {showTimestamp && chatPreferences.showTimestamps && (
-                <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-              )}
-              {message.tokens && chatPreferences.showTokenCount && (
-                <span>
-                  {(message.tokens.total ?? ((message.tokens.prompt || 0) + (message.tokens.completion || 0))).toLocaleString()} tokens
-                </span>
-              )}
-              {message.cost && (
-                <span>
-                  ${message.cost.toFixed(4)}
-                </span>
-              )}
+              <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
             </div>
           )}
 
@@ -591,6 +579,16 @@ export const MessageComponent = memo(function MessageComponent({
             <div className="h-2 w-2 rounded-full bg-current animate-pulse" style={{ animationDelay: '0.4s' }} />
           </div>
           <span className="text-xs">Generating...</span>
+        </div>
+      )}
+
+      {/* Truncation Indicator — shown when response was cut off and no auto-continuation */}
+      {!message.isStreaming && message.stopReason === 'max_tokens' && (
+        <div className="flex items-center gap-2 px-4 pb-3 text-amber-400/80">
+          <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span className="text-xs">Response was truncated due to length limits. Try increasing Max Tokens in Settings.</span>
         </div>
       )}
     </div>

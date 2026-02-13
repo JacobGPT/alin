@@ -92,10 +92,22 @@ export interface MemoryLayerEntry {
 // REST CLIENT — fire-and-forget writes to backend
 // ============================================================================
 
+function getAuthHeaders(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('alin-auth-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const token = parsed?.state?.token;
+      if (token) return { Authorization: `Bearer ${token}` };
+    }
+  } catch {}
+  return {};
+}
+
 async function post(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(`${API}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Self-model API ${path} → ${res.status}`);
@@ -103,7 +115,9 @@ async function post(path: string, body: unknown): Promise<unknown> {
 }
 
 async function get(path: string): Promise<unknown> {
-  const res = await fetch(`${API}${path}`);
+  const res = await fetch(`${API}${path}`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`Self-model API ${path} → ${res.status}`);
   return res.json();
 }
@@ -140,10 +154,11 @@ export async function recordToolUse(
   toolName: string,
   success: boolean,
   duration: number,
-  errorReason?: string
+  errorReason?: string,
+  model?: string,
 ): Promise<void> {
   await post('/api/self-model/tool-reliability', {
-    toolName, success, duration, errorReason,
+    toolName, success, duration, errorReason, model,
   }).catch(e =>
     console.warn('[SelfModel] Failed to record tool use:', e.message)
   );
@@ -480,8 +495,9 @@ export async function onToolCall(
   success: boolean,
   duration: number,
   errorReason?: string,
+  model?: string,
 ): Promise<void> {
-  await recordToolUse(toolName, success, duration, errorReason);
+  await recordToolUse(toolName, success, duration, errorReason, model);
 }
 
 /**

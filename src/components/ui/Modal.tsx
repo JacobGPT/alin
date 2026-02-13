@@ -27,12 +27,13 @@ import { Button } from './Button';
 // MODAL TYPES
 // ============================================================================
 
-type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+type ModalSize = 'sm' | 'md' | 'lg' | '2xl' | 'xl' | 'full';
 
 const sizeClasses: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
+  '2xl': 'max-w-2xl',
   xl: 'max-w-xl',
   full: 'max-w-4xl',
 };

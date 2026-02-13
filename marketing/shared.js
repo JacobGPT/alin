@@ -1,5 +1,21 @@
 /* ALIN — Shared Components & Scripts */
 
+// ===== AUTO-REDIRECT LOGGED-IN USERS =====
+// If the user already has a valid auth token, skip marketing and go to the app.
+// Only runs on marketing pages; never on /app/ (prevents infinite redirect).
+(function() {
+  try {
+    if (window.location.pathname.startsWith('/app')) return; // already in app
+    var raw = localStorage.getItem('alin-auth-storage');
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    var token = parsed && parsed.state && parsed.state.token;
+    if (token && typeof token === 'string' && token.length > 10) {
+      window.location.replace('/app/');
+    }
+  } catch(e) { /* localStorage or JSON parse failed — stay on marketing */ }
+})();
+
 // ===== NAV TEMPLATE =====
 function getNav(activePage = '') {
   return `

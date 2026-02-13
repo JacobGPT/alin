@@ -15,8 +15,8 @@ import { TBWO_TEMPLATES, type TBWOTemplate } from '../../config/tbwoTemplates';
 import { useTBWOStore } from '../../store/tbwoStore';
 import { useUIStore } from '../../store/uiStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { TBWOType } from '../../types/tbwo';
-import { WebsiteSprintWizard } from './WebsiteSprintWizard';
+
+import { productUIRegistry } from '../../alin-surface/productUIRegistry';
 
 interface TemplateSelectorProps {
   onSelect?: (templateId: string) => void;
@@ -46,8 +46,9 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onSelect }) 
     setInputs(defaults);
   };
 
-  // If user selected Website Sprint, render the dedicated wizard
-  if (selectedTemplate?.type === TBWOType.WEBSITE_SPRINT) {
+  // If the selected template has a registered product wizard, render it
+  const WizardComponent = selectedTemplate ? productUIRegistry.getWizard(selectedTemplate.type) : undefined;
+  if (selectedTemplate && WizardComponent) {
     return (
       <div className="max-h-[80vh] overflow-y-auto">
         <div className="mb-3 flex items-center gap-2">
@@ -57,9 +58,9 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onSelect }) 
           >
             <XMarkIcon className="w-5 h-5" />
           </button>
-          <span className="text-lg font-semibold text-text-primary">Website Sprint Wizard</span>
+          <span className="text-lg font-semibold text-text-primary">{selectedTemplate.name} Wizard</span>
         </div>
-        <WebsiteSprintWizard onComplete={onSelect} />
+        <WizardComponent onComplete={onSelect} />
       </div>
     );
   }
@@ -222,26 +223,25 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onSelect }) 
                 </div>
               ))}
 
-              {/* Time Budget */}
-              <div>
-                <label className="block text-sm font-medium text-text-primary mb-1">
-                  Time Budget (minutes)
-                </label>
-                <input
-                  type="range"
-                  min={15}
-                  max={240}
-                  step={15}
-                  value={timeBudget}
-                  onChange={e => setTimeBudget(parseInt(e.target.value))}
-                  className="w-full accent-accent-primary"
-                />
-                <div className="flex justify-between text-xs text-text-tertiary">
-                  <span>15 min</span>
-                  <span className="text-text-primary font-medium">{timeBudget} min</span>
-                  <span>4 hrs</span>
+              {/* Reference Sites (optional — for website_sprint) */}
+              {selectedTemplate.type === 'website_sprint' && (
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Reference Sites <span className="text-text-tertiary font-normal">(optional)</span>
+                  </label>
+                  <p className="text-xs text-text-tertiary mb-1.5">
+                    Paste up to 3 URLs of sites you like. ALIN will analyze their style, structure, and tone.
+                  </p>
+                  <textarea
+                    value={(inputs['referenceUrls'] as string) || ''}
+                    onChange={e => setInputs(prev => ({ ...prev, referenceUrls: e.target.value }))}
+                    placeholder="https://example.com&#10;https://another-site.com"
+                    className="w-full px-3 py-2 bg-background-tertiary border border-border-primary rounded-lg text-sm text-text-primary placeholder:text-text-tertiary resize-none font-mono"
+                    rows={2}
+                  />
                 </div>
-              </div>
+              )}
+
             </div>
 
             {/* Phases Preview */}

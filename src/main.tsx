@@ -12,6 +12,26 @@
 import { enableMapSet } from 'immer';
 enableMapSet();
 
+// ============================================================================
+// PRODUCT REGISTRATION & CONTEXT (must happen before any store/engine code)
+// ============================================================================
+import { registerSitesProduct } from './products/sites';
+import { setRequestContext, getRequestContext } from './alin-executive/requestContext';
+import { setProjectProvider } from './api/dbService';
+
+// 1. Set initial context from persisted auth (display only — server uses JWT)
+const authRaw = localStorage.getItem('alin-auth-storage');
+const userId = authRaw ? (() => { try { return JSON.parse(authRaw)?.state?.user?.id; } catch { return undefined; } })() : undefined;
+setRequestContext({ userId: userId || 'local-user', projectId: 'default' });
+
+// 2. Wire kernel DB adapter to executive context (DI — no kernel→executive import)
+setProjectProvider(() => getRequestContext().projectId);
+
+// 3. Register products (idempotent — safe for HMR)
+registerSitesProduct();
+
+// ============================================================================
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

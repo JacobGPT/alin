@@ -12,6 +12,8 @@ import {
   CodeBracketIcon,
   CpuChipIcon,
   ArrowDownIcon,
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
   DocumentDuplicateIcon,
   LightBulbIcon,
   ChevronDownIcon,
@@ -23,6 +25,7 @@ import { useTBWOStore } from '../../store/tbwoStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { getAPIService, isAPIServiceInitialized } from '../../api/apiService';
 import { ToolActivityPanel } from '../chat/ToolActivityPanel';
+import { downloadTBWOZip, countDownloadableArtifacts } from '../../services/tbwo/zipService';
 import type { TBWO } from '../../types/tbwo';
 import type { ContentBlock } from '../../types/chat';
 import { MessageRole, ModelProvider } from '../../types/chat';
@@ -43,6 +46,7 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -57,13 +61,54 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
   const createConversation = useChatStore((s) => s.createConversation);
   const updateTBWO = useTBWOStore((s) => s.updateTBWO);
 
-  // Create chat conversation if it doesn't exist yet
+  // Create or recover chat conversation
+  const [isRecovering, setIsRecovering] = useState(false);
   useEffect(() => {
     if (!chatConvId) {
       const convId = createConversation({
         title: `TBWO: ${tbwo.objective.slice(0, 50)}`,
       });
       updateTBWO(tbwo.id, { chatConversationId: convId });
+    } else {
+      const existing = useChatStore.getState().conversations.get(chatConvId);
+      if (!existing) {
+        // Try to recover from DB before creating a fresh empty conversation
+        setIsRecovering(true);
+        import('../../api/dbService').then(async (db) => {
+          try {
+            const result = await db.getConversation(chatConvId);
+            if (result?.conversation && result.messages?.length > 0) {
+              // Re-insert into chatStore with original ID
+              const conv = {
+                id: chatConvId,
+                title: result.conversation.title || `TBWO: ${tbwo.objective.slice(0, 50)}`,
+                messages: result.messages.map((m: any) => ({
+                  id: m.id,
+                  role: m.role,
+                  content: typeof m.content === 'string' ? JSON.parse(m.content) : m.content,
+                  model: m.model ? { id: m.model, name: m.model, provider: m.provider || 'anthropic' } : undefined,
+                  createdAt: m.created_at || Date.now(),
+                })),
+                model: { id: 'system', name: 'System', provider: 'system' as any },
+                createdAt: result.conversation.createdAt || Date.now(),
+                updatedAt: result.conversation.updatedAt || Date.now(),
+              };
+              useChatStore.setState((state: any) => {
+                state.conversations.set(chatConvId, conv);
+              });
+            } else {
+              // No DB data — create fresh
+              const convId = createConversation({ title: `TBWO: ${tbwo.objective.slice(0, 50)}` });
+              updateTBWO(tbwo.id, { chatConversationId: convId });
+            }
+          } catch {
+            const convId = createConversation({ title: `TBWO: ${tbwo.objective.slice(0, 50)}` });
+            updateTBWO(tbwo.id, { chatConversationId: convId });
+          } finally {
+            setIsRecovering(false);
+          }
+        });
+      }
     }
   }, [chatConvId, tbwo.id, tbwo.objective, createConversation, updateTBWO]);
 
@@ -72,6 +117,14 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
   const scrollTrigger = messages.length + (
     lastMsg?.isStreaming ? (lastMsg.content?.[0] as any)?.text?.length || 0 : 0
   );
+
+  // Scroll to bottom on initial mount (instant, not smooth)
+  useEffect(() => {
+    if (messagesEndRef.current && messages.length > 0) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-scroll to bottom on new messages OR streaming content updates
   useEffect(() => {
@@ -164,6 +217,19 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
     }
   };
 
+  const fileCount = countDownloadableArtifacts(tbwo);
+
+  const handleDownloadZip = async () => {
+    setIsDownloadingZip(true);
+    try {
+      await downloadTBWOZip(tbwo, tbwo.receipts);
+    } catch (e) {
+      console.error('[TBWOChat] ZIP download failed:', e);
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
+
   const isExecuting = tbwo.status === 'executing' || tbwo.status === 'checkpoint';
   const isComplete = ['completed', 'failed', 'cancelled'].includes(tbwo.status);
 
@@ -180,9 +246,24 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
             {isExecuting ? 'Live Execution' : isComplete ? 'Execution Complete' : 'Waiting to Start'}
           </span>
         </div>
-        <span className="text-xs text-text-tertiary">
-          {messages.length} messages
-        </span>
+        <div className="flex items-center gap-3">
+          {isComplete && fileCount > 0 && (
+            <button
+              onClick={handleDownloadZip}
+              disabled={isDownloadingZip}
+              className="flex items-center gap-1.5 rounded-lg bg-brand-primary/10 px-2.5 py-1 text-xs font-medium text-brand-primary hover:bg-brand-primary/20 transition-colors disabled:opacity-50"
+            >
+              {isDownloadingZip
+                ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                : <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+              }
+              Download ZIP ({fileCount})
+            </button>
+          )}
+          <span className="text-xs text-text-tertiary">
+            {messages.length} messages
+          </span>
+        </div>
       </div>
 
       {/* Messages */}
@@ -203,9 +284,31 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
-          ))
+          (() => {
+            // Group consecutive messages by pod for visual grouping
+            const groups = groupMessagesByPod(messages);
+            return groups.map((group, gi) => (
+              <div key={gi}>
+                {/* Pod section header for assistant message groups */}
+                {!group.isUser && group.model && group.messages.length > 0 && (
+                  <div className="flex items-center gap-2 mt-4 mb-2 first:mt-0">
+                    <div className={`h-0.5 w-4 rounded ${getPodColor(group.model).replace('text-', 'bg-')}`} />
+                    <span className={`text-xs font-semibold ${getPodColor(group.model)}`}>{group.model}</span>
+                    <div className="h-px flex-1 bg-border-primary/30" />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {group.messages.map((msg, mi) => (
+                    <ChatMessage
+                      key={msg.id}
+                      message={msg}
+                      compact={!group.isUser && mi > 0}
+                    />
+                  ))}
+                </div>
+              </div>
+            ));
+          })()
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -268,10 +371,66 @@ export function TBWOChatTab({ tbwo }: TBWOChatTabProps) {
 }
 
 // ============================================================================
+// MESSAGE GROUPING — group consecutive messages by pod
+// ============================================================================
+
+interface MessageGroup {
+  model?: string;
+  isUser: boolean;
+  messages: Array<{ id: string; role: MessageRole; content: ContentBlock[]; timestamp: number; model?: string; isStreaming?: boolean }>;
+}
+
+function groupMessagesByPod(
+  messages: Array<{ id: string; role: MessageRole; content: ContentBlock[]; timestamp: number; model?: string; isStreaming?: boolean }>
+): MessageGroup[] {
+  const groups: MessageGroup[] = [];
+  let current: MessageGroup | null = null;
+
+  for (const msg of messages) {
+    const isUser = msg.role === MessageRole.USER;
+    const key = isUser ? '__user__' : (msg.model || '__system__');
+
+    if (!current || (isUser !== current.isUser) || (!isUser && current.model !== msg.model)) {
+      current = { model: msg.model, isUser, messages: [] };
+      groups.push(current);
+    }
+    current.messages.push(msg);
+  }
+
+  return groups;
+}
+
+// ============================================================================
 // CHAT MESSAGE COMPONENT
 // ============================================================================
 
-function ChatMessage({ message }: { message: { id: string; role: MessageRole; content: ContentBlock[]; timestamp: number; model?: string; isStreaming?: boolean } }) {
+// Pod role → color mapping for visual distinction (case-insensitive word match)
+const POD_COLORS: Record<string, string> = {
+  frontend: 'text-blue-400',
+  qa: 'text-red-400',
+  delivery: 'text-cyan-400',
+  devops: 'text-cyan-400',
+  copywriter: 'text-yellow-400',
+  copy: 'text-yellow-400',
+  design: 'text-pink-400',
+  designer: 'text-pink-400',
+  seo: 'text-emerald-400',
+  research: 'text-violet-400',
+  orchestrator: 'text-orange-400',
+  backend: 'text-green-400',
+  alin: 'text-brand-primary',
+};
+
+function getPodColor(model?: string): string {
+  if (!model) return 'text-text-quaternary';
+  const words = model.toLowerCase().split(/[\s\-_]+/);
+  for (const [keyword, color] of Object.entries(POD_COLORS)) {
+    if (words.some(w => w === keyword || w.startsWith(keyword))) return color;
+  }
+  return 'text-text-quaternary';
+}
+
+function ChatMessage({ message, compact }: { message: { id: string; role: MessageRole; content: ContentBlock[]; timestamp: number; model?: string; isStreaming?: boolean }; compact?: boolean }) {
   const isUser = message.role === MessageRole.USER;
 
   return (
@@ -281,21 +440,16 @@ function ChatMessage({ message }: { message: { id: string; role: MessageRole; co
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div className={`max-w-[85%] flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-        {/* Avatar */}
-        {!isUser && (
+        {/* Avatar — hidden in compact mode */}
+        {!isUser && !compact && (
           <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-accent to-brand-secondary mt-0.5">
             <CpuChipIcon className="h-4 w-4 text-white" />
           </div>
         )}
+        {/* Spacer for alignment in compact mode */}
+        {!isUser && compact && <div className="w-7 flex-shrink-0" />}
 
         <div className={`flex-1 min-w-0 ${isUser ? 'rounded-xl bg-background-tertiary px-3.5 py-2.5' : ''}`}>
-          {/* Execution engine label */}
-          {!isUser && message.model && (
-            <div className="mb-1 flex items-center gap-1.5 text-xs text-text-quaternary">
-              <span className="font-medium">{message.model}</span>
-            </div>
-          )}
-
           {/* Content blocks */}
           <div className="space-y-1">
             {message.content.map((block, i) => (
@@ -308,10 +462,12 @@ function ChatMessage({ message }: { message: { id: string; role: MessageRole; co
             <span className="inline-block ml-1 animate-pulse text-text-quaternary">|</span>
           )}
 
-          {/* Timestamp */}
-          <div className={`mt-1.5 text-[10px] ${isUser ? 'text-text-quaternary text-right' : 'text-text-quaternary'}`}>
-            {formatTime(message.timestamp)}
-          </div>
+          {/* Timestamp — only show for first in group or user messages */}
+          {!compact && (
+            <div className={`mt-1.5 text-[10px] ${isUser ? 'text-text-quaternary text-right' : 'text-text-quaternary'}`}>
+              {formatTime(message.timestamp)}
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -392,12 +548,59 @@ function stripXMLToolCalls(text: string): { cleanText: string; extractedCode: Ar
 }
 
 // ============================================================================
+// COLLAPSIBLE CODE BLOCK (per-instance state, collapsed by default)
+// ============================================================================
+
+function CollapsibleCodeBlock({ code, language, filename, accentBorder }: { code: string; language: string; filename?: string; accentBorder?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const lineCount = code.split('\n').length;
+  const preview = code.split('\n').slice(0, 3).join('\n');
+
+  return (
+    <div className={`mt-2 mb-1 rounded-lg overflow-hidden border ${accentBorder ? 'border-brand-primary/20' : 'border-border-primary'}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center justify-between w-full bg-background-elevated px-3 py-2 text-xs hover:bg-background-hover transition-colors"
+      >
+        <div className="flex items-center gap-1.5 text-text-secondary">
+          <CodeBracketIcon className={`h-3.5 w-3.5 ${accentBorder ? 'text-brand-primary' : ''}`} />
+          <span className={`font-medium ${accentBorder ? 'text-brand-primary' : ''}`}>{filename || language}</span>
+          <span className="text-text-quaternary">({lineCount} lines)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-text-quaternary">{expanded ? 'Collapse' : 'Expand'}</span>
+          <ChevronDownIcon className={`h-3 w-3 text-text-quaternary transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="relative">
+          <pre className="bg-[#1e1e2e] p-3 text-xs overflow-x-auto max-h-[600px] overflow-y-auto">
+            <code className="text-green-400">{code}</code>
+          </pre>
+          <button
+            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(code); }}
+            className="absolute top-2 right-2 p-1 rounded bg-white/10 hover:bg-white/20 text-text-quaternary"
+            title="Copy"
+          >
+            <DocumentDuplicateIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <pre className="bg-[#1e1e2e] px-3 py-2 text-xs text-text-quaternary overflow-hidden max-h-[60px]">
+          <code>{preview}{lineCount > 3 ? '\n...' : ''}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // CONTENT BLOCK RENDERER
 // ============================================================================
 
 function ContentBlockRenderer({ block, isUser, isStreaming }: { block: ContentBlock; isUser: boolean; isStreaming?: boolean }) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
-  const [codeExpanded, setCodeExpanded] = useState(false);
 
   // Close unclosed code fences during streaming so code renders live
   const closeUnfinishedFences = (text: string): string => {
@@ -464,42 +667,8 @@ function ContentBlockRenderer({ block, isUser, isStreaming }: { block: ContentBl
       );
     }
 
-    case 'code': {
-      const lineCount = (block.code || '').split('\n').length;
-      const isLong = lineCount > 30;
-
-      return (
-        <div className="mt-2 mb-1 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-background-elevated px-3 py-1.5 text-xs">
-            <div className="flex items-center gap-1.5 text-text-tertiary">
-              <CodeBracketIcon className="h-3 w-3" />
-              <span>{block.filename || block.language}</span>
-              {isLong && <span className="text-text-quaternary">({lineCount} lines)</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              {isLong && (
-                <button
-                  onClick={() => setCodeExpanded(!codeExpanded)}
-                  className="text-text-quaternary hover:text-text-secondary transition-colors text-xs"
-                >
-                  {codeExpanded ? 'Collapse' : 'Expand'}
-                </button>
-              )}
-              <button
-                onClick={() => navigator.clipboard.writeText(block.code)}
-                className="text-text-quaternary hover:text-text-secondary transition-colors"
-                title="Copy"
-              >
-                <DocumentDuplicateIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-          <pre className={`bg-[#1e1e2e] p-3 text-xs overflow-x-auto overflow-y-auto ${isLong && !codeExpanded ? 'max-h-[300px]' : ''}`}>
-            <code className="text-green-400">{block.code}</code>
-          </pre>
-        </div>
-      );
-    }
+    case 'code':
+      return <CollapsibleCodeBlock code={block.code || ''} language={block.language || ''} filename={block.filename} />;
 
     case 'thinking':
       return (
@@ -556,42 +725,8 @@ function ContentBlockRenderer({ block, isUser, isStreaming }: { block: ContentBl
 // EXTRACTED CODE BLOCK (from XML tool calls)
 // ============================================================================
 
-function ExtractedCodeBlock({ filename, code, language: _language }: { filename: string; code: string; language: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const lineCount = code.split('\n').length;
-  const isLong = lineCount > 30;
-
-  return (
-    <div className="mt-2 mb-1 rounded-lg overflow-hidden border border-brand-primary/20">
-      <div className="flex items-center justify-between bg-background-elevated px-3 py-1.5 text-xs">
-        <div className="flex items-center gap-1.5 text-text-tertiary">
-          <CodeBracketIcon className="h-3 w-3 text-brand-primary" />
-          <span className="text-brand-primary">{filename}</span>
-          {isLong && <span className="text-text-quaternary">({lineCount} lines)</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {isLong && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-text-quaternary hover:text-text-secondary transition-colors text-xs"
-            >
-              {expanded ? 'Collapse' : 'Expand'}
-            </button>
-          )}
-          <button
-            onClick={() => navigator.clipboard.writeText(code)}
-            className="text-text-quaternary hover:text-text-secondary transition-colors"
-            title="Copy"
-          >
-            <DocumentDuplicateIcon className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-      <pre className={`bg-[#1e1e2e] p-3 text-xs overflow-x-auto overflow-y-auto ${isLong && !expanded ? 'max-h-[300px]' : ''}`}>
-        <code className="text-green-400">{code}</code>
-      </pre>
-    </div>
-  );
+function ExtractedCodeBlock({ filename, code, language }: { filename: string; code: string; language: string }) {
+  return <CollapsibleCodeBlock code={code} language={language} filename={filename} accentBorder />;
 }
 
 // ============================================================================

@@ -27,6 +27,8 @@ import type {
   ModelConfig,
 } from '../types/chat';
 import * as dbService from '../api/dbService';
+import { createStreamingSlice } from './chat/streamingSlice';
+import { createMessageEditSlice } from './chat/messageEditSlice';
 
 // ============================================================================
 // STORE STATE TYPE
@@ -146,7 +148,7 @@ interface ChatActions {
 
 const DEFAULT_MODEL: ModelConfig = {
   provider: ModelProvider.ANTHROPIC,
-  modelId: 'claude-sonnet-4-20250514',
+  modelId: 'claude-sonnet-4-5-20250929',
   name: 'Claude Sonnet 4',
   maxContextTokens: 200000,
   supportsVision: true,
@@ -194,38 +196,35 @@ export const useChatStore = create<ChatState & ChatActions>()(
       // ========================================================================
       // INITIAL STATE
       // ========================================================================
-      
+
       conversations: new Map(),
       currentConversationId: null,
-      
+
       inputValue: '',
       attachedFiles: [],
       isComposing: false,
-      
-      streamState: {
-        isStreaming: false,
-        buffers: new Map(),
-      },
-      
+
       selectedMessages: new Set(),
-      
+
       searchQuery: '',
       filter: {
         showArchived: false,
         showFavorites: false,
         tags: [],
       },
-      
-      editingMessageId: null,
 
       isLoading: false,
       isSendingMessage: false,
       isRegenerating: false,
-      
+
       shouldAutoScroll: true,
-      
+
       defaultModel: DEFAULT_MODEL,
-      
+
+      // Spread slices
+      ...createStreamingSlice(set, get),
+      ...createMessageEditSlice(set, get),
+
       // ========================================================================
       // CONVERSATION MANAGEMENT
       // ========================================================================
@@ -268,6 +267,13 @@ export const useChatStore = create<ChatState & ChatActions>()(
       },
       
       deleteConversation: (id) => {
+        // Protect TBWO-linked conversations from accidental deletion
+        const conv = get().conversations.get(id);
+        if (conv?.title?.startsWith('TBWO:')) {
+          console.warn('[chatStore] Refusing to delete TBWO-linked conversation:', id);
+          return;
+        }
+
         set((state) => {
           state.conversations.delete(id);
 
@@ -478,70 +484,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
       },
       
       // ========================================================================
-      // STREAMING
-      // ========================================================================
-      
-      startStreaming: (messageId) => {
-        set((state) => {
-          state.streamState.isStreaming = true;
-          state.streamState.currentMessageId = messageId;
-          state.streamState.buffers.clear();
-        });
-        
-        get().updateMessage(messageId, { isStreaming: true });
-      },
-      
-      appendStreamContent: (blockId, content) => {
-        set((state) => {
-          const current = state.streamState.buffers.get(blockId) || '';
-          state.streamState.buffers.set(blockId, current + content);
-        });
-      },
-      
-      completeStreaming: () => {
-        const { streamState } = get();
-        const completedMsgId = streamState.currentMessageId;
-        if (completedMsgId) {
-          get().updateMessage(completedMsgId, { isStreaming: false });
-
-          // Write final assistant message to DB
-          const msgResult = get().getMessageById(completedMsgId);
-          if (msgResult) {
-            dbService.createMessage(msgResult.conversation.id, {
-              id: completedMsgId,
-              role: msgResult.message.role,
-              content: msgResult.message.content,
-              model: (msgResult.message as any).model,
-              tokensInput: (msgResult.message as any).tokens?.input,
-              tokensOutput: (msgResult.message as any).tokens?.output,
-              cost: (msgResult.message as any).cost,
-              parentId: (msgResult.message as any).parentId,
-            }).catch(e => console.warn('[chatStore] DB write assistant msg failed:', e));
-          }
-        }
-
-        set((state) => {
-          state.streamState.isStreaming = false;
-          state.streamState.currentMessageId = undefined;
-          state.streamState.buffers.clear();
-        });
-      },
-      
-      cancelStreaming: () => {
-        const { streamState } = get();
-        if (streamState.currentMessageId) {
-          // Optionally delete the incomplete message
-          get().deleteMessage(streamState.currentMessageId);
-        }
-        
-        set((state) => {
-          state.streamState.isStreaming = false;
-          state.streamState.currentMessageId = undefined;
-          state.streamState.buffers.clear();
-        });
-      },
-      
-      // ========================================================================
       // INPUT
       // ========================================================================
       
@@ -734,192 +676,6 @@ export const useChatStore = create<ChatState & ChatActions>()(
       setDefaultModel: (model) => set({ defaultModel: model }),
       setShouldAutoScroll: (value) => set({ shouldAutoScroll: value }),
 
-      // ========================================================================
-      // EDIT & RETRY
-      // ========================================================================
-
-      startEditMessage: (messageId) => {
-        const state = get();
-        const result = state.getMessageById(messageId);
-        if (!result) return;
-
-        // Extract text from message content blocks
-        const text = result.message.content
-          .filter((b) => b.type === 'text')
-          .map((b) => (b as any).text)
-          .join('\n\n');
-
-        set({ inputValue: text, editingMessageId: messageId });
-      },
-
-      cancelEditMessage: () => {
-        set({ editingMessageId: null, inputValue: '' });
-      },
-
-      retryFromMessage: (conversationId, messageId) => {
-        const state = get();
-        const conversation = state.conversations.get(conversationId);
-        if (!conversation || !conversation.messages) return null;
-
-        const msgIndex = conversation.messages.findIndex((m) => m.id === messageId);
-        if (msgIndex === -1) return null;
-
-        // Get the text from this message
-        const msg = conversation.messages[msgIndex]!;
-        const text = msg.content
-          .filter((b) => b.type === 'text')
-          .map((b) => (b as any).text)
-          .join('\n\n');
-
-        // Remove this message and all subsequent
-        set((draft) => {
-          const conv = draft.conversations.get(conversationId);
-          if (conv && conv.messages) {
-            conv.messages = conv.messages.slice(0, msgIndex);
-            conv.updatedAt = Date.now();
-          }
-        });
-
-        return text;
-      },
-
-      // ========================================================================
-      // BRANCH MANAGEMENT
-      // ========================================================================
-
-      createBranch: (conversationId, parentMessageId, name) => {
-        const branchId = nanoid();
-        set((state) => {
-          const conv = state.conversations.get(conversationId);
-          if (!conv) return;
-
-          if (!conv.branches) conv.branches = [];
-
-          // Find messages up to and including the parent
-          if (!conv.messages) conv.messages = [];
-          const parentIdx = conv.messages.findIndex(m => m.id === parentMessageId);
-          if (parentIdx === -1) return;
-
-          const branchMessages = conv.messages.slice(0, parentIdx + 1).map(m => m.id);
-
-          conv.branches.push({
-            id: branchId,
-            name: name || `Branch ${conv.branches.length + 1}`,
-            parentMessageId,
-            messages: branchMessages,
-            createdAt: Date.now(),
-          });
-        });
-        return branchId;
-      },
-
-      switchBranch: (conversationId, branchId) => {
-        set((state) => {
-          const conv = state.conversations.get(conversationId);
-          if (!conv || !conv.branches) return;
-
-          const branch = conv.branches.find(b => b.id === branchId);
-          if (!branch) return;
-
-          conv.currentBranchId = branchId;
-        });
-      },
-
-      deleteBranch: (conversationId, branchId) => {
-        set((state) => {
-          const conv = state.conversations.get(conversationId);
-          if (!conv || !conv.branches) return;
-
-          conv.branches = conv.branches.filter(b => b.id !== branchId);
-          if (conv.currentBranchId === branchId) {
-            conv.currentBranchId = undefined;
-          }
-        });
-      },
-
-      editMessageAndBranch: (conversationId, messageId, newContent) => {
-        const currentState = get();
-        const conv = currentState.conversations.get(conversationId);
-        if (!conv) return '';
-
-        if (!conv.messages) return '';
-        const msgIdx = conv.messages.findIndex(m => m.id === messageId);
-        if (msgIdx === -1) return '';
-
-        // Save current conversation as a branch (before the edit)
-        const lastMsg = conv.messages[conv.messages.length - 1];
-        if (lastMsg) {
-          currentState.createBranch(conversationId, lastMsg.id, 'Original');
-        }
-
-        // Create new branch from parent of edited message
-        const newBranchId = nanoid();
-
-        set((draft) => {
-          const c = draft.conversations.get(conversationId);
-          if (!c) return;
-          if (!c.messages) c.messages = [];
-
-          // Snapshot the original message before mutating
-          const originalMsg = conv.messages![msgIdx]!;
-
-          // Remove messages after the edited one
-          c.messages = c.messages.slice(0, msgIdx);
-
-          // Add edited message
-          const editedMsg = {
-            ...originalMsg,
-            id: nanoid(),
-            content: [{ type: 'text' as const, text: newContent }],
-            timestamp: Date.now(),
-            isEdited: true,
-            editHistory: [
-              ...(originalMsg.editHistory || []),
-              {
-                content: originalMsg.content,
-                timestamp: Date.now(),
-              },
-            ],
-          } as any as Message;
-          c.messages.push(editedMsg);
-
-          if (!c.branches) c.branches = [];
-          const parentId = msgIdx > 0 ? conv.messages![msgIdx - 1]!.id : editedMsg.id;
-          c.branches.push({
-            id: newBranchId,
-            name: 'Edited',
-            parentMessageId: parentId,
-            messages: c.messages.map(m => m.id),
-            createdAt: Date.now(),
-          });
-          c.currentBranchId = newBranchId;
-          c.updatedAt = Date.now();
-        });
-
-        return newBranchId;
-      },
-
-      rewindToMessage: (conversationId, messageId) => {
-        const conv = get().conversations.get(conversationId);
-        if (!conv || !conv.messages) return;
-
-        const msgIdx = conv.messages.findIndex(m => m.id === messageId);
-        if (msgIdx === -1) return;
-
-        // Save current conversation state as a branch before rewinding
-        const lastMsg = conv.messages[conv.messages.length - 1];
-        if (lastMsg && conv.messages.length > msgIdx + 1) {
-          get().createBranch(conversationId, lastMsg.id, `Before rewind (${new Date().toLocaleTimeString()})`);
-        }
-
-        // Truncate messages to the selected point
-        set((state) => {
-          const c = state.conversations.get(conversationId);
-          if (!c || !c.messages) return;
-          c.messages = c.messages.slice(0, msgIdx + 1);
-          c.updatedAt = Date.now();
-        });
-      },
     })),
     {
       name: 'alin-chat-storage',

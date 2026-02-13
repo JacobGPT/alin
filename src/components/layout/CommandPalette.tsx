@@ -47,7 +47,6 @@ import {
   HashtagIcon,
   ClockIcon,
   BoltIcon,
-  ShieldCheckIcon,
   LinkIcon,
   CodeBracketIcon,
   RocketLaunchIcon,
@@ -89,7 +88,6 @@ const CATEGORIES = [
   { id: 'chat', label: 'Chat', icon: <ChatBubbleLeftRightIcon className="h-4 w-4" /> },
   { id: 'tbwo', label: 'TBWO', icon: <RocketLaunchIcon className="h-4 w-4" /> },
   { id: 'memory', label: 'Memory', icon: <SparklesIcon className="h-4 w-4" /> },
-  { id: 'trust', label: 'Trust', icon: <ShieldCheckIcon className="h-4 w-4" /> },
   { id: 'navigation', label: 'Navigation', icon: <LinkIcon className="h-4 w-4" /> },
   { id: 'appearance', label: 'Appearance', icon: <SunIcon className="h-4 w-4" /> },
   { id: 'settings', label: 'Settings', icon: <Cog6ToothIcon className="h-4 w-4" /> },
@@ -392,44 +390,6 @@ export function CommandPalette() {
       },
     },
 
-    // ---- TRUST ----
-    {
-      id: 'view-trust',
-      label: 'Trust Center',
-      description: 'View trust balance and history',
-      icon: <ShieldCheckIcon className="h-4 w-4" />,
-      category: 'trust',
-      keywords: ['autonomy', 'permissions', 'balance'],
-      action: () => navigate('/trust'),
-    },
-    {
-      id: 'trust-overview',
-      label: 'Trust Overview',
-      description: 'View trust score and level',
-      icon: <EyeIcon className="h-4 w-4" />,
-      category: 'trust',
-      keywords: ['score', 'status'],
-      action: () => navigate('/trust'),
-    },
-    {
-      id: 'trust-transactions',
-      label: 'Trust Transactions',
-      description: 'View trust history',
-      icon: <ClockIcon className="h-4 w-4" />,
-      category: 'trust',
-      keywords: ['history', 'log'],
-      action: () => navigate('/trust'),
-    },
-    {
-      id: 'trust-policies',
-      label: 'Trust Policies',
-      description: 'View autonomy policies',
-      icon: <DocumentTextIcon className="h-4 w-4" />,
-      category: 'trust',
-      keywords: ['rules', 'limits'],
-      action: () => navigate('/trust'),
-    },
-
     // ---- NAVIGATION ----
     {
       id: 'go-chat',
@@ -463,15 +423,6 @@ export function CommandPalette() {
       icon: <CpuChipIcon className="h-4 w-4" />,
       category: 'navigation',
       action: () => navigate('/hardware'),
-    },
-    {
-      id: 'go-trust',
-      label: 'Go to Trust Center',
-      description: 'Open trust dashboard',
-      icon: <ShieldCheckIcon className="h-4 w-4" />,
-      category: 'navigation',
-      keywords: ['autonomy', 'permissions'],
-      action: () => navigate('/trust'),
     },
     {
       id: 'go-settings',

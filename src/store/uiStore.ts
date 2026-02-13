@@ -203,7 +203,7 @@ export const useUIStore = create<UIState & UIActions>()(
       
       setRightPanelWidth: (width) => {
         set((state) => {
-          state.layout.rightPanelWidth = Math.max(280, Math.min(600, width));
+          state.layout.rightPanelWidth = Math.max(280, Math.min(900, width));
         });
       },
       

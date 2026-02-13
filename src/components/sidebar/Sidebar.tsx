@@ -18,7 +18,8 @@ import {
   Cog6ToothIcon,
   CommandLineIcon,
   CpuChipIcon,
-  ShieldCheckIcon,
+  GlobeAltIcon,
+  DocumentTextIcon,
   ArrowRightStartOnRectangleIcon,
 } from '@heroicons/react/24/outline';
 
@@ -340,19 +341,30 @@ export function Sidebar() {
             onClick={() => navigate('/tbwo')}
           />
         )}
+        {caps.canSites && (
+          <SidebarNavLink
+            icon={GlobeAltIcon}
+            label="Sites"
+            href="/sites"
+            active={location.pathname.startsWith('/sites')}
+            onClick={() => navigate('/sites')}
+          />
+        )}
+        {caps.canVectorize && (
+          <SidebarNavLink
+            icon={DocumentTextIcon}
+            label="Threads"
+            href="/threads"
+            active={location.pathname.startsWith('/threads')}
+            onClick={() => navigate('/threads')}
+          />
+        )}
         <SidebarNavLink
           icon={CpuChipIcon}
           label="Memory"
           href="/memory"
           active={location.pathname === '/memory'}
           onClick={() => navigate('/memory')}
-        />
-        <SidebarNavLink
-          icon={ShieldCheckIcon}
-          label="Trust Center"
-          href="/trust"
-          active={location.pathname === '/trust'}
-          onClick={() => navigate('/trust')}
         />
         <SidebarNavLink
           icon={Cog6ToothIcon}

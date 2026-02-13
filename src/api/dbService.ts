@@ -34,6 +34,19 @@ export function resetAvailabilityCache(): void {
 }
 
 // ============================================================================
+// DEPENDENCY INJECTION — Project provider
+// ============================================================================
+
+// Project provider set by bootstrap (main.tsx), NOT imported from executive.
+// Called at request-time inside apiCall(), never cached at boot.
+type ProjectProvider = () => string;
+let _projectProvider: ProjectProvider = () => 'default';
+
+export function setProjectProvider(provider: ProjectProvider): void {
+  _projectProvider = provider;
+}
+
+// ============================================================================
 // GENERIC FETCH WRAPPER (with auth headers)
 // ============================================================================
 
@@ -51,10 +64,16 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 async function apiCall<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const opts: RequestInit = {
-    method,
-    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getAuthHeaders(),
   };
+  // Add project scope header — called fresh on every request (never cached)
+  const projectId = _projectProvider();
+  if (projectId && projectId !== 'default') {
+    headers['X-Project-Id'] = projectId;
+  }
+  const opts: RequestInit = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
   if (!res.ok) {
@@ -411,6 +430,757 @@ export async function createImage(data: Record<string, unknown>): Promise<void> 
 
 export async function deleteImage(id: string): Promise<void> {
   await apiCall('DELETE', `/api/images/${id}`);
+}
+
+// ============================================================================
+// SITES
+// ============================================================================
+
+export interface DbSite {
+  id: string;
+  user_id: string;
+  project_id: string;
+  name: string;
+  tbwo_run_id: string | null;
+  status: string; // 'draft' | 'deployed'
+  cloudflare_project_name: string | null;
+  domain: string | null;
+  manifest: string | null;
+  storage_path: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DbDeployment {
+  id: string;
+  site_id: string;
+  user_id: string;
+  cloudflare_project_name: string | null;
+  cloudflare_deployment_id: string | null;
+  url: string | null;
+  status: string; // 'queued' | 'building' | 'deploying' | 'success' | 'failed'
+  build_log: string | null;
+  error: string | null;
+  created_at: number;
+}
+
+export async function createSite(data: {
+  name: string;
+  tbwoRunId?: string;
+  manifest?: string;
+}): Promise<DbSite> {
+  const r = await apiCall<{ success: boolean; site: DbSite }>('POST', '/api/sites', data);
+  return r.site;
+}
+
+export async function listSites(limit = 50, offset = 0): Promise<DbSite[]> {
+  const r = await apiCall<{ success: boolean; sites: DbSite[] }>(
+    'GET',
+    `/api/sites?limit=${limit}&offset=${offset}`,
+  );
+  return r.sites;
+}
+
+export async function getSite(siteId: string): Promise<DbSite> {
+  const r = await apiCall<{ success: boolean; site: DbSite }>('GET', `/api/sites/${siteId}`);
+  return r.site;
+}
+
+export async function deploySite(siteId: string): Promise<DbDeployment> {
+  const r = await apiCall<{ success: boolean; deployment: DbDeployment }>(
+    'POST',
+    `/api/sites/${siteId}/deploy`,
+  );
+  return r.deployment;
+}
+
+export async function listDeployments(siteId: string, limit = 20): Promise<DbDeployment[]> {
+  const r = await apiCall<{ success: boolean; deployments: DbDeployment[] }>(
+    'GET',
+    `/api/sites/${siteId}/deployments?limit=${limit}`,
+  );
+  return r.deployments;
+}
+
+// ============================================================================
+// DEPLOY PROGRESS SSE STREAM
+// ============================================================================
+
+export interface DeployProgressEvent {
+  event: 'status' | 'progress' | 'error' | 'done';
+  step?: string;
+  message?: string;
+  url?: string;
+  fileCount?: number;
+  current?: number;
+  total?: number;
+  file?: string;
+  timestamp: number;
+}
+
+/**
+ * Stream live deploy progress via SSE.
+ * Returns a close function to terminate the connection.
+ */
+export function streamDeployProgress(
+  siteId: string,
+  deploymentId: string,
+  onEvent: (event: DeployProgressEvent) => void,
+): () => void {
+  const token = (() => {
+    try {
+      const raw = localStorage.getItem('alin-auth-storage');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parsed?.state?.token || '';
+      }
+    } catch {}
+    return '';
+  })();
+
+  const url = `/api/sites/${siteId}/deploy/${deploymentId}/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  const es = new EventSource(url);
+
+  const handleEvent = (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data) as DeployProgressEvent;
+      onEvent(data);
+      if (data.event === 'done' || data.event === 'error') {
+        es.close();
+      }
+    } catch { /* ignore parse errors */ }
+  };
+
+  es.addEventListener('status', handleEvent);
+  es.addEventListener('progress', handleEvent);
+  es.addEventListener('error', handleEvent);
+  es.addEventListener('done', handleEvent);
+
+  es.onerror = () => {
+    // Connection failed — fire a done event so UI can fall back
+    onEvent({ event: 'done', timestamp: Date.now() });
+    es.close();
+  };
+
+  return () => es.close();
+}
+
+// ============================================================================
+// SITE BRIEF EXTRACTION
+// ============================================================================
+
+export interface SiteBriefPricingTier {
+  name: string;
+  priceMonthly: string;
+  limitLabel: string;
+  highlights: string[];
+  isMostPopular?: boolean;
+}
+
+export interface SiteBriefPricing {
+  hasFreePlan: boolean;
+  tiers: SiteBriefPricingTier[];
+  trial: { enabled: boolean; days: number; requiresCard: boolean };
+  annual: { enabled: boolean; discountLabel: string };
+}
+
+export interface SiteBriefUnknown {
+  id: string;
+  question: string;
+  reason: string;
+  required: boolean;
+}
+
+export interface SiteBriefConstraints {
+  NO_FABRICATED_STATS: boolean;
+  NO_RENAME_WITHOUT_APPROVAL: boolean;
+  NO_SECURITY_CLAIMS_UNLESS_PROVIDED: boolean;
+}
+
+export interface SiteBrief {
+  // Core identity
+  productName: string;
+  tagline: string;
+  oneLinerPositioning: string;
+
+  // Legacy compat (mapped from new fields in wizard)
+  businessType: string;
+  icpGuess: string;
+  goal: string;
+
+  // Audience & pain
+  targetAudience: string;
+  primaryPain: string;
+  primaryCTA: string;
+  toneStyle: string;
+
+  // Structure
+  navPages: string[];
+  features: string[];
+  integrations: string[];
+
+  // Pricing
+  pricing: SiteBriefPricing;
+
+  // Design
+  designDirection: string;
+
+  // Unknowns & assumptions
+  requiredUnknowns: SiteBriefUnknown[];
+  assumptions: string[];
+
+  // Trust constraints — always enforced
+  constraints: SiteBriefConstraints;
+
+  // Cognitive layer fields (optional, added by cognitive analysis)
+  coreProblem?: string;
+  differentiators?: string[];
+
+  // Contact Information
+  contactEmail?: string;
+  contactPhone?: string;
+  contactAddress?: string;
+  socialLinks?: Record<string, string>;
+  operatingHours?: string;
+
+  // Legacy arrays (kept for wizard compat)
+  pages: string[];
+  tone: string;
+  ctas: string[];
+}
+
+export interface MissingQuestion {
+  id: string;
+  question: string;
+  reason: string;
+  blocking: boolean;
+}
+
+export interface ExtractBriefResult {
+  brief: SiteBrief;
+  provenance: Record<string, string>;
+  missingQuestions: MissingQuestion[];
+  provider?: string;
+  cached?: boolean;
+  riskyClaims?: Array<{ text: string; type: string }>;
+  sourceConfidence?: Record<string, number>;
+}
+
+export async function extractBrief(
+  sourceText: string,
+  sourceType: 'THREAD' | 'DESCRIPTION',
+  contextHints?: string,
+  model?: string,
+): Promise<ExtractBriefResult> {
+  const r = await apiCall<{
+    success: boolean;
+    brief: SiteBrief;
+    provider?: string;
+    provenance?: Record<string, string>;
+    missingQuestions?: MissingQuestion[];
+    cached?: boolean;
+  }>(
+    'POST',
+    '/api/sites/extract-brief',
+    { sourceText, sourceType, contextHints, model },
+  );
+  return {
+    brief: r.brief,
+    provenance: r.provenance || {},
+    missingQuestions: r.missingQuestions || [],
+    provider: r.provider,
+    cached: r.cached,
+  };
+}
+
+// ============================================================================
+// WORKSPACE + SANDBOX FUNCTIONS
+// ============================================================================
+
+export interface FileTreeNode {
+  type: 'file' | 'directory';
+  name: string;
+  path: string;
+  size?: number;
+  children?: FileTreeNode[];
+  downloadUrl?: string;
+}
+
+export interface ValidationReport {
+  passed: boolean;
+  score: number;
+  violations: Array<{ type: string; file: string; line: number; text: string; critical: boolean }>;
+  completeness: { hasIndex: boolean; missingPages: string[]; totalFiles: number; htmlFiles: number };
+  placeholders: Array<{ file: string; line: number; text: string }>;
+  canDeploy: boolean;
+  blockers: string[];
+}
+
+export interface SandboxPipelineStatus {
+  currentStage: string;
+  stagesCompleted: number;
+  totalStages: number;
+  progress: number;
+  stageLog: Array<{
+    stage: string;
+    status: string;
+    duration?: number;
+    artifacts?: string[];
+    errors?: string[];
+    fileCount?: number;
+  }>;
+  artifacts: Record<string, unknown>;
+  error: string | null;
+}
+
+export async function getWorkspaceManifest(
+  tbwoId: string,
+): Promise<{ manifest: FileTreeNode[]; totalFiles: number; totalSize: number }> {
+  return apiCall('GET', `/api/tbwo/${tbwoId}/workspace/manifest`);
+}
+
+export async function validateWorkspace(
+  tbwoId: string,
+  expectedPages?: string[],
+  approvedClaims?: string[],
+): Promise<ValidationReport> {
+  return apiCall('POST', `/api/tbwo/${tbwoId}/workspace/validate`, {
+    expectedPages,
+    approvedClaims,
+  });
+}
+
+export async function runSandboxPipeline(
+  tbwoId: string,
+  options?: { throughStage?: string; brief?: unknown; expectedPages?: string[]; approvedClaims?: string[] },
+): Promise<{ started: boolean }> {
+  return apiCall('POST', `/api/tbwo/${tbwoId}/sandbox/run`, options);
+}
+
+export async function getSandboxStatus(
+  tbwoId: string,
+): Promise<SandboxPipelineStatus> {
+  return apiCall('GET', `/api/tbwo/${tbwoId}/sandbox/status`);
+}
+
+export async function deploySandbox(
+  tbwoId: string,
+  adapter?: string,
+): Promise<{ deploymentId: string; url: string | null; status: string }> {
+  return apiCall('POST', `/api/tbwo/${tbwoId}/sandbox/deploy`, { adapter });
+}
+
+// ============================================================================
+// SITE PATCHES
+// ============================================================================
+
+export interface PatchChange {
+  file: string;
+  action: 'modify' | 'create' | 'delete';
+  summary: string;
+  provenance: 'USER_PROVIDED' | 'INFERRED' | 'PLACEHOLDER';
+  before: string | null;
+  after: string | null;
+}
+
+export interface PatchPlan {
+  summary: string;
+  changes: PatchChange[];
+  warnings: string[];
+  placeholders: string[];
+}
+
+export interface DbSitePatch {
+  id: string;
+  site_id: string;
+  user_id: string;
+  change_request: string;
+  plan: PatchPlan | null;
+  status: 'planning' | 'planned' | 'approved' | 'applied' | 'partially_applied' | 'rejected' | 'failed';
+  apply_result: { applied: number; failed: number; errors: string[] } | null;
+  created_at: number;
+  resolved_at: number | null;
+}
+
+export async function createPatchPlan(siteId: string, changeRequest: string): Promise<{ patchId: string; status: string }> {
+  const r = await apiCall<{ success: boolean; patchId: string; status: string }>(
+    'POST',
+    `/api/sites/${siteId}/patch/plan`,
+    { changeRequest },
+  );
+  return { patchId: r.patchId, status: r.status };
+}
+
+export async function getPatchPlan(siteId: string, patchId: string): Promise<DbSitePatch> {
+  const r = await apiCall<{ success: boolean; patch: DbSitePatch }>(
+    'GET',
+    `/api/sites/${siteId}/patches/${patchId}`,
+  );
+  return r.patch;
+}
+
+export async function listPatches(siteId: string, limit = 20): Promise<DbSitePatch[]> {
+  const r = await apiCall<{ success: boolean; patches: DbSitePatch[] }>(
+    'GET',
+    `/api/sites/${siteId}/patches?limit=${limit}`,
+  );
+  return r.patches;
+}
+
+export async function applyPatch(
+  siteId: string,
+  patchId: string,
+  replacements?: Record<string, string>,
+): Promise<{ applied: number; failed: number; errors: string[] }> {
+  const r = await apiCall<{ success: boolean; result: { applied: number; failed: number; errors: string[] } }>(
+    'POST',
+    `/api/sites/${siteId}/patch/${patchId}/apply`,
+    { replacements },
+  );
+  return r.result;
+}
+
+export async function rejectPatch(siteId: string, patchId: string): Promise<void> {
+  await apiCall<{ success: boolean }>(
+    'POST',
+    `/api/sites/${siteId}/patch/${patchId}/reject`,
+  );
+}
+
+// ============================================================================
+// R2 / SITE VERSIONS
+// ============================================================================
+
+export interface DbSiteVersion {
+  id: string;
+  site_id: string;
+  user_id: string;
+  version: number;
+  file_count: number;
+  total_bytes: number;
+  deployment_id: string | null;
+  created_at: number;
+}
+
+export interface SiteFile {
+  key: string;
+  path: string;
+  size: number;
+  lastModified: string;
+}
+
+export async function deployR2(siteId: string): Promise<DbDeployment> {
+  const r = await apiCall<{ success: boolean; deployment: DbDeployment }>(
+    'POST',
+    `/api/sites/${siteId}/deploy-r2`,
+  );
+  return r.deployment;
+}
+
+export async function listSiteFiles(siteId: string): Promise<{ files: SiteFile[]; version: number }> {
+  const r = await apiCall<{ success: boolean; files: SiteFile[]; version: number }>(
+    'GET',
+    `/api/sites/${siteId}/files`,
+  );
+  return { files: r.files, version: r.version };
+}
+
+export async function listSiteVersions(siteId: string, limit = 50): Promise<DbSiteVersion[]> {
+  const r = await apiCall<{ success: boolean; versions: DbSiteVersion[] }>(
+    'GET',
+    `/api/sites/${siteId}/versions?limit=${limit}`,
+  );
+  return r.versions;
+}
+
+export async function rollbackSite(
+  siteId: string,
+  version: number,
+): Promise<DbDeployment> {
+  const r = await apiCall<{ success: boolean; deployment: DbDeployment }>(
+    'POST',
+    `/api/sites/${siteId}/rollback/${version}`,
+  );
+  return r.deployment;
+}
+
+// ============================================================================
+// CLOUDFLARE IMAGES
+// ============================================================================
+
+export interface DbCfImage {
+  id: string;
+  user_id: string;
+  cf_image_id: string;
+  filename: string;
+  url: string;
+  variants: string[];
+  metadata: Record<string, unknown>;
+  site_id: string | null;
+  created_at: number;
+}
+
+export async function uploadCfImage(file: File, siteId?: string): Promise<DbCfImage> {
+  const formData = new FormData();
+  formData.append('image', file);
+  if (siteId) formData.append('siteId', siteId);
+
+  const headers: Record<string, string> = { ...getAuthHeaders() };
+  const projectId = _projectProvider();
+  if (projectId && projectId !== 'default') headers['X-Project-Id'] = projectId;
+
+  const res = await fetch('/api/images/cf/upload', {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  const data = await res.json();
+  return data.image;
+}
+
+export async function listCfImages(limit = 50): Promise<DbCfImage[]> {
+  const r = await apiCall<{ success: boolean; images: DbCfImage[] }>(
+    'GET',
+    `/api/images/cf?limit=${limit}`,
+  );
+  return r.images;
+}
+
+export async function deleteCfImage(imageId: string): Promise<void> {
+  await apiCall<{ success: boolean }>('DELETE', `/api/images/cf/${imageId}`);
+}
+
+// ============================================================================
+// CLOUDFLARE STREAM (VIDEOS)
+// ============================================================================
+
+export interface DbCfVideo {
+  id: string;
+  user_id: string;
+  cf_uid: string;
+  status: string;
+  thumbnail: string | null;
+  preview: string | null;
+  duration: number | null;
+  metadata: Record<string, unknown>;
+  site_id: string | null;
+  created_at: number;
+}
+
+export async function getVideoUploadUrl(siteId?: string): Promise<{ id: string; uid: string; uploadUrl: string }> {
+  const r = await apiCall<{ success: boolean; video: { id: string; uid: string; uploadUrl: string } }>(
+    'POST',
+    '/api/videos/upload-url',
+    { siteId },
+  );
+  return r.video;
+}
+
+export async function uploadVideoFromUrl(url: string, siteId?: string): Promise<{ id: string; uid: string; status: string }> {
+  const r = await apiCall<{ success: boolean; video: { id: string; uid: string; status: string } }>(
+    'POST',
+    '/api/videos/upload-from-url',
+    { url, siteId },
+  );
+  return r.video;
+}
+
+export async function getVideo(videoId: string): Promise<DbCfVideo> {
+  const r = await apiCall<{ success: boolean; video: DbCfVideo }>('GET', `/api/videos/${videoId}`);
+  return r.video;
+}
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  await apiCall<{ success: boolean }>('DELETE', `/api/videos/${videoId}`);
+}
+
+export async function getVideoEmbed(videoId: string): Promise<{ embedUrl: string | null; embedHtml: string | null }> {
+  const r = await apiCall<{ success: boolean; embedUrl: string | null; embedHtml: string | null }>(
+    'GET',
+    `/api/videos/${videoId}/embed`,
+  );
+  return { embedUrl: r.embedUrl, embedHtml: r.embedHtml };
+}
+
+// ============================================================================
+// THREADS / VECTORIZE
+// ============================================================================
+
+export interface ThreadChunk {
+  id: string;
+  thread_id: string;
+  chunk_index: number;
+  content: string;
+  summary: string | null;
+  token_count: number;
+  vector_id: string;
+  created_at: number;
+}
+
+export interface ThreadSummary {
+  thread_id: string;
+  created_at: number;
+  chunk_count: number;
+  total_tokens: number;
+}
+
+export interface SemanticSearchResult {
+  id: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export async function ingestThread(text: string, threadId?: string): Promise<{
+  threadId: string;
+  chunkCount: number;
+  chunks: Array<{ index: number; tokenCount: number; preview: string }>;
+}> {
+  const r = await apiCall<{
+    success: boolean;
+    threadId: string;
+    chunkCount: number;
+    chunks: Array<{ index: number; tokenCount: number; preview: string }>;
+  }>('POST', '/api/threads/ingest', { text, threadId });
+  return { threadId: r.threadId, chunkCount: r.chunkCount, chunks: r.chunks };
+}
+
+export async function listThreads(limit = 50): Promise<ThreadSummary[]> {
+  const r = await apiCall<{ success: boolean; threads: ThreadSummary[] }>(
+    'GET',
+    `/api/threads?limit=${limit}`,
+  );
+  return r.threads;
+}
+
+export async function getThreadChunks(threadId: string): Promise<ThreadChunk[]> {
+  const r = await apiCall<{ success: boolean; chunks: ThreadChunk[] }>(
+    'GET',
+    `/api/threads/${threadId}/chunks`,
+  );
+  return r.chunks;
+}
+
+export async function semanticSearch(query: string, topK = 10): Promise<SemanticSearchResult[]> {
+  const r = await apiCall<{ success: boolean; results: SemanticSearchResult[] }>(
+    'POST',
+    '/api/memory/semantic-search',
+    { query, topK },
+  );
+  return r.results;
+}
+
+export async function contentSearch(query: string, topK = 10): Promise<SemanticSearchResult[]> {
+  const r = await apiCall<{ success: boolean; results: SemanticSearchResult[] }>(
+    'POST',
+    '/api/content/search',
+    { query, topK },
+  );
+  return r.results;
+}
+
+// ============================================================================
+// VECTORIZE — TBWO Context Chunking
+// ============================================================================
+
+export async function vectorizeIngest(text: string, metadata?: Record<string, unknown>): Promise<{ chunkCount: number; vectorCount: number }> {
+  return apiCall<{ success: boolean; chunkCount: number; vectorCount: number }>(
+    'POST',
+    '/api/vectorize/ingest',
+    { text, metadata },
+  );
+}
+
+export async function vectorizeSearchContext(query: string, topK = 5): Promise<unknown[]> {
+  const r = await apiCall<{ success: boolean; chunks: unknown[] }>(
+    'POST',
+    '/api/vectorize/search-context',
+    { query, topK },
+  );
+  return r.chunks;
+}
+
+// ============================================================================
+// R2 — User Asset Management
+// ============================================================================
+
+export async function uploadAsset(file: File): Promise<{ key: string; url?: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/assets/upload', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('alin-auth-token') || ''}` },
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
+  return response.json();
+}
+
+export async function listAssets(limit = 100): Promise<unknown[]> {
+  const r = await apiCall<{ success: boolean; assets: unknown[] }>(
+    'GET',
+    `/api/assets?limit=${limit}`,
+  );
+  return r.assets;
+}
+
+export async function deleteSiteVersion(siteId: string, version: number): Promise<void> {
+  await apiCall<{ success: boolean }>('DELETE', `/api/sites/${siteId}/versions/${version}`);
+}
+
+// ============================================================================
+// KV — Domain Management
+// ============================================================================
+
+export async function lookupDomain(subdomain: string): Promise<{ available: boolean; info: unknown }> {
+  return apiCall<{ success: boolean; available: boolean; info: unknown }>(
+    'GET',
+    `/api/sites/domain/${encodeURIComponent(subdomain)}`,
+  );
+}
+
+export async function unregisterDomain(subdomain: string): Promise<void> {
+  await apiCall<{ success: boolean }>('DELETE', `/api/sites/domain/${encodeURIComponent(subdomain)}`);
+}
+
+export async function getSiteVersionInfo(siteId: string): Promise<unknown> {
+  const r = await apiCall<{ success: boolean; info: unknown }>(
+    'GET',
+    `/api/sites/${siteId}/version-info`,
+  );
+  return r.info;
+}
+
+// ============================================================================
+// CF Images — Gallery & URL Upload
+// ============================================================================
+
+export async function uploadImageFromUrl(url: string, metadata?: Record<string, unknown>): Promise<unknown> {
+  const r = await apiCall<{ success: boolean; image: unknown }>(
+    'POST',
+    '/api/images/from-url',
+    { url, metadata },
+  );
+  return r.image;
+}
+
+export async function listCfImagesFromApi(page = 1, perPage = 50): Promise<unknown> {
+  return apiCall<{ success: boolean; images: unknown[]; result_info?: unknown }>(
+    'GET',
+    `/api/images/list?page=${page}&perPage=${perPage}`,
+  );
+}
+
+// ============================================================================
+// CF Stream — Video Gallery
+// ============================================================================
+
+export async function listVideos(limit = 50): Promise<unknown[]> {
+  const r = await apiCall<{ success: boolean; videos: unknown[] }>(
+    'GET',
+    `/api/videos/list?limit=${limit}`,
+  );
+  return r.videos;
 }
 
 // Re-export types for consumers

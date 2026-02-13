@@ -1,0 +1,63 @@
+{
+  "project": "Website Sprint",
+  "objective": "Build the Ember Coffee Roasters website: A Portland-based small-batch coffee roastery offering craft-roasted beans, a welcoming cafe experience, and sustainable practices for coffee lovers who value quality and community.",
+  "generatedAt": "2026-02-13T03:10:41.370277Z",
+  "pages": [
+    {
+      "name": "Home",
+      "path": "index.html",
+      "sections": [
+        "hero"
+      ]
+    },
+    {
+      "name": "About",
+      "path": "about.html",
+      "sections": [
+        "hero"
+      ]
+    },
+    {
+      "name": "Menu",
+      "path": "menu.html",
+      "sections": [
+        "hero"
+      ]
+    },
+    {
+      "name": "Shop",
+      "path": "shop.html",
+      "sections": [
+        "hero"
+      ]
+    },
+    {
+      "name": "Location & Hours",
+      "path": "location-hours.html",
+      "sections": [
+        "hero"
+      ]
+    },
+    {
+      "name": "Contact",
+      "path": "contact.html",
+      "sections": [
+        "hero"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "index.html",
+      "type": "html",
+      "lines": 167
+    },
+    {
+      "path": "README.md",
+      "type": "md",
+      "lines": 327
+    }
+  ],
+  "totalFiles": 2,
+  "totalLines": 494
+}

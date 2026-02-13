@@ -20,6 +20,10 @@ import {
 
 // Types
 import type { TBWO } from '../../types/tbwo';
+import { TBWOStatus, QUALITY_DISPLAY_NAMES, QualityTarget } from '../../types/tbwo';
+
+// Stores
+import { usePodPoolStore } from '../../store/podPoolStore';
 
 // ============================================================================
 // TBWO METRICS COMPONENT
@@ -30,22 +34,51 @@ interface TBWOMetricsProps {
 }
 
 export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
+  // Read runtime pods from pool for active TBWOs
+  const poolPods = usePodPoolStore((s) => s.pool);
+
   // Calculate aggregate metrics
   const metrics = useMemo(() => {
-    const pods = Array.from(tbwo.pods?.values() || []);
+    const definitionPods = Array.from(tbwo.pods?.values() || []);
+    const isActive = tbwo.status === TBWOStatus.EXECUTING || tbwo.status === TBWOStatus.COMPLETING;
 
-    // Token usage
+    // Token usage — use runtime pool data when available for active TBWOs
     let totalTokens = 0;
     let totalApiCalls = 0;
     let totalCpu = 0;
     let totalMemory = 0;
+    let runtimePodCount = 0;
+    let runtimeWorkingCount = 0;
 
-    pods.forEach((pod) => {
-      totalTokens += pod.resourceUsage?.tokensUsed || 0;
-      totalApiCalls += pod.resourceUsage?.apiCalls || 0;
-      totalCpu += pod.resourceUsage?.cpuPercent || 0;
-      totalMemory += pod.resourceUsage?.memoryMB || 0;
-    });
+    if (isActive) {
+      // Try to get metrics from runtime pool pods
+      poolPods.forEach((poolPod: import('../../store/podPoolStore').PooledPod) => {
+        if (poolPod.activeTBWOId === tbwo.id) {
+          runtimePodCount++;
+          if (poolPod.runtime?.podStatus === 'working' || poolPod.status === 'active') {
+            runtimeWorkingCount++;
+          }
+          if (poolPod.runtime) {
+            totalTokens += poolPod.runtime.resourceUsage?.tokensUsed || 0;
+            totalApiCalls += poolPod.runtime.resourceUsage?.apiCalls || 0;
+            totalCpu += poolPod.runtime.resourceUsage?.cpuPercent || 0;
+            totalMemory += poolPod.runtime.resourceUsage?.memoryMB || 0;
+          }
+        }
+      });
+    }
+
+    // Fall back to definition pods if no runtime data
+    if (totalTokens === 0 && totalApiCalls === 0) {
+      definitionPods.forEach((pod) => {
+        totalTokens += pod.resourceUsage?.tokensUsed || 0;
+        totalApiCalls += pod.resourceUsage?.apiCalls || 0;
+        totalCpu += pod.resourceUsage?.cpuPercent || 0;
+        totalMemory += pod.resourceUsage?.memoryMB || 0;
+      });
+    }
+
+    const pods = definitionPods;
 
     // Task completion
     const totalTasks = tbwo.plan?.phases.reduce(
@@ -57,13 +90,13 @@ export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
       0
     ) || 0;
 
-    // Time efficiency
+    // Time efficiency — task completion rate as percentage
     const timeUsedPercent = tbwo.timeBudget.total > 0
       ? (tbwo.timeBudget.elapsed / tbwo.timeBudget.total) * 100
       : 0;
-    const progressEfficiency = (tbwo.progress > 0 && timeUsedPercent > 0)
-      ? (tbwo.progress / timeUsedPercent) * 100
-      : (tbwo.progress > 0 ? 100 : 0);
+    const progressEfficiency = totalTasks > 0
+      ? (completedTasks / totalTasks) * 100
+      : 0;
 
     // Cost estimation (rough estimate based on tokens)
     const estimatedCost = (totalTokens / 1000) * 0.003; // Rough Claude pricing
@@ -77,15 +110,15 @@ export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
       completedTasks,
       taskCompletionRate: totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0,
       timeUsedPercent,
-      progressEfficiency: Math.min(progressEfficiency, 200),
+      progressEfficiency: Math.min(progressEfficiency, 100),
       estimatedCost,
       artifactsCount: tbwo.artifacts.length,
-      podsCount: pods.length,
-      activePodsCount: pods.filter((p) => p.status === 'working').length,
+      podsCount: isActive ? runtimePodCount || pods.length : pods.length,
+      activePodsCount: isActive ? runtimeWorkingCount || pods.filter((p) => p.status === 'working').length : pods.filter((p) => p.status === 'working').length,
       checkpointsTotal: tbwo.checkpoints.length,
       checkpointsPassed: tbwo.checkpoints.filter((c) => c.status === 'approved').length,
     };
-  }, [tbwo]);
+  }, [tbwo, poolPods]);
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -108,42 +141,22 @@ export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
         </div>
       </MetricCard>
 
-      {/* Time Budget */}
+      {/* Duration */}
       <MetricCard
         icon={<ClockIcon className="h-5 w-5" />}
-        label="Time Budget"
-        value={`${Math.round(tbwo.timeBudget.remaining)}m`}
-        subValue={`${Math.round(tbwo.timeBudget.elapsed)}m used of ${tbwo.timeBudget.total}m`}
-        color={
-          tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.1
-            ? 'text-semantic-error'
-            : tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.25
-            ? 'text-semantic-warning'
-            : 'text-semantic-success'
-        }
-        bgColor={
-          tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.1
-            ? 'bg-semantic-error/10'
-            : tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.25
-            ? 'bg-semantic-warning/10'
-            : 'bg-semantic-success/10'
-        }
-      >
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background-tertiary">
-          <motion.div
-            className={`h-full rounded-full ${
-              tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.1
-                ? 'bg-semantic-error'
-                : tbwo.timeBudget.remaining < tbwo.timeBudget.total * 0.25
-                ? 'bg-semantic-warning'
-                : 'bg-semantic-success'
-            }`}
-            initial={{ width: 0 }}
-            animate={{ width: `${metrics.timeUsedPercent}%` }}
-            transition={{ duration: 0.8 }}
-          />
-        </div>
-      </MetricCard>
+        label="Duration"
+        value={(() => {
+          if (!tbwo.startedAt) return '\u2014';
+          const endTime = tbwo.completedAt || (tbwo.status === 'completed' ? tbwo.updatedAt : Date.now());
+          const mins = Math.round((endTime - tbwo.startedAt) / 60000);
+          if (mins < 1) return '< 1m';
+          if (mins < 60) return `${mins}m`;
+          return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        })()}
+        subValue={tbwo.status === 'completed' ? 'Completed' : tbwo.startedAt ? 'In progress' : 'Not started'}
+        color="text-brand-primary"
+        bgColor="bg-brand-primary/10"
+      />
 
       {/* Token Usage */}
       <MetricCard
@@ -165,12 +178,12 @@ export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
         bgColor="bg-purple-500/10"
       />
 
-      {/* Efficiency Score */}
+      {/* Task Completion */}
       <MetricCard
         icon={<SparklesIcon className="h-5 w-5" />}
-        label="Efficiency"
+        label="Completion"
         value={`${Math.round(metrics.progressEfficiency)}%`}
-        subValue="Progress vs time used"
+        subValue={`${metrics.completedTasks} of ${metrics.totalTasks} tasks`}
         color={
           metrics.progressEfficiency >= 100
             ? 'text-semantic-success'
@@ -210,9 +223,9 @@ export function TBWOMetrics({ tbwo }: TBWOMetricsProps) {
       {/* Quality Target */}
       <MetricCard
         icon={<SparklesIcon className="h-5 w-5" />}
-        label="Quality Target"
-        value={tbwo.qualityTarget.replace('_', ' ')}
-        subValue="Requested level"
+        label="Quality"
+        value={QUALITY_DISPLAY_NAMES[tbwo.qualityTarget as QualityTarget] || 'Standard'}
+        subValue="Target level"
         color="text-brand-accent"
         bgColor="bg-brand-accent/10"
       />

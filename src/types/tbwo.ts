@@ -1,9 +1,11 @@
 /**
  * TBWO (Time-Budgeted Work Order) Types
- * 
+ *
  * Complete type definitions for the autonomous agent execution system.
  * This is ALIN's flagship feature for bounded, inspectable, parallel execution.
  */
+
+import type { RenderMode, Section3DConfig } from '../products/sites/3d/types';
 
 // ============================================================================
 // CORE TBWO TYPES
@@ -15,6 +17,7 @@ export enum TBWOStatus {
   AWAITING_APPROVAL = 'awaiting_approval', // Plan ready for user review
   EXECUTING = 'executing',            // Work in progress
   PAUSED = 'paused',                  // Paused at checkpoint
+  PAUSED_WAITING_FOR_USER = 'paused_waiting_for_user', // Hard pause — waiting for user input
   CHECKPOINT = 'checkpoint',          // At a checkpoint, awaiting decision
   COMPLETING = 'completing',          // Finalizing and generating receipts
   COMPLETED = 'completed',            // Successfully finished
@@ -29,6 +32,14 @@ export enum QualityTarget {
   PREMIUM = 'premium',                // Polished, professional
   APPLE_LEVEL = 'apple_level',        // Exceptional quality, extreme attention to detail
 }
+
+/** User-facing display labels for quality targets */
+export const QUALITY_DISPLAY_NAMES: Record<QualityTarget, string> = {
+  [QualityTarget.DRAFT]: 'Draft',
+  [QualityTarget.STANDARD]: 'Standard',
+  [QualityTarget.PREMIUM]: 'Premium',
+  [QualityTarget.APPLE_LEVEL]: 'Maximum',
+};
 
 export interface TBWO {
   id: string;
@@ -45,6 +56,7 @@ export interface TBWO {
   plan?: ExecutionPlan;
   
   // Runtime state
+  executionAttemptId?: string; // Unique per execution attempt — idempotency key
   startedAt?: number;
   completedAt?: number;
   currentPhase?: string;
@@ -74,12 +86,19 @@ export interface TBWO {
   // Chat - linked conversation for TBWO dashboard chat tab
   chatConversationId?: string;
 
-  // Metadata
+  // Pause-and-Ask
+  pauseRequests: PauseRequest[];
+  activePauseId?: string;             // Currently pending pause (only one at a time)
+
+  // Extensible metadata (wizard configs, domain-specific data)
+  metadata?: Record<string, unknown>;
+
+  // Timestamps & ownership
   createdAt: number;
   updatedAt: number;
   userId: string;
   conversationId?: string;
-  
+
   // Cost tracking
   estimatedCost?: number;
   actualCost?: number;
@@ -118,7 +137,7 @@ export interface TBWOTemplate {
   requiredTools: string[];
   
   // Pricing
-  tier: 'free' | 'pro' | 'team' | 'enterprise';
+  tier: 'free' | 'pro' | 'team' | 'elite';
 }
 
 export interface TBWOInput {
@@ -292,11 +311,34 @@ export enum PodRole {
   FRONTEND = 'frontend',              // Frontend development
   BACKEND = 'backend',                // Backend development
   COPY = 'copy',                      // Content writing
-  MOTION = 'motion',                  // Animations
+  MOTION = 'motion',                  // CSS/JS micro-interactions & transitions
+  ANIMATION = 'animation',            // Advanced scroll animations & cinematic motion
+  THREE_D = 'three_d',               // 3D scenes, WebGL, Three.js
   QA = 'qa',                          // Quality assurance
   RESEARCH = 'research',              // Research & analysis
   DATA = 'data',                      // Data processing
   DEPLOYMENT = 'deployment',          // Deployment & ops
+}
+
+/** User-facing display labels for pod roles */
+export const POD_ROLE_DISPLAY_NAMES: Record<PodRole, string> = {
+  [PodRole.ORCHESTRATOR]: 'Orchestrator',
+  [PodRole.DESIGN]: 'Design',
+  [PodRole.FRONTEND]: 'Frontend',
+  [PodRole.BACKEND]: 'Backend',
+  [PodRole.COPY]: 'Copywriter',
+  [PodRole.MOTION]: 'Motion',
+  [PodRole.ANIMATION]: 'Animation',
+  [PodRole.THREE_D]: '3D Scene',
+  [PodRole.QA]: 'QA',
+  [PodRole.RESEARCH]: 'Research',
+  [PodRole.DATA]: 'Data',
+  [PodRole.DEPLOYMENT]: 'DevOps',
+};
+
+/** Get display name for a pod role string */
+export function getPodRoleDisplayName(role: string): string {
+  return POD_ROLE_DISPLAY_NAMES[role as PodRole] || role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export interface AgentPod {
@@ -519,7 +561,10 @@ export interface TBWOReceipts {
   
   // Rollback information
   rollback: RollbackReceipt;
-  
+
+  // Pause-and-Ask events
+  pauseEvents: PauseEvent[];
+
   // Generated at
   generatedAt: number;
 }
@@ -559,6 +604,15 @@ export interface TechnicalReceipt {
   
   // Security scan
   securityScan?: SecurityScanResult;
+
+  // Truth Guard (Website Sprint)
+  truthGuard?: {
+    passed: boolean;
+    violationCount: number;
+    criticalCount: number;
+    summary: string;
+    ranAt: number;
+  };
 }
 
 export interface PodReceipt {
@@ -629,6 +683,54 @@ export interface Vulnerability {
   description: string;
   package?: string;
   fixAvailable: boolean;
+}
+
+// ============================================================================
+// PAUSE-AND-ASK SYSTEM
+// ============================================================================
+
+export enum PauseReason {
+  MISSING_CRITICAL_FACT = 'MISSING_CRITICAL_FACT',         // Required info not in context
+  UNCERTAIN_CONTENT = 'UNCERTAIN_CONTENT',                 // Content generated but confidence low
+  REQUIRES_USER_PREFERENCE = 'REQUIRES_USER_PREFERENCE',   // Stylistic/subjective choice
+  EXTERNAL_DEPENDENCY = 'EXTERNAL_DEPENDENCY',             // Needs external service/credential/URL
+}
+
+export enum ContentTag {
+  USER_PROVIDED = 'USER_PROVIDED',   // Verbatim from user
+  USER_APPROVED = 'USER_APPROVED',   // AI-generated, user confirmed
+  INFERRED = 'INFERRED',            // AI-inferred from vague answer
+  PLACEHOLDER = 'PLACEHOLDER',       // Not resolved — blocks deploy
+}
+
+export interface PauseRequest {
+  id: string;
+  tbwoId: string;
+  podId: string;
+  phase: string;
+  contextPath: string;               // e.g. "pages.pricing.tiers" — where in the output this matters
+  reason: PauseReason;
+  question: string;                   // Human-readable question for the user
+  requiredFields?: string[];          // Specific fields needed (e.g. ["price", "currency", "interval"])
+  canInferFromVagueAnswer: boolean;   // If true, AI can infer structured values from vague text
+  resumeCheckpointId: string;         // Checkpoint to resume from after answer
+  status: 'pending' | 'answered' | 'inferred' | 'skipped';
+  userResponse?: string;              // Raw user response text
+  inferredValues?: Record<string, unknown>; // AI-inferred structured values
+  contentTag?: ContentTag;            // Tag applied to content derived from this pause
+  createdAt: number;
+  resolvedAt?: number;
+}
+
+export interface PauseEvent {
+  pauseId: string;
+  reason: PauseReason;
+  question: string;
+  userResponse?: string;
+  inferredValues?: Record<string, unknown>;
+  contentTag: ContentTag;
+  durationMs: number;                 // How long the pause lasted
+  timestamp: number;
 }
 
 // ============================================================================
@@ -713,6 +815,28 @@ export interface WebsiteSprintConfig {
   // Deployment
   includeDeployConfig: boolean;
   deployTarget?: 'netlify' | 'vercel' | 'cloudflare' | 'github-pages';
+
+  // Motion system intensity
+  motionIntensity?: MotionIntensity;
+
+  // 3D render mode
+  renderMode?: RenderMode;
+
+  // User-uploaded media (from Wizard Step 3)
+  pageMedia?: PageMediaAsset[];
+
+  // ALIN suggestions (from Wizard Step 4)
+  acceptedSuggestions?: string[];
+  rejectedSuggestions?: string[];
+
+  // Animation style preferences (from Wizard Step 4)
+  animationStyles?: string[];  // e.g. ['scroll-linked', 'parallax', 'staggered-reveals']
+
+  // 3D scene config (from Wizard Step 4)
+  scene3DEnabled?: boolean;
+  scene3DAssetId?: string;
+  scene3DImmersive?: boolean;
+  scenePreset?: string;
 }
 
 export interface PageDefinition {
@@ -780,4 +904,430 @@ export interface BrandAssets {
   colors?: string[];
   fonts?: string[];
   images?: File[];
+  logoUrl?: string;
+  faviconUrl?: string;
+  brandGuidelinesText?: string;
+}
+
+// ============================================================================
+// PAGE MEDIA & SUGGESTION TYPES (Wizard Steps 3 & 4)
+// ============================================================================
+
+export interface PageMediaAsset {
+  id: string;
+  type: 'image' | 'video' | '3d';
+  url?: string;
+  placement: 'hero' | 'feature' | 'background' | 'inline' | 'gallery' | 'custom';
+  placementHint?: string;
+  altText?: string;
+  pageIndex: number;
+  sectionType?: string;
+}
+
+export interface ALINSuggestion {
+  id: string;
+  type: 'animation' | '3d' | 'motion' | 'layout';
+  pageTarget: string;
+  sectionTarget?: string;
+  title: string;
+  description: string;
+  impact: 'high' | 'medium' | 'low';
+  configPatch: Partial<WebsiteSprintConfig>;
+}
+
+// ============================================================================
+// MODEL ROUTING
+// ============================================================================
+
+export interface ModelRoutingRule {
+  podRole: PodRole | '*';
+  taskPattern?: string;   // regex on task name (optional)
+  provider: 'anthropic' | 'openai';
+  model: string;
+  reason?: string;
+}
+
+export interface ModelRoutingConfig {
+  enabled: boolean;
+  rules: ModelRoutingRule[];
+  fallback: { provider: string; model: string };
+}
+
+// ============================================================================
+// PAGESPEC PIPELINE (Structured Page Generation)
+// ============================================================================
+
+export interface PageSpec {
+  version: '1.0';
+  productName: string;
+  routes: RouteSpec[];
+  globalNav: NavSpec;
+  globalFooter: FooterSpec;
+  designTokensRef: string;   // artifact path to variables.css
+}
+
+export interface RouteSpec {
+  route: string;              // "/", "/about", "/pricing"
+  fileName: string;           // "index.html", "about.html"
+  title: string;              // "Home", "About Us"
+  goal: string;               // "Convert visitors to sign up"
+  sections: SectionSpec[];
+  cta: { label: string; href: string } | null;
+  seo: { title: string; description: string; ogImage?: string };
+}
+
+export interface SectionSpec {
+  type: string;               // "hero", "features", "pricing", "faq", etc.
+  headline?: string;
+  subheadline?: string;
+  contentBrief: string;       // What this section should communicate
+  dataSource?: string;        // e.g., "pricing.tiers" or "features[]"
+  layout?: string;            // Layout variant identifier (e.g., "hero-split-left")
+  motion?: SectionMotionConfig;
+  renderMode?: RenderMode;
+  scene?: Section3DConfig;
+}
+
+export interface NavSpec {
+  style: 'horizontal' | 'sidebar' | 'hamburger';
+  logoText: string;
+  items: Array<{ label: string; href: string }>;
+}
+
+export interface FooterSpec {
+  columns: Array<{ heading: string; links: Array<{ label: string; href: string }> }>;
+  copyright: string;
+  socialLinks?: Array<{ platform: string; url: string }>;
+}
+
+// ============================================================================
+// MOTION SYSTEM
+// ============================================================================
+
+export type MotionIntensity = 'minimal' | 'standard' | 'premium';
+
+export interface MotionSpec {
+  intensity: MotionIntensity;
+  global: GlobalMotionConfig;
+  sections: SectionMotionConfig[];
+  heroMotion: HeroMotionConfig;
+  microInteractions: MicroInteractionConfig;
+  parallax: ParallaxConfig;
+  advanced: AdvancedMotionConfig;
+}
+
+export interface GlobalMotionConfig {
+  scrollRevealEnabled: boolean;
+  staggerDelay: number;
+  defaultEasing: string;
+  defaultDuration: number;
+  reducedMotionFallback: 'none' | 'fade-only' | 'instant';
+  viewportThreshold: number;
+  triggerOnce: boolean;
+}
+
+export interface SectionMotionConfig {
+  sectionType: string;
+  entrance: EntranceAnimation;
+  children: ChildrenAnimation;
+  custom?: CustomSectionMotion;
+}
+
+export interface EntranceAnimation {
+  type: 'fade-up' | 'fade-down' | 'fade-left' | 'fade-right' | 'zoom-in' | 'zoom-out'
+        | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'blur-in' | 'clip-reveal'
+        | 'rotate-in' | 'flip-up' | 'none';
+  duration: number;
+  delay: number;
+  easing: string;
+  distance?: number;
+  scale?: number;
+}
+
+export interface ChildrenAnimation {
+  stagger: boolean;
+  staggerDelay: number;
+  animation: EntranceAnimation;
+  selector?: string;
+}
+
+export interface HeroMotionConfig {
+  headlineAnimation: 'typewriter' | 'word-reveal' | 'char-reveal' | 'fade-up' | 'clip-reveal' | 'none';
+  headlineDuration: number;
+  subheadlineDelay: number;
+  ctaAnimation: 'pulse-glow' | 'slide-up' | 'fade-in' | 'bounce-in' | 'none';
+  ctaDelay: number;
+  backgroundMotion: 'gradient-shift' | 'parallax' | 'particle-float' | 'none';
+  backgroundIntensity: number;
+}
+
+export interface MicroInteractionConfig {
+  buttonHover: 'lift' | 'glow' | 'fill-slide' | 'scale' | 'none';
+  buttonClick: 'ripple' | 'shrink' | 'none';
+  cardHover: 'lift-shadow' | 'tilt-3d' | 'border-glow' | 'scale' | 'none';
+  linkHover: 'underline-grow' | 'color-shift' | 'highlight' | 'none';
+  navHover: 'underline-slide' | 'background-fill' | 'scale' | 'none';
+  inputFocus: 'border-glow' | 'label-float' | 'underline-expand' | 'none';
+  scrollToTop: 'fade' | 'slide-up' | 'none';
+  tooltips: boolean;
+}
+
+export interface ParallaxConfig {
+  enabled: boolean;
+  layers: ParallaxLayer[];
+  smoothScrolling: boolean;
+  maxSpeed: number;
+}
+
+export interface ParallaxLayer {
+  selector: string;
+  speed: number;
+  direction: 'vertical' | 'horizontal';
+  clamp: boolean;
+}
+
+export interface AdvancedMotionConfig {
+  scrollProgressBar: boolean;
+  scrollProgressPosition: 'top' | 'bottom';
+  scrollProgressColor: string;
+  animatedCounters: boolean;
+  counterDuration: number;
+  counterEasing: 'linear' | 'ease-out' | 'spring';
+  cssCarousels: boolean;
+  carouselAutoplay: boolean;
+  carouselInterval: number;
+  blobMorphing: boolean;
+  blobColors: string[];
+  magneticCursor: boolean;
+  magneticStrength: number;
+  textGradientAnimation: boolean;
+  smoothAnchorScroll: boolean;
+  smoothScrollDuration: number;
+}
+
+export interface CustomSectionMotion {
+  pricingToggle?: 'slide' | 'fade' | 'flip';
+  faqAccordion?: 'slide-down' | 'fade-in' | 'height-auto';
+  testimonialTransition?: 'slide' | 'fade' | 'flip-card';
+  galleryReveal?: 'masonry-fade' | 'stagger-zoom' | 'none';
+}
+
+export interface MotionValidationResult {
+  passed: boolean;
+  score: number;
+  issues: MotionValidationIssue[];
+  summary: string;
+  totalAnimatedElements: number;
+  estimatedBundleSize: number;
+  reducedMotionCompliant: boolean;
+}
+
+export interface MotionValidationIssue {
+  severity: 'error' | 'warning' | 'info';
+  rule: string;
+  message: string;
+  file?: string;
+  fix?: string;
+}
+
+export interface SiteValidationReport {
+  passed: boolean;
+  score: number;
+  issues: SiteValidationIssue[];
+  summary: string;
+}
+
+export interface SiteValidationIssue {
+  severity: 'error' | 'warning' | 'info';
+  file: string;
+  line?: number;
+  rule: string;
+  message: string;
+  fix?: string;
+}
+
+// ============================================================================
+// CONVERSION AUDIT
+// ============================================================================
+
+export interface ConversionAuditResult {
+  overallScore: number;  // 0-100
+  scores: {
+    clarity: number;
+    persuasion: number;
+    friction: number;       // 0=no friction, 100=high friction (inverted)
+    trustSignals: number;
+    visualHierarchy: number;
+    pricingPsychology: number;
+  };
+  pageAudits: ConversionPageAudit[];
+  recommendations: ConversionRecommendation[];
+  generatedAt: number;
+}
+
+export interface ConversionPageAudit {
+  page: string;
+  route: string;
+  sections: ConversionSectionAudit[];
+}
+
+export interface ConversionSectionAudit {
+  sectionType: string;
+  sectionIndex: number;
+  scores: { clarity: number; persuasion: number; friction: number };
+  issues: string[];
+  suggestions: string[];
+}
+
+export interface ConversionRecommendation {
+  id: string;
+  priority: 'high' | 'medium' | 'low';
+  category: 'clarity' | 'persuasion' | 'friction' | 'trust' | 'visual' | 'pricing';
+  page: string;
+  section: string;
+  currentIssue: string;
+  recommendation: string;
+  estimatedImpact: string;
+  autoFixable: boolean;
+  fixAction?: {
+    type: 'rewrite_section' | 'add_element' | 'restructure' | 'restyle';
+    sectionSelector: string;
+    instruction: string;
+  };
+}
+
+// ============================================================================
+// SECTION REGENERATION
+// ============================================================================
+
+export interface SectionRegenerationRequest {
+  tbwoId: string;
+  artifactPath: string;
+  sectionSelector: string;
+  sectionHtml: string;
+  action: SectionRegenerationAction;
+  customInstruction?: string;
+}
+
+export type SectionRegenerationAction =
+  | 'improve_conversion' | 'rewrite_tone' | 'make_premium' | 'make_aggressive'
+  | 'shorten_copy' | 'add_social_proof' | 'add_urgency' | 'switch_layout' | 'custom';
+
+export interface SectionRegenerationResult {
+  success: boolean;
+  originalHtml: string;
+  newHtml: string;
+  action: SectionRegenerationAction;
+  artifactPath: string;
+  sectionSelector: string;
+}
+
+// ============================================================================
+// LAYOUT VARIANTS
+// ============================================================================
+
+export interface LayoutVariant {
+  id: string;
+  sectionType: string;
+  name: string;
+  description: string;
+  cssHints: string;
+  htmlStructure: string;
+}
+
+// ============================================================================
+// SITE IMPROVEMENT REPORT
+// ============================================================================
+
+export interface SiteImprovementReport {
+  id: string;
+  tbwoId: string;
+  generatedAt: number;
+  overallScore: number;
+  audits: {
+    conversion: ConversionAuditResult;
+    seo: SEOAuditResult;
+    clarity: ClarityAuditResult;
+    trust: TrustAuditResult;
+    cta: CTAAuditResult;
+    messaging: MessagingCohesionResult;
+  };
+  improvements: SiteImprovement[];
+  appliedCount: number;
+  totalCount: number;
+}
+
+export interface SiteImprovement {
+  id: string;
+  auditSource: 'conversion' | 'seo' | 'clarity' | 'trust' | 'cta' | 'messaging';
+  priority: 'high' | 'medium' | 'low';
+  page: string;
+  section: string;
+  description: string;
+  currentIssue: string;
+  proposedFix: string;
+  enabled: boolean;
+  applied: boolean;
+  fixAction: {
+    type: 'rewrite_section' | 'add_element' | 'add_meta' | 'restructure' | 'restyle';
+    sectionSelector: string;
+    instruction: string;
+  };
+}
+
+export interface SEOAuditResult {
+  score: number;
+  issues: Array<{ page: string; issue: string; fix: string; severity: 'high' | 'medium' | 'low' }>;
+}
+
+export interface ClarityAuditResult {
+  score: number;
+  issues: Array<{ page: string; section: string; issue: string; fix: string }>;
+}
+
+export interface TrustAuditResult {
+  score: number;
+  issues: Array<{ page: string; issue: string; fix: string }>;
+}
+
+export interface CTAAuditResult {
+  score: number;
+  issues: Array<{ page: string; section: string; issue: string; fix: string }>;
+}
+
+export interface MessagingCohesionResult {
+  score: number;
+  issues: Array<{ pages: string[]; issue: string; fix: string }>;
+}
+
+// ============================================================================
+// VIDEO UX ANALYSIS
+// ============================================================================
+
+export interface VideoUXAnalysis {
+  id: string;
+  videoName: string;
+  frameCount: number;
+  overallScore: number;  // 0-100
+  scores: {
+    layout: number;
+    uxFlow: number;
+    accessibility: number;
+    copyClarity: number;
+    designConsistency: number;
+    frictionLevel: number;  // 0=no friction, 100=high friction
+  };
+  frameAnalyses: FrameAnalysis[];
+  overallRecommendations: string[];
+  criticalIssues: string[];
+  generatedAt: number;
+}
+
+export interface FrameAnalysis {
+  frameIndex: number;
+  timestamp: number;  // seconds into video
+  description: string;
+  issues: string[];
+  suggestions: string[];
+  score: number;
 }

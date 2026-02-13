@@ -28,6 +28,10 @@ import {
   CommandLineIcon,
   CodeBracketSquareIcon,
   PencilSquareIcon,
+  PhotoIcon,
+  ShieldCheckIcon,
+  ArrowDownOnSquareIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import type { ToolActivityType } from '../../store/statusStore';
 import type { ToolActivitySummary } from '../../types/chat';
@@ -65,6 +69,15 @@ const ACTIVITY_ICONS: Record<ToolActivityType, React.ComponentType<{ className?:
   terminal_command: CommandLineIcon,
   git_operation: CodeBracketSquareIcon,
   file_edit: PencilSquareIcon,
+  web_fetch: ArrowDownOnSquareIcon,
+  image_search: PhotoIcon,
+  site_validate: ShieldCheckIcon,
+  conversion_audit: ShieldCheckIcon,
+  site_improve: ShieldCheckIcon,
+  motion_validate: SparklesIcon,
+  scene_validate: SparklesIcon,
+  video_analyze: PhotoIcon,
+  output_guard: ShieldCheckIcon,
   other: DocumentTextIcon,
 };
 
@@ -81,35 +94,21 @@ const ACTIVITY_COLORS: Record<ToolActivityType, string> = {
   terminal_command: 'text-emerald-400',
   git_operation: 'text-red-400',
   file_edit: 'text-amber-400',
+  web_fetch: 'text-teal-400',
+  image_search: 'text-pink-400',
+  site_validate: 'text-emerald-400',
+  conversion_audit: 'text-orange-400',
+  site_improve: 'text-violet-400',
+  motion_validate: 'text-emerald-400',
+  scene_validate: 'text-fuchsia-400',
+  video_analyze: 'text-sky-400',
+  output_guard: 'text-lime-400',
   other: 'text-gray-400',
 };
-
-// Types that should auto-expand to show the work
-const AUTO_EXPAND_TYPES: Set<ToolActivityType> = new Set([
-  'file_write',
-  'file_edit',
-  'code_execute',
-  'terminal_command',
-  'git_operation',
-]);
 
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-function getFileExtension(path: string): string {
-  const parts = path.split('.');
-  return parts.length > 1 ? parts[parts.length - 1] : '';
-}
-
-function extractCodeFromOutput(output: string, toolName?: string): { code: string; language: string } | null {
-  // Try to extract code blocks from tool output
-  const codeBlockMatch = output.match(/```(\w*)\n([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    return { code: codeBlockMatch[2].trim(), language: codeBlockMatch[1] || 'text' };
-  }
-  return null;
-}
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
@@ -121,7 +120,7 @@ function truncate(str: string, maxLen: number): string {
 // ============================================================================
 
 function ActivityItem({ activity }: { activity: ActivityData }) {
-  const shouldAutoExpand = AUTO_EXPAND_TYPES.has(activity.type) && activity.status === 'completed';
+  const shouldAutoExpand = activity.status === 'error';
   const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
   const Icon = ACTIVITY_ICONS[activity.type];
   const colorClass = ACTIVITY_COLORS[activity.type];
@@ -207,7 +206,6 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
     case 'file_write': {
       const path = (input.path as string) || '';
       const content = (input.content as string) || '';
-      const ext = getFileExtension(path);
       return (
         <div className="space-y-1">
           <div className="text-xs text-text-quaternary font-mono">{path}</div>
@@ -320,7 +318,6 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
     case 'git_operation': {
       const operation = (input.operation as string) || '';
       const args = (input.args as string[]) || [];
-      const fullCmd = `git ${operation}${args.length ? ' ' + args.join(' ') : ''}`;
       return (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs">

@@ -462,5 +462,34 @@ export async function initializeDatabase(): Promise<void> {
       failures.map((f: any) => f.reason?.message || f.reason));
   }
 
+  // Auto-resume interrupted TBWOs (status stuck as 'executing' after refresh)
+  try {
+    const tbwoStore = useTBWOStore.getState();
+    const allTBWOs = Array.from(tbwoStore.tbwos.values());
+    const interrupted = allTBWOs.filter(t => t.status === 'executing');
+
+    if (interrupted.length > 0) {
+      for (const tbwo of interrupted) {
+        // Clear stale activePods (those pod instances are gone after refresh)
+        useTBWOStore.setState((state: any) => {
+          const t = state.tbwos.get(tbwo.id);
+          if (t) {
+            t.activePods = new Set();
+          }
+        });
+      }
+
+      // Auto-resume after a delay to let the app finish initializing
+      setTimeout(() => {
+        for (const tbwo of interrupted) {
+          console.log(`[dbInit] Auto-resuming interrupted TBWO: ${tbwo.objective}`);
+          useTBWOStore.getState().resumeExecution(tbwo.id);
+        }
+      }, 3000);
+    }
+  } catch (e) {
+    console.warn('[dbInit] TBWO auto-resume check failed (non-fatal):', e);
+  }
+
   console.log('[dbInit] Database initialization complete');
 }

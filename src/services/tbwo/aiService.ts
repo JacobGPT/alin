@@ -29,7 +29,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 
 export interface AIMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | any[];
 }
 
 export interface AIResponse {
@@ -184,8 +184,10 @@ export class AIService {
 
   /**
    * Build the messages array for the server from conversation history.
+   * Compresses history before returning to prevent token overflow.
    */
-  private buildServerMessages(): Array<{ role: string; content: string }> {
+  private buildServerMessages(): Array<{ role: string; content: string | any[] }> {
+    this.compressMessages();
     return this.conversationHistory.map(msg => ({
       role: msg.role,
       content: msg.content,
@@ -250,6 +252,9 @@ export class AIService {
   async streamMessage(message: string, callbacks: StreamCallbacks, tools?: any[]): Promise<void> {
     try {
       this.addToHistory('user', message);
+      // Ensure we're within token budget before sending
+      this.compressMessages();
+      this.ensureTokenBudget();
       const messages = this.buildServerMessages();
 
       let fullText = '';
@@ -294,9 +299,21 @@ export class AIService {
       this.totalTokensUsed += usage.inputTokens + usage.outputTokens;
       this.totalApiCalls += 1;
 
-      if (fullText) {
+      // Store structured content: text + tool_use blocks so continuations have correct history
+      if (toolCalls.length > 0) {
+        const contentBlocks: any[] = [];
+        if (fullText) {
+          contentBlocks.push({ type: 'text', text: fullText });
+        }
+        for (const tc of toolCalls) {
+          contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+        }
+        this.addToHistory('assistant', contentBlocks as any);
+      } else if (fullText) {
         this.addToHistory('assistant', fullText);
       }
+
+      this.trimHistory();
 
       callbacks.onComplete?.({
         text: fullText,
@@ -324,23 +341,23 @@ export class AIService {
     tools?: any[],
   ): Promise<AIResponse> {
     try {
-      // Build proper messages array for the server
-      const serverMessages: any[] = this.conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      }));
+      // Compress and enforce token budget before building messages
+      this.compressMessages();
+      this.ensureTokenBudget();
 
-      // Add assistant message with tool_use
-      serverMessages.push({
-        role: 'assistant',
-        content: [{ type: 'tool_use', id: toolUseId, name: 'tool_result_continuation', input: {} }],
-      });
+      // Build server messages from conversation history (which already contains
+      // the assistant message with the tool_use block from a prior call)
+      const serverMessages: any[] = this.buildServerMessages();
 
-      // Add user message with tool_result
+      // Add user message with tool_result (matching the tool_use already in history)
+      const toolResultContent = [{ type: 'tool_result', tool_use_id: toolUseId, content: result, is_error: result.startsWith('Error') }];
       serverMessages.push({
         role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolUseId, content: result, is_error: false }],
+        content: toolResultContent,
       });
+
+      // Store tool_result in conversation history so future calls see it
+      this.addToHistory('user', toolResultContent as any);
 
       let fullText = '';
       const newToolCalls: ToolCall[] = [];
@@ -374,7 +391,15 @@ export class AIService {
       this.totalTokensUsed += usage.inputTokens + usage.outputTokens;
       this.totalApiCalls += 1;
 
-      if (fullText) {
+      // Store assistant response in history (with tool_use blocks if any)
+      if (newToolCalls.length > 0) {
+        const contentBlocks: any[] = [];
+        if (fullText) contentBlocks.push({ type: 'text', text: fullText });
+        for (const tc of newToolCalls) {
+          contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+        }
+        this.addToHistory('assistant', contentBlocks as any);
+      } else if (fullText) {
         this.addToHistory('assistant', fullText);
       }
 
@@ -395,23 +420,23 @@ export class AIService {
     tools?: any[],
   ): Promise<void> {
     try {
-      // Build proper messages for the server
-      const serverMessages: any[] = this.conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      }));
+      // Compress and enforce token budget before building messages
+      this.compressMessages();
+      this.ensureTokenBudget();
 
-      // Add assistant message with tool_use
-      serverMessages.push({
-        role: 'assistant',
-        content: [{ type: 'tool_use', id: toolUseId, name: 'tool_result_continuation', input: {} }],
-      });
+      // Build server messages from conversation history (which already contains
+      // the assistant message with tool_use blocks)
+      const serverMessages: any[] = this.buildServerMessages();
 
-      // Add user message with tool_result
+      // Add user message with tool_result (matching the tool_use already in history)
+      const toolResultContent = [{ type: 'tool_result', tool_use_id: toolUseId, content: result, is_error: result.startsWith('Error') }];
       serverMessages.push({
         role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolUseId, content: result, is_error: false }],
+        content: toolResultContent,
       });
+
+      // Store tool_result in conversation history so future calls see it
+      this.addToHistory('user', toolResultContent as any);
 
       let fullText = '';
       const toolCalls: ToolCall[] = [];
@@ -451,7 +476,15 @@ export class AIService {
       this.totalTokensUsed += usage.inputTokens + usage.outputTokens;
       this.totalApiCalls += 1;
 
-      if (fullText) {
+      // Store assistant response in history (with tool_use blocks if any)
+      if (toolCalls.length > 0) {
+        const contentBlocks: any[] = [];
+        if (fullText) contentBlocks.push({ type: 'text', text: fullText });
+        for (const tc of toolCalls) {
+          contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+        }
+        this.addToHistory('assistant', contentBlocks as any);
+      } else if (fullText) {
         this.addToHistory('assistant', fullText);
       }
 
@@ -461,11 +494,113 @@ export class AIService {
     }
   }
 
+  /**
+   * Continue conversation with ALL tool results in a single API call.
+   * This is the correct way to handle multi-tool responses from Claude:
+   * all tool results must be sent together in one user message.
+   */
+  async streamContinueWithBatchedToolResults(
+    toolResults: Array<{ toolUseId: string; toolName: string; result: string }>,
+    callbacks: StreamCallbacks,
+    tools?: any[],
+  ): Promise<void> {
+    try {
+      // Compress and enforce token budget before building messages
+      this.compressMessages();
+      this.ensureTokenBudget();
+
+      // Build server messages from conversation history (which already contains
+      // the assistant message with tool_use blocks from streamMessage)
+      const serverMessages: any[] = this.buildServerMessages();
+
+      // Add a single user message containing ALL tool_result blocks
+      // Safety truncation: cap each result to prevent token overflow
+      const MAX_RESULT_CHARS = 4000;
+      const toolResultBlocks = toolResults.map(tr => ({
+        type: 'tool_result',
+        tool_use_id: tr.toolUseId,
+        content: tr.result.length > MAX_RESULT_CHARS
+          ? tr.result.slice(0, MAX_RESULT_CHARS) + '\n...(truncated)'
+          : tr.result,
+        is_error: tr.result.startsWith('Error'),
+      }));
+      serverMessages.push({
+        role: 'user',
+        content: toolResultBlocks,
+      });
+
+      // CRITICAL: Also store the tool_result user message in conversation history.
+      // Without this, the next iteration's buildServerMessages() would have two
+      // consecutive assistant messages (the original with tool_use blocks, and the
+      // new response) with no tool_result user message between them — causing
+      // Claude API to reject with "tool_use ids found without tool_result blocks".
+      this.addToHistory('user', toolResultBlocks as any);
+
+      let fullText = '';
+      const newToolCalls: ToolCall[] = [];
+
+      const streamResult = await streamFromServer({
+        endpoint: '/api/chat/continue',
+        body: {
+          provider: this.getProviderStr(),
+          model: this.config.model,
+          messages: serverMessages,
+          system: this.config.systemPrompt || undefined,
+          tools,
+          maxTokens: this.config.maxTokens,
+        },
+        callbacks: {
+          onText: (text) => {
+            fullText += text;
+            callbacks.onText?.(text);
+          },
+          onThinking: (thinking) => {
+            callbacks.onThinking?.(thinking);
+          },
+          onToolUse: (tool) => {
+            newToolCalls.push({ id: tool.id, name: tool.name, input: tool.input });
+            callbacks.onToolUse?.(tool);
+          },
+          onError: (error) => {
+            callbacks.onError?.(error);
+          },
+        },
+      });
+
+      const usage = {
+        inputTokens: streamResult.usage.inputTokens,
+        outputTokens: streamResult.usage.outputTokens,
+      };
+      this.totalTokensUsed += usage.inputTokens + usage.outputTokens;
+      this.totalApiCalls += 1;
+
+      // Store structured content in history (text + any new tool_use blocks)
+      if (newToolCalls.length > 0) {
+        const contentBlocks: any[] = [];
+        if (fullText) {
+          contentBlocks.push({ type: 'text', text: fullText });
+        }
+        for (const tc of newToolCalls) {
+          contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+        }
+        this.addToHistory('assistant', contentBlocks as any);
+      } else if (fullText) {
+        this.addToHistory('assistant', fullText);
+      }
+
+      this.trimHistory();
+
+      callbacks.onComplete?.({ text: fullText, toolCalls: newToolCalls, usage, stopReason: streamResult.stopReason });
+    } catch (error: any) {
+      callbacks.onError?.(error instanceof Error ? error : new Error(error.message || 'Batched continuation error'));
+    }
+  }
+
   // ==========================================================================
   // HISTORY MANAGEMENT
   // ==========================================================================
 
-  addToHistory(role: 'user' | 'assistant', content: string): void {
+  addToHistory(role: 'user' | 'assistant', content: string | any[]): void {
     this.conversationHistory.push({ role, content });
   }
 
@@ -477,7 +612,7 @@ export class AIService {
     return [...this.conversationHistory];
   }
 
-  trimHistory(maxMessages: number): void {
+  trimHistory(maxMessages: number = 8): void {
     if (this.conversationHistory.length <= maxMessages) {
       return;
     }
@@ -489,10 +624,163 @@ export class AIService {
     } else {
       this.conversationHistory = this.conversationHistory.slice(-maxMessages);
     }
+
+    this.validateToolPairing();
   }
 
   getHistoryLength(): number {
     return this.conversationHistory.length;
+  }
+
+  /**
+   * Compress conversation history to fit within token limits.
+   * - Caps tool_result content to 2000 chars
+   * - Caps assistant text to 4000 chars
+   * - If total estimated tokens > 150K, drops oldest messages (keeps first 2 + last 10)
+   */
+  compressMessages(): void {
+    // Step 1: Truncate individual message content
+    for (const msg of this.conversationHistory) {
+      if (Array.isArray(msg.content)) {
+        for (let i = 0; i < msg.content.length; i++) {
+          const block = msg.content[i];
+          if (block && typeof block === 'object') {
+            // Truncate tool_result content
+            if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 2000) {
+              msg.content[i] = { ...block, content: block.content.slice(0, 2000) + '\n...truncated' };
+            }
+            // Truncate assistant text blocks
+            if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 4000) {
+              msg.content[i] = { ...block, text: block.text.slice(0, 4000) + '\n...truncated' };
+            }
+          }
+        }
+      } else if (typeof msg.content === 'string' && msg.content.length > 4000) {
+        msg.content = msg.content.slice(0, 4000) + '\n...truncated';
+      }
+    }
+
+    // Step 2: Estimate total tokens and drop oldest if over budget
+    const totalChars = this.conversationHistory.reduce((sum, msg) => {
+      if (typeof msg.content === 'string') return sum + msg.content.length;
+      if (Array.isArray(msg.content)) {
+        return sum + msg.content.reduce((s: number, b: any) => {
+          if (typeof b === 'string') return s + b.length;
+          if (b?.text) return s + String(b.text).length;
+          if (b?.content) return s + String(b.content).length;
+          return s + JSON.stringify(b).length;
+        }, 0);
+      }
+      return sum;
+    }, 0);
+
+    // ~4 chars per token estimate; 50K tokens = ~200K chars
+    if (totalChars > 200_000 && this.conversationHistory.length > 6) {
+      // Keep first message + last 4, then fix orphaned tool_use/tool_result pairs
+      const first = this.conversationHistory.slice(0, 1);
+      let lastN = this.conversationHistory.slice(-4);
+
+      // Drop leading orphaned tool_result messages (no matching tool_use before them)
+      while (lastN.length > 0 && lastN[0].role === 'user' && Array.isArray(lastN[0].content)) {
+        const hasToolResult = lastN[0].content.some((b: any) => b?.type === 'tool_result');
+        if (hasToolResult) {
+          lastN = lastN.slice(1);
+        } else {
+          break;
+        }
+      }
+
+      this.conversationHistory = [...first, ...lastN];
+
+      this.validateToolPairing();
+    }
+  }
+
+  /**
+   * Hard-cap token budget: if estimated chars > 640K (160K tokens),
+   * aggressively trim to first 2 + last 4 messages.
+   * Call this right before sending to the API.
+   */
+  ensureTokenBudget(): void {
+    const totalChars = this.conversationHistory.reduce((sum, msg) => {
+      if (typeof msg.content === 'string') return sum + msg.content.length;
+      if (Array.isArray(msg.content)) {
+        return sum + msg.content.reduce((s: number, b: any) => {
+          if (typeof b === 'string') return s + b.length;
+          if (b?.text) return s + String(b.text).length;
+          if (b?.content) return s + String(b.content).length;
+          return s + JSON.stringify(b).length;
+        }, 0);
+      }
+      return sum;
+    }, 0);
+
+    if (totalChars > 320_000) {
+      console.warn(`[AIService] Token budget exceeded: ~${Math.round(totalChars / 4)} tokens (${totalChars} chars). Aggressive trim.`);
+      if (this.conversationHistory.length > 4) {
+        const first = this.conversationHistory.slice(0, 1);
+        const last = this.conversationHistory.slice(-3);
+        this.conversationHistory = [...first, ...last];
+      }
+      // Re-truncate all remaining content
+      for (const msg of this.conversationHistory) {
+        if (Array.isArray(msg.content)) {
+          for (let i = 0; i < msg.content.length; i++) {
+            const block = msg.content[i];
+            if (block && typeof block === 'object') {
+              if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 1500) {
+                msg.content[i] = { ...block, content: block.content.slice(0, 1500) + '\n...truncated' };
+              }
+              if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 3000) {
+                msg.content[i] = { ...block, text: block.text.slice(0, 3000) + '\n...truncated' };
+              }
+            }
+          }
+        } else if (typeof msg.content === 'string' && msg.content.length > 3000) {
+          msg.content = msg.content.slice(0, 3000) + '\n...truncated';
+        }
+      }
+
+      this.validateToolPairing();
+    }
+  }
+
+  /**
+   * Validate tool_use/tool_result pairing across conversation history.
+   * Strips orphaned blocks and removes emptied messages.
+   * Called after any operation that may trim/drop messages.
+   */
+  private validateToolPairing(): void {
+    const toolUseIds = new Set<string>();
+    const toolResultIds = new Set<string>();
+    for (const msg of this.conversationHistory) {
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block?.type === 'tool_use' && block.id) toolUseIds.add(block.id);
+          if (block?.type === 'tool_result' && block.tool_use_id) toolResultIds.add(block.tool_use_id);
+        }
+      }
+    }
+    // Strip unmatched tool_use blocks (no corresponding tool_result)
+    for (const msg of this.conversationHistory) {
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        msg.content = msg.content.filter((b: any) =>
+          !(b?.type === 'tool_use' && b.id && !toolResultIds.has(b.id))
+        );
+      }
+    }
+    // Strip unmatched tool_result blocks (no corresponding tool_use)
+    for (const msg of this.conversationHistory) {
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        msg.content = msg.content.filter((b: any) =>
+          !(b?.type === 'tool_result' && b.tool_use_id && !toolUseIds.has(b.tool_use_id))
+        );
+      }
+    }
+    // Remove messages that became empty after stripping
+    this.conversationHistory = this.conversationHistory.filter(msg =>
+      !(Array.isArray(msg.content) && msg.content.length === 0)
+    );
   }
 
   // ==========================================================================

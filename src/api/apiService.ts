@@ -21,8 +21,7 @@ import { prepareMessages, compressToolResultContent } from './contextManager';
 
 import { ModelProvider, MessageRole } from '../types/chat';
 import type { Message, ContentBlock } from '../types/chat';
-import { ALIN_SYSTEM_PROMPT, ALIN_TOOLS, DIRECT_MODE_SYSTEM_PROMPT, executeAlinTool } from './alinSystemPrompt';
-import { detectIntent, type TaskIntent } from './intentDetector';
+import { ALIN_TOOLS, executeAlinTool } from './alinSystemPrompt';
 import { useStatusStore, type ToolActivityType } from '../store/statusStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useModeStore } from '../store/modeStore';
@@ -32,6 +31,9 @@ import { getProjectContextForPrompt } from '../store/projectStore';
 import { CLAUDE_PRICING } from './claudeClient';
 import { getCapabilitiesSnapshot } from '../hooks/useCapabilities';
 import { buildAddendum as buildSelfModelAddendum, onThinkingBlock, onToolCall as recordToolCall } from '../services/selfModelService';
+
+// Auto-continuation instruction sent when response is truncated
+const CONTINUATION_INSTRUCTION = `Your previous response was cut off due to length limits. Continue EXACTLY where you left off. Do not repeat any content. Do not add introductory text like "Continuing from where I left off..." — just continue the output seamlessly. If you were inside a code block, resume the code immediately.`;
 
 // Claude specialized tool definitions (passed to server as tool configs)
 const COMPUTER_USE_TOOL = {
@@ -164,6 +166,7 @@ export interface StreamCallback {
   onChunk?: (chunk: string) => void;
   onThinking?: (thinking: string) => void;
   onToolStart?: (activityId: string, toolName: string) => void;
+  onModeHint?: (hint: { suggestedMode: string; confidence: number; reason: string }) => void;
   onImageGenerated?: (url: string, prompt: string, revisedPrompt?: string) => void;
   onFileGenerated?: (filename: string, content: string, language: string) => void;
   onComplete?: (response: ServerResponse) => void;
@@ -348,6 +351,14 @@ function getToolLabel(toolName: string, input?: Record<string, unknown>): string
     const filename = editPath ? editPath.split(/[/\\]/).pop() : '';
     return filename ? `Editing: ${filename}` : 'Editing file';
   }
+  if (toolName === 'gpu_compute') return 'Running GPU computation';
+  if (toolName === 'webcam_capture') return 'Capturing webcam frame';
+  if (toolName === 'blender_execute') return 'Executing Blender script';
+  if (toolName === 'blender_render') return 'Rendering in Blender';
+  if (toolName === 'web_fetch') {
+    const url = input?.['url'] as string;
+    return url ? `Fetching: ${url.slice(0, 50)}${url.length > 50 ? '...' : ''}` : 'Fetching URL';
+  }
   return `Using ${toolName}`;
 }
 
@@ -417,37 +428,29 @@ export class APIService {
         if (['computer', 'str_replace_editor'].includes(name)) return caps.canComputerUse;
         if (name === 'generate_image') return caps.canImageGen;
         if (name === 'tbwo_create') return caps.canTBWO;
-        return true; // web_search, memory_store, memory_recall, system_status
+        if (name === 'gpu_compute') return caps.isApp; // GPU compute requires local hardware
+        if (name === 'webcam_capture') return caps.canComputerUse;
+        if (['blender_execute', 'blender_render'].includes(name)) return caps.canBlender;
+        if (name === 'system_status') return caps.canHardwareMonitor; // Only on local — server metrics aren't user hardware
+        return true; // web_search, web_fetch, memory_store, memory_recall, code_search
       });
 
-      // Detect intent (direct mode vs sprint mode)
-      const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-      const lastUserText = lastUserMsg?.content
-        ?.filter((b: any) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('') || '';
-      const intent: TaskIntent = detectIntent(lastUserText, messages);
-
-      // Build system prompt
+      // Build additional context (local-only data server doesn't have)
       const memoryContext = getMemoryContext();
       const projectContext = getProjectContextForPrompt();
-      let systemPrompt = (modeConfig.systemPromptAddition
-        ? ALIN_SYSTEM_PROMPT + '\n' + modeConfig.systemPromptAddition
-        : ALIN_SYSTEM_PROMPT) + projectContext + memoryContext;
-
-      if (intent === 'direct') {
-        systemPrompt += DIRECT_MODE_SYSTEM_PROMPT;
-      }
+      let additionalContext = projectContext + memoryContext;
 
       // Inject self-model dynamic addendum (non-blocking)
       try {
         const selfModelAddendum = await buildSelfModelAddendum();
         if (selfModelAddendum) {
-          systemPrompt += '\n' + selfModelAddendum;
+          additionalContext += '\n' + selfModelAddendum;
         }
       } catch {
         // Non-critical — proceed without addendum
       }
+
+      const currentMode = useModeStore.getState().currentMode;
 
       // Determine provider string and model for the server
       const isAnthropic = provider === ModelProvider.ANTHROPIC;
@@ -477,11 +480,13 @@ export class APIService {
           provider: providerStr,
           model,
           messages: serverMessages,
-          system: systemPrompt,
+          system: '[DEPRECATED]',
+          mode: currentMode,
+          additionalContext,
           tools,
           thinking: enableThinking,
           thinkingBudget,
-          maxTokens: settings.model?.maxTokens || 8192,
+          maxTokens: settings.model?.maxTokens || 16384,
         },
         callbacks: {
           onText: (text) => callbacks.onChunk?.(text),
@@ -500,9 +505,20 @@ export class APIService {
             );
             callbacks.onToolStart?.(activityId, tool.name);
           },
+          onModeHint: (hint) => callbacks.onModeHint?.(hint),
           onError: (error) => callbacks.onError?.(error),
         },
       });
+
+      // If no tool calls but hit max_tokens, auto-continue
+      if (pendingToolUses.length === 0) {
+        result = await this.handleMaxTokensContinuation(
+          result, contextMessages, providerStr, model,
+          currentMode, additionalContext,
+          tools, enableThinking, thinkingBudget,
+          settings.model?.maxTokens || 16384, callbacks,
+        );
+      }
 
       // If there were tool uses, execute them and continue
       if (pendingToolUses.length > 0) {
@@ -550,11 +566,13 @@ export class APIService {
               provider: providerStr,
               model,
               messages: continuationMessages,
-              system: systemPrompt,
+              system: '[DEPRECATED]',
+              mode: currentMode,
+              additionalContext,
               tools,
               thinking: enableThinking,
               thinkingBudget,
-              maxTokens: settings.model?.maxTokens || 8192,
+              maxTokens: settings.model?.maxTokens || 16384,
             },
             callbacks: {
               onText: (text) => {
@@ -599,6 +617,14 @@ export class APIService {
         };
 
         result = await handleContinuation(result.content, toolResults, 0);
+
+        // Auto-continue if the final tool-use response was also truncated
+        result = await this.handleMaxTokensContinuation(
+          result, contextMessages, providerStr, model,
+          currentMode, additionalContext,
+          tools, enableThinking, thinkingBudget,
+          settings.model?.maxTokens || 16384, callbacks,
+        );
       }
 
       // Build response object for onComplete
@@ -719,6 +745,94 @@ export class APIService {
   }
 
   // ==========================================================================
+  // AUTO-CONTINUATION (when response hits max_tokens)
+  // ==========================================================================
+
+  /**
+   * If the response was truncated (stopReason === 'max_tokens'), automatically
+   * continue the generation by sending the partial response back with a
+   * continuation instruction. Recurses up to maxContinuationRounds.
+   */
+  private async handleMaxTokensContinuation(
+    result: ServerStreamResult,
+    contextMessages: Message[],
+    providerStr: string,
+    model: string,
+    mode: string,
+    additionalContext: string,
+    tools: any[],
+    enableThinking: boolean,
+    thinkingBudget: number,
+    maxTokens: number,
+    callbacks: StreamCallback,
+    round: number = 0,
+  ): Promise<ServerStreamResult> {
+    const settings = useSettingsStore.getState();
+    const maxRounds = settings.maxContinuationRounds || 3;
+
+    if (result.stopReason !== 'max_tokens' || !settings.enableAutoContinuation || round >= maxRounds) {
+      return result;
+    }
+
+    console.log(`[APIService] Auto-continuation round ${round + 1}/${maxRounds}`);
+
+    // Build continuation messages: original conversation + partial assistant response + continuation instruction
+    const serverMessages = convertMessagesForServer(contextMessages);
+
+    // Add the partial assistant response
+    serverMessages.push({
+      role: 'assistant',
+      content: convertContentBlocks(result.content),
+    });
+
+    // Add continuation instruction as user message
+    serverMessages.push({
+      role: 'user',
+      content: [{ type: 'text', text: CONTINUATION_INSTRUCTION }],
+    });
+
+    const continuationResult = await streamFromServer({
+      endpoint: '/api/chat/continue',
+      body: {
+        provider: providerStr,
+        model,
+        messages: serverMessages,
+        system: '[DEPRECATED]',
+        mode,
+        additionalContext,
+        tools,
+        thinking: enableThinking,
+        thinkingBudget,
+        maxTokens,
+      },
+      callbacks: {
+        onText: (text) => callbacks.onChunk?.(text),
+        onThinking: (thinking) => callbacks.onThinking?.(thinking),
+        onToolUse: () => {}, // Don't handle tool calls during continuation
+        onError: (error) => callbacks.onError?.(error),
+      },
+    });
+
+    // Merge content: append continuation content to result
+    const merged: ServerStreamResult = {
+      stopReason: continuationResult.stopReason,
+      usage: {
+        inputTokens: result.usage.inputTokens + continuationResult.usage.inputTokens,
+        outputTokens: result.usage.outputTokens + continuationResult.usage.outputTokens,
+      },
+      content: [...result.content, ...continuationResult.content],
+      toolCalls: result.toolCalls,
+    };
+
+    // Recurse if still truncated
+    return this.handleMaxTokensContinuation(
+      merged, contextMessages, providerStr, model,
+      mode, additionalContext,
+      tools, enableThinking, thinkingBudget, maxTokens, callbacks, round + 1,
+    );
+  }
+
+  // ==========================================================================
   // CODING MODE — Server-Side Tool Loop
   // ==========================================================================
 
@@ -738,17 +852,15 @@ export class APIService {
       const settings = useSettingsStore.getState();
       const modeConfig = getModeConfig(useModeStore.getState().currentMode);
 
-      // Build system prompt
+      // Build additional context (local-only data server doesn't have)
       const memoryContext = getMemoryContext();
       const projectContext = getProjectContextForPrompt();
-      let systemPrompt = (modeConfig.systemPromptAddition
-        ? modeConfig.systemPromptAddition
-        : '') + projectContext + memoryContext;
+      let codingAdditionalContext = projectContext + memoryContext;
 
       // Inject self-model addendum
       try {
         const selfModelAddendum = await buildSelfModelAddendum();
-        if (selfModelAddendum) systemPrompt += '\n' + selfModelAddendum;
+        if (selfModelAddendum) codingAdditionalContext += '\n' + selfModelAddendum;
       } catch {}
 
       // Model selection
@@ -775,7 +887,9 @@ export class APIService {
           messages: serverMessages,
           workspaceId,
           model,
-          system: systemPrompt,
+          system: '[DEPRECATED]',
+          mode: 'coding',
+          additionalContext: codingAdditionalContext,
         }),
       });
 

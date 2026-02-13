@@ -3,9 +3,9 @@
  */
 
 import { nanoid } from 'nanoid';
-import { createClaudeClient } from '../api/claudeClient';
+import { streamFromServer } from '../api/serverStreamClient';
+import { ContentTag } from '../types/tbwo';
 import type { TBWO, TBWOReceipts, Artifact, RollbackInstruction } from '../types/tbwo';
-import { MessageRole } from '../types/chat';
 
 interface PodMetricsInput {
   podId: string;
@@ -59,20 +59,30 @@ class ReceiptGenerator {
       technical,
       podReceipts,
       rollback,
+      pauseEvents: (tbwo.pauseRequests || [])
+        .filter(pr => pr.status !== 'pending')
+        .map(pr => ({
+          pauseId: pr.id,
+          reason: pr.reason,
+          question: pr.question,
+          userResponse: pr.userResponse,
+          inferredValues: pr.inferredValues,
+          contentTag: pr.contentTag || ContentTag.PLACEHOLDER,
+          durationMs: pr.resolvedAt && pr.createdAt ? pr.resolvedAt - pr.createdAt : 0,
+          timestamp: pr.createdAt,
+        })),
       generatedAt: Date.now(),
     };
   }
 
   /**
-   * AI-generated executive summary
+   * AI-generated executive summary via server streaming proxy
    */
   private async generateExecutiveSummary(
     tbwo: TBWO,
     context: ExecutionContext,
     _podReceipts: Map<string, any>
   ): Promise<TBWOReceipts['executive']> {
-    const apiKey = 'server-proxy'; // Actual API key is server-side only
-    const client = createClaudeClient(apiKey);
     const totalTime = (Date.now() - context.startTime - context.totalPauseDuration) / 60000;
     const totalTokens = Array.from(context.podMetrics.values())
       .reduce((sum, pm) => sum + pm.tokensUsed, 0);
@@ -108,21 +118,29 @@ Write a JSON response:
   "qualityNotes": ["quality observations"]
 }`;
 
-    const response = await client.sendMessage(
-      [{
-        id: nanoid(),
-        role: MessageRole.USER,
-        content: [{ type: 'text' as const, text: prompt }],
-        timestamp: Date.now(),
-        conversationId: tbwo.id,
-      }],
-      'Return only valid JSON.'
-    );
+    // Route through the same server streaming proxy as chat — no client API keys needed
+    let responseText = '';
+    const result = await streamFromServer({
+      endpoint: '/api/chat/stream',
+      body: {
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5-20251001',
+        system: 'Return only valid JSON. No markdown, no explanation.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 1024,
+      },
+      callbacks: {
+        onText: (text) => { responseText += text; },
+      },
+    });
 
-    const responseText = response.content
-      .filter((b: any) => b.type === 'text')
-      .map((b: any) => b.text)
-      .join('');
+    // Also collect from content blocks in case onText wasn't called
+    if (!responseText && result.content.length > 0) {
+      responseText = result.content
+        .filter(b => b.type === 'text')
+        .map(b => (b as any).text || '')
+        .join('');
+    }
 
     let data: any;
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -214,12 +232,12 @@ Write a JSON response:
   /**
    * Build technical receipt
    */
-  private buildTechnicalReceipt(_tbwo: TBWO, context: ExecutionContext): TBWOReceipts['technical'] {
+  private buildTechnicalReceipt(tbwo: TBWO, context: ExecutionContext): TBWOReceipts['technical'] {
     const totalTime = (Date.now() - context.startTime - context.totalPauseDuration) / 1000 / 60;
     const totalTokens = Array.from(context.podMetrics.values())
       .reduce((sum, pm) => sum + pm.tokensUsed, 0);
 
-    return {
+    const result: TBWOReceipts['technical'] = {
       buildStatus: context.qualityScore >= 70 ? 'success' as const : 'partial' as const,
       dependencies: [],
       performanceMetrics: {
@@ -227,6 +245,20 @@ Write a JSON response:
         memoryUsage: totalTokens,
       },
     };
+
+    // Include Truth Guard results if available (Website Sprint)
+    const tgResult = tbwo.metadata?.truthGuardResult as Record<string, unknown> | undefined;
+    if (tgResult) {
+      result.truthGuard = {
+        passed: tgResult.passed as boolean,
+        violationCount: (tgResult.violationCount as number) || 0,
+        criticalCount: (tgResult.criticalCount as number) || 0,
+        summary: (tgResult.summary as string) || '',
+        ranAt: (tgResult.ranAt as number) || Date.now(),
+      };
+    }
+
+    return result;
   }
 
   /**
