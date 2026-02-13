@@ -3,9 +3,6 @@
    slider fills · eased counters · light tilt · keyboard nav
    ============================================================ */
 
-// Auto-redirect logged-in users
-(function(){try{const d=JSON.parse(localStorage.getItem('alin-auth-storage')||'{}');if(d.state&&d.state.token&&!location.pathname.startsWith('/app'))location.href='/app/'}catch(e){}})();
-
 // ===== 1. NAV TEMPLATE =====
 function getNav(activePage){
   const links=[['features','Features','features.html'],['stations','Stations','stations.html'],['pricing','Pricing','pricing.html'],['docs','Docs','docs.html'],['about','About','about.html']];

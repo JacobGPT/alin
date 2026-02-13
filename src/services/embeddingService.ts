@@ -36,6 +36,7 @@ class EmbeddingService {
    * Tokenize text into terms
    */
   private tokenize(text: string): string[] {
+    if (!text || typeof text !== 'string') return [];
     return text
       .toLowerCase()
       .replace(/[^\w\s]/g, ' ')
@@ -77,6 +78,7 @@ class EmbeddingService {
    * Add a document to the corpus (updates IDF values)
    */
   addDocument(text: string): void {
+    if (!text || typeof text !== 'string') return;
     this.documentCount++;
     const uniqueTerms = new Set(this.tokenize(text));
 

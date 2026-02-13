@@ -142,7 +142,7 @@ class AdvancedEmbedding {
    * Tokenize text with advanced processing
    */
   private tokenize(text: string): string[] {
-    if (!text) return [];
+    if (!text || typeof text !== 'string') return [];
     // Lowercase and split
     let tokens = text
       .toLowerCase()
@@ -208,6 +208,7 @@ class AdvancedEmbedding {
    * Add document to corpus with full indexing
    */
   addDocument(text: string, docId?: number): number {
+    if (!text || typeof text !== 'string') return docId ?? this.documents.length;
     const id = docId ?? this.documents.length;
     this.documents[id] = text;
 
@@ -1674,7 +1675,7 @@ class MemoryService {
       if (!store.memories || store.memories.size === 0) return;
       store.memories.forEach((memory) => {
         try {
-          if (!memory?.content) return;
+          if (!memory?.content || typeof memory.content !== 'string') return;
           const docId = this.docIdCounter++;
           this.embedding.addDocument(memory.content, docId);
           this.memoryIdToDocId.set(memory.id, docId);
@@ -1790,7 +1791,7 @@ class MemoryService {
       // Connect entity to facts that mention it
       for (const factId of result.memoriesCreated) {
         const factMemory = store.memories.get(factId);
-        if (factMemory?.content.toLowerCase().includes(entity.name.toLowerCase())) {
+        if (typeof factMemory?.content === 'string' && factMemory.content.toLowerCase().includes(entity.name.toLowerCase())) {
           this.graph.addEdge(entityId, factId, 'entity');
           result.connectionsFormed++;
         }
@@ -2121,6 +2122,7 @@ class MemoryService {
     type: EntityType;
     attributes: Record<string, unknown>;
   }> {
+    if (!text || typeof text !== 'string') return [];
     const entities: Array<{
       name: string;
       type: EntityType;
@@ -2257,6 +2259,9 @@ class MemoryService {
    * Assess importance of content
    */
   private assessImportance(text: string): MemoryImportance {
+    if (!text || typeof text !== 'string') {
+      return { overall: 0.5, factors: { emotionalIntensity: 0, novelty: 0.5, relevanceToGoals: 0.5, frequency: 0, userEmphasis: 0, temporalProximity: 1.0, semanticCentrality: 0.5 } } as MemoryImportance;
+    }
     const factors = {
       emotionalIntensity: 0,
       novelty: 0.5,
