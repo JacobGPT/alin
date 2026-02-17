@@ -398,6 +398,15 @@ export async function buildAddendum(force = false): Promise<string> {
       }
     }
 
+    // Section 6: Internal trust state (invisible UI, powers intelligence)
+    try {
+      const { useTrustStore } = await import('../store/trustStore');
+      const trustSummary = useTrustStore.getState().getTrustSummaryForPrompt();
+      if (trustSummary) {
+        parts.push(trustSummary);
+      }
+    } catch {}
+
     _cachedAddendum = parts.length > 0 ? parts.join('\n') : '';
     _addendumBuiltAt = Date.now();
     return _cachedAddendum;
@@ -472,6 +481,12 @@ export async function onTBWOComplete(
     qualityScore,
     timestamp: Date.now(),
   });
+
+  // Record TBWO outcome in trust system
+  try {
+    const { useTrustStore } = await import('../store/trustStore');
+    useTrustStore.getState().recordTBWOOutcome(qualityScore, type);
+  } catch {}
 
   // Also store as a self-model memory
   await storeLayerMemory(7,

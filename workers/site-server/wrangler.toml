@@ -13,6 +13,6 @@ bucket_name = "alin-sites"
 binding = "DOMAIN_KV"
 id = "58495b0fc5ab4f8aa607a3464481a4c1"
 
-[routes]
+[[routes]]
 pattern = "*.alinai.dev/*"
 zone_name = "alinai.dev"

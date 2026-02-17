@@ -14,9 +14,7 @@
  */
 
 import { streamFromServer, type ServerStreamResult } from './serverStreamClient';
-import { BraveSearchClient, createBraveSearchClient } from './braveSearch';
-import { FileUploadHandler, createFileUploadHandler, type ProcessedFile } from './fileHandler';
-import { WebSocketManager, initializeWebSocket } from './websocket';
+// Removed: BraveSearchClient, FileUploadHandler, WebSocketManager (dead modules)
 import { prepareMessages, compressToolResultContent } from './contextManager';
 
 import { ModelProvider, MessageRole } from '../types/chat';
@@ -89,7 +87,7 @@ function getMemoryContext(): string {
       }).join('\n')}`);
     }
 
-    sections.push('\nUse these to personalize your responses. Call memory_recall for more specific searches. Call memory_store to save new information from this conversation.');
+    sections.push('\nUse these to personalize responses when relevant. Only call memory tools when the conversation warrants it — not for casual greetings.');
 
     return sections.join('');
   } catch {
@@ -169,6 +167,7 @@ export interface StreamCallback {
   onModeHint?: (hint: { suggestedMode: string; confidence: number; reason: string }) => void;
   onImageGenerated?: (url: string, prompt: string, revisedPrompt?: string) => void;
   onFileGenerated?: (filename: string, content: string, language: string) => void;
+  onVideoEmbed?: (video: { url: string; embed_url: string; platform: string; title?: string; thumbnail?: string; timestamp?: number }) => void;
   onComplete?: (response: ServerResponse) => void;
   onError?: (error: Error) => void;
 }
@@ -232,9 +231,11 @@ function convertMessagesForServer(
 }
 
 function convertContentBlocks(blocks: ContentBlock[]): any[] {
-  return blocks.map((block: any) => {
+  const converted = blocks.map((block: any) => {
     switch (block.type) {
       case 'text':
+        // Skip empty text blocks — Claude API rejects them
+        if (!block.text) return null;
         return { type: 'text', text: block.text };
       case 'image':
         if (block.url?.startsWith('data:')) {
@@ -245,7 +246,10 @@ function convertContentBlocks(blocks: ContentBlock[]): any[] {
         }
         return { type: 'image', source: { type: 'url', url: block.url } };
       case 'tool_use':
-        return { type: 'tool_use', id: block.toolUseId, name: block.toolName, input: block.toolInput };
+        return {
+          type: 'tool_use', id: block.toolUseId, name: block.toolName, input: block.toolInput,
+          ...(block.thought_signature ? { thought_signature: block.thought_signature } : {}),
+        };
       case 'tool_result':
         return { type: 'tool_result', tool_use_id: block.toolUseId, content: block.result, is_error: block.isError || false };
       case 'thinking':
@@ -254,10 +258,19 @@ function convertContentBlocks(blocks: ContentBlock[]): any[] {
         return { type: 'redacted_thinking', data: block.data };
       case 'tool_activity':
         return null; // UI-only, not sent to API
+      case 'video_embed':
+        return null; // UI-only, not sent to API
+      case 'file':
+        return null; // UI-only, not sent to API
       default:
         return { type: 'text', text: JSON.stringify(block) };
     }
   }).filter(Boolean);
+  // Ensure at least one content block per message
+  if (converted.length === 0) {
+    return [{ type: 'text', text: '[empty message]' }];
+  }
+  return converted;
 }
 
 // ============================================================================
@@ -367,27 +380,23 @@ function getToolLabel(toolName: string, input?: Record<string, unknown>): string
 // ============================================================================
 
 export class APIService {
-  public braveClient?: BraveSearchClient;
-  private fileHandler: FileUploadHandler;
-  private wsManager?: WebSocketManager;
+  private currentAbort: AbortController | null = null;
+  private cancelled = false;
 
   constructor(config: APIServiceConfig) {
     console.log('[APIService] Constructing (server-side streaming mode)...');
-
-    if (config.braveApiKey) {
-      this.braveClient = createBraveSearchClient(config.braveApiKey);
-    }
-
-    this.fileHandler = createFileUploadHandler();
-
-    if (config.wsUrl) {
-      this.wsManager = initializeWebSocket({
-        url: config.wsUrl,
-        debug: import.meta.env.DEV,
-      });
-    }
-
     console.log('[APIService] Construction complete');
+  }
+
+  /**
+   * Cancel any in-progress streaming request
+   */
+  cancel(): void {
+    this.cancelled = true;
+    if (this.currentAbort) {
+      this.currentAbort.abort();
+      this.currentAbort = null;
+    }
   }
 
   // ==========================================================================
@@ -404,6 +413,7 @@ export class APIService {
     callbacks: StreamCallback = {}
   ): Promise<void> {
     try {
+      this.cancelled = false;
       callbacks.onStart?.();
 
       const settings = useSettingsStore.getState();
@@ -436,7 +446,8 @@ export class APIService {
       });
 
       // Build additional context (local-only data server doesn't have)
-      const memoryContext = getMemoryContext();
+      const experimental = useSettingsStore.getState().experimental;
+      const memoryContext = experimental.enableMemory ? getMemoryContext() : '';
       const projectContext = getProjectContextForPrompt();
       let additionalContext = projectContext + memoryContext;
 
@@ -454,12 +465,18 @@ export class APIService {
 
       // Determine provider string and model for the server
       const isAnthropic = provider === ModelProvider.ANTHROPIC;
-      const providerStr = isAnthropic ? 'anthropic' : 'openai';
+      const isGemini = (provider as any) === 'gemini';
+      const isDeepSeek = (provider as any) === 'deepseek';
+      const providerStr = isGemini ? 'gemini' : isDeepSeek ? 'deepseek' : isAnthropic ? 'anthropic' : 'openai';
       const selectedVersions = settings.selectedModelVersions;
-      const model = isAnthropic
+      const model = isGemini
+        ? (selectedVersions.gemini || 'gemini-2.5-flash')
+        : isDeepSeek
+        ? (selectedVersions.deepseek || 'deepseek-chat')
+        : isAnthropic
         ? (selectedVersions.claude || 'claude-sonnet-4-5-20250929')
         : (selectedVersions.gpt || 'gpt-4o');
-      const enableThinking = isAnthropic && settings.enableThinking;
+      const enableThinking = (isAnthropic && settings.enableThinking) || (isDeepSeek && model === 'deepseek-reasoner');
       const thinkingBudget = settings.thinkingBudget || 10000;
 
       // Compress context
@@ -473,9 +490,11 @@ export class APIService {
       const statusStore = useStatusStore.getState();
       let accumulatedThinking = '';
 
-      // Stream from server
+      // Stream from server — create abort controller for cancellation
+      this.currentAbort = new AbortController();
       let result = await streamFromServer({
         endpoint: '/api/chat/stream',
+        signal: this.currentAbort.signal,
         body: {
           provider: providerStr,
           model,
@@ -506,6 +525,7 @@ export class APIService {
             callbacks.onToolStart?.(activityId, tool.name);
           },
           onModeHint: (hint) => callbacks.onModeHint?.(hint),
+          onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
           onError: (error) => callbacks.onError?.(error),
         },
       });
@@ -527,7 +547,7 @@ export class APIService {
         statusStore.setPhase('analyzing', 'Processing tool results...');
 
         // Recursive continuation for multi-turn tool use
-        const MAX_TOOL_DEPTH = 50;
+        const MAX_TOOL_DEPTH = 8;
 
         const handleContinuation = async (
           currentContentBlocks: ContentBlock[],
@@ -560,8 +580,14 @@ export class APIService {
             })),
           });
 
+          // Check abort signal before starting continuation
+          if (this.currentAbort?.signal.aborted) {
+            return { content: currentContentBlocks, stopReason: 'cancelled' } as ServerStreamResult;
+          }
+
           const continuationResult = await streamFromServer({
             endpoint: '/api/chat/continue',
+            signal: this.currentAbort?.signal,
             body: {
               provider: providerStr,
               model,
@@ -598,12 +624,18 @@ export class APIService {
                   console.warn('[APIService] Max tool depth reached, ignoring tool:', tool.name);
                 }
               },
+              onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
               onError: (error) => callbacks.onError?.(error),
             },
           });
 
-          if (newPendingToolUses.length > 0 && depth < MAX_TOOL_DEPTH) {
+          if (newPendingToolUses.length > 0 && depth < MAX_TOOL_DEPTH && !this.cancelled) {
             const newToolResults = await this.executeTools(newPendingToolUses, callbacks, statusStore);
+
+            // Check cancelled again after tool execution
+            if (this.cancelled) {
+              return continuationResult;
+            }
 
             statusStore.setPhase('analyzing', 'Processing additional tool results...');
 
@@ -682,66 +714,121 @@ export class APIService {
     callbacks: StreamCallback,
     statusStore: ReturnType<typeof useStatusStore.getState>,
   ): Promise<Array<{ toolUseId: string; content: string; isError: boolean }>> {
-    return Promise.all(
-      toolUses.map(async (tool) => {
-        const toolStart = Date.now();
-        const result = await executeAlinTool(tool.name, tool.input);
-        console.log('[APIService] Tool result:', tool.name, result.success);
+    const results: Array<{ toolUseId: string; content: string; isError: boolean }> = [];
 
-        // Record tool reliability (fire-and-forget)
-        recordToolCall(tool.name, result.success, Date.now() - toolStart, result.success ? undefined : result.error).catch(() => {});
+    for (const tool of toolUses) {
+      // Check cancelled between each tool execution
+      if (this.cancelled) break;
 
-        // Detect generated images
-        if (tool.name === 'generate_image' && result.success && result.result) {
-          try {
-            const parsed = JSON.parse(result.result);
-            if (parsed.url) {
-              callbacks.onImageGenerated?.(parsed.url, (tool.input as any)?.prompt || '', parsed.revised_prompt);
-            }
-          } catch { /* not JSON */ }
-        }
+      const toolStart = Date.now();
+      const result = await executeAlinTool(tool.name, tool.input);
+      console.log('[APIService] Tool result:', tool.name, result.success);
 
-        // Detect file writes
-        if (tool.name === 'file_write' && result.success) {
-          const path = (tool.input?.['path'] as string) || 'file';
-          const content = (tool.input?.['content'] as string) || '';
-          const ext = path.split('.').pop() || 'text';
-          callbacks.onFileGenerated?.(path, content, ext);
-        }
+      // Record tool reliability (fire-and-forget)
+      recordToolCall(tool.name, result.success, Date.now() - toolStart, result.success ? undefined : result.error).catch(() => {});
 
-        // Update tool activity status
-        const activityId = useStatusStore.getState().toolActivities.find(
-          (a) => a.status === 'running' && a.label === getToolLabel(tool.name, tool.input)
-        )?.id || useStatusStore.getState().toolActivities.find(
-          (a) => a.status === 'running'
-        )?.id;
-
-        if (activityId) {
-          if (result.success) {
-            let parsedResults: any[] | undefined;
-            if (result.result && typeof result.result === 'string') {
-              const urlMatches = result.result.match(/https?:\/\/[^\s\)]+/g);
-              if (urlMatches) {
-                parsedResults = urlMatches.slice(0, 10).map((url) => ({
-                  url,
-                  title: url.split('/').pop() || url,
-                }));
-              }
-            }
-            statusStore.completeToolActivity(activityId, parsedResults, parsedResults?.length, result.result);
-          } else {
-            statusStore.failToolActivity(activityId, result.error || 'Unknown error');
+      // Detect generated images
+      if (tool.name === 'generate_image' && result.success && result.result) {
+        try {
+          const parsed = JSON.parse(result.result);
+          if (parsed.url) {
+            callbacks.onImageGenerated?.(parsed.url, (tool.input as any)?.prompt || '', parsed.revised_prompt);
+            result.result = `Image generated successfully via ${parsed.provider || 'unknown'}. The image is displayed inline above.`;
           }
-        }
+        } catch { /* not JSON */ }
+      }
 
-        const rawContent = result.success ? result.result || 'Done' : `Error: ${result.error}`;
-        return {
-          toolUseId: tool.id,
-          content: result.success ? compressToolResultContent(rawContent, tool.name) : rawContent,
-          isError: !result.success,
-        };
-      })
-    );
+      // Detect image edits
+      if (tool.name === 'edit_image' && result.success && result.result) {
+        try {
+          const parsed = JSON.parse(result.result);
+          if (parsed.url) {
+            callbacks.onImageGenerated?.(parsed.url, (tool.input as any)?.prompt || '', parsed.description);
+            result.result = `Image edited successfully via ${parsed.provider || 'unknown'}. The edited image is displayed inline above.`;
+          }
+        } catch { /* not JSON */ }
+      }
+
+      // Detect generated videos
+      if (tool.name === 'generate_video' && result.success && result.result) {
+        try {
+          const parsed = JSON.parse(result.result);
+          if (parsed.url) {
+            callbacks.onVideoEmbed?.({
+              url: parsed.url,
+              embed_url: parsed.url,
+              platform: parsed.provider || 'veo',
+              title: (tool.input as any)?.prompt?.slice(0, 60) || 'Generated video',
+              thumbnail: '',
+              timestamp: 0,
+            });
+            result.result = `Video generated successfully via ${parsed.provider || 'veo'}. The video is displayed inline above.`;
+          }
+        } catch { /* not JSON */ }
+      }
+
+      // Detect video embeds — extract data for UI, simplify result for Claude
+      if (tool.name === 'embed_video' && result.success && result.result) {
+        try {
+          const parsed = JSON.parse(result.result);
+          if (parsed.url && parsed.embed_url) {
+            callbacks.onVideoEmbed?.({
+              url: parsed.url,
+              embed_url: parsed.embed_url,
+              platform: parsed.platform || 'unknown',
+              title: parsed.title || '',
+              thumbnail: parsed.thumbnail || '',
+              timestamp: parsed.timestamp || 0,
+            });
+            result.result = `Video embedded successfully: ${parsed.title || parsed.url} (${parsed.platform})`;
+          } else {
+            result.result = parsed.message || 'Video embedded.';
+          }
+        } catch { /* not JSON */ }
+      }
+
+      // Detect file writes
+      if (tool.name === 'file_write' && result.success) {
+        const path = (tool.input?.['path'] as string) || 'file';
+        const content = (tool.input?.['content'] as string) || '';
+        const ext = path.split('.').pop() || 'text';
+        callbacks.onFileGenerated?.(path, content, ext);
+      }
+
+      // Update tool activity status
+      const activityId = useStatusStore.getState().toolActivities.find(
+        (a) => a.status === 'running' && a.label === getToolLabel(tool.name, tool.input)
+      )?.id || useStatusStore.getState().toolActivities.find(
+        (a) => a.status === 'running'
+      )?.id;
+
+      if (activityId) {
+        if (result.success) {
+          let parsedResults: any[] | undefined;
+          if (result.result && typeof result.result === 'string') {
+            const urlMatches = result.result.match(/https?:\/\/[^\s\)]+/g);
+            if (urlMatches) {
+              parsedResults = urlMatches.slice(0, 10).map((url) => ({
+                url,
+                title: url.split('/').pop() || url,
+              }));
+            }
+          }
+          statusStore.completeToolActivity(activityId, parsedResults, parsedResults?.length, result.result);
+        } else {
+          statusStore.failToolActivity(activityId, result.error || 'Unknown error');
+        }
+      }
+
+      const rawContent = result.success ? result.result || 'Done' : `Error: ${result.error}`;
+      results.push({
+        toolUseId: tool.id,
+        content: result.success ? compressToolResultContent(rawContent, tool.name) : rawContent,
+        isError: !result.success,
+      });
+    }
+
+    return results;
   }
 
   // ==========================================================================
@@ -853,7 +940,8 @@ export class APIService {
       const modeConfig = getModeConfig(useModeStore.getState().currentMode);
 
       // Build additional context (local-only data server doesn't have)
-      const memoryContext = getMemoryContext();
+      const codingExperimental = useSettingsStore.getState().experimental;
+      const memoryContext = codingExperimental.enableMemory ? getMemoryContext() : '';
       const projectContext = getProjectContextForPrompt();
       let codingAdditionalContext = projectContext + memoryContext;
 
@@ -1008,34 +1096,6 @@ export class APIService {
       console.error('[APIService] Coding stream error:', error);
       callbacks.onError?.(error);
     }
-  }
-
-  // ==========================================================================
-  // FILE HANDLING
-  // ==========================================================================
-
-  async processFiles(files: File[]): Promise<ProcessedFile[]> {
-    return this.fileHandler.processFiles(files);
-  }
-
-  async processFile(file: File): Promise<ProcessedFile> {
-    return this.fileHandler.processFile(file);
-  }
-
-  // ==========================================================================
-  // WEBSOCKET
-  // ==========================================================================
-
-  connectWebSocket(): void {
-    this.wsManager?.connect();
-  }
-
-  disconnectWebSocket(): void {
-    this.wsManager?.disconnect();
-  }
-
-  onWebSocketMessage(callback: (message: any) => void): void {
-    this.wsManager?.on('message', callback);
   }
 
   // ==========================================================================

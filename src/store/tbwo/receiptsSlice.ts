@@ -42,7 +42,18 @@ export function createReceiptsSlice(_set: any, get: any) {
           qualityScore: (() => {
             const completed = tbwo.plan?.phases.reduce((sum: number, p: any) => sum + p.tasks.filter((t: any) => t.status === 'complete').length, 0) || 0;
             const total = tbwo.plan?.phases.reduce((sum: number, p: any) => sum + p.tasks.length, 0) || 1;
-            return Math.round((completed / total) * 100);
+            const taskScore = (completed / total) * 100;
+
+            // File creation score
+            const artifactCount = tbwo.artifacts?.size || tbwo.artifacts?.length || 0;
+            const expectedFileCount = (tbwo.metadata?.expectedFileCount as number) || Math.max(artifactCount, 1);
+            const fileScore = Math.min(100, (artifactCount / expectedFileCount) * 100);
+
+            // Truth Guard score
+            const tgResult = tbwo.metadata?.truthGuardResult as { passed?: boolean; violations?: any[] } | undefined;
+            const tgScore = tgResult ? (tgResult.passed ? 100 : Math.max(0, 100 - ((tgResult.violations?.length || 0) * 10))) : 100;
+
+            return Math.round(taskScore * 0.5 + fileScore * 0.3 + tgScore * 0.2);
           })(),
           qualityChecks: [],
         };
@@ -67,12 +78,29 @@ export function createReceiptsSlice(_set: any, get: any) {
             qualityScore: (() => {
               const completed = tbwo.plan?.phases.reduce((sum: number, p: any) => sum + p.tasks.filter((t: any) => t.status === 'complete').length, 0) || 0;
               const total = tbwo.plan?.phases.reduce((sum: number, p: any) => sum + p.tasks.length, 0) || 1;
-              return Math.round((completed / total) * 100);
+              const taskScore = (completed / total) * 100;
+
+              // File creation score
+              const artifactCount = tbwo.artifacts?.size || tbwo.artifacts?.length || 0;
+              const expectedFileCount = (tbwo.metadata?.expectedFileCount as number) || Math.max(artifactCount, 1);
+              const fileScore = Math.min(100, (artifactCount / expectedFileCount) * 100);
+
+              // Truth Guard score
+              const tgResult = tbwo.metadata?.truthGuardResult as { passed?: boolean; violations?: any[] } | undefined;
+              const tgScore = tgResult ? (tgResult.passed ? 100 : Math.max(0, 100 - ((tgResult.violations?.length || 0) * 10))) : 100;
+
+              return Math.round(taskScore * 0.5 + fileScore * 0.3 + tgScore * 0.2);
             })(),
             qualityNotes: ['Execution completed'],
           },
           technical: {
-            buildStatus: 'success',
+            buildStatus: (() => {
+              const tgResult = tbwo.metadata?.truthGuardResult as { passed?: boolean } | undefined;
+              const hasArtifacts = (tbwo.artifacts?.size || 0) > 0;
+              if (!hasArtifacts) return 'failed' as const;
+              if (tgResult && !tgResult.passed) return 'partial' as const;
+              return 'success' as const;
+            })(),
             dependencies: [],
             performanceMetrics: {},
             ...(tbwo.metadata?.truthGuardResult ? {

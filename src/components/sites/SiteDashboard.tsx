@@ -25,6 +25,7 @@ import {
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   DeviceTabletIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { useSitesStore } from '@store/sitesStore';
 import type { DeployProgressEvent } from '../../api/dbService';
@@ -58,6 +59,7 @@ function SiteDashboard() {
     deploySiteR2,
     loadSites,
     sites,
+    deleteSite,
     clearError,
     files,
     images,
@@ -89,7 +91,7 @@ function SiteDashboard() {
 
   // If no siteId, show sites list
   if (!siteId) {
-    return <SitesList sites={sites} loading={loading} onSelect={(id) => navigate(`/sites/${id}`)} />;
+    return <SitesList sites={sites} loading={loading} onSelect={(id) => navigate(`/sites/${id}`)} onDelete={deleteSite} />;
   }
 
   if (loading && !currentSite) {
@@ -428,11 +430,26 @@ function SitesList({
   sites,
   loading,
   onSelect,
+  onDelete,
 }: {
   sites: { id: string; name: string; status: string; domain: string | null; updated_at: number }[];
   loading: boolean;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
 }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (e: React.MouseEvent, siteId: string, siteName: string) => {
+    e.stopPropagation(); // Prevent navigating to the site
+    if (!confirm(`Delete site "${siteName}"? This cannot be undone.`)) return;
+    setDeletingId(siteId);
+    try {
+      await onDelete(siteId);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -452,10 +469,10 @@ function SitesList({
       ) : (
         <div className="space-y-2">
           {sites.map((site) => (
-            <button
+            <div
               key={site.id}
+              className="w-full flex items-center justify-between rounded-lg border border-border-primary bg-bg-secondary p-4 text-left hover:bg-bg-tertiary transition-colors cursor-pointer"
               onClick={() => onSelect(site.id)}
-              className="w-full flex items-center justify-between rounded-lg border border-border-primary bg-bg-secondary p-4 text-left hover:bg-bg-tertiary transition-colors"
             >
               <div className="flex items-center gap-3">
                 <GlobeAltIcon className="h-5 w-5 text-text-secondary" />
@@ -475,8 +492,20 @@ function SitesList({
                 }`}>
                   {site.status}
                 </span>
+                <button
+                  onClick={(e) => handleDelete(e, site.id, site.name)}
+                  disabled={deletingId === site.id}
+                  className="ml-1 rounded p-1.5 text-text-quaternary hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  title="Delete site"
+                >
+                  {deletingId === site.id ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <TrashIcon className="h-4 w-4" />
+                  )}
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}

@@ -287,7 +287,18 @@ export const useChatStore = create<ChatState & ChatActions>()(
           }
         });
 
-        dbService.deleteConversation(id).catch(e => console.warn('[chatStore] DB deleteConversation failed:', e));
+        dbService.deleteConversation(id).catch(e => {
+          console.warn('[chatStore] DB deleteConversation failed, queuing for retry:', e);
+          // Queue failed deletes so dbInit can replay them on next page load
+          try {
+            const raw = localStorage.getItem('alin-pending-deletes');
+            const pending: string[] = raw ? JSON.parse(raw) : [];
+            if (!pending.includes(id)) {
+              pending.push(id);
+              localStorage.setItem('alin-pending-deletes', JSON.stringify(pending));
+            }
+          } catch {}
+        });
       },
       
       updateConversation: (id, updates) => {
@@ -728,22 +739,78 @@ export const useChatStore = create<ChatState & ChatActions>()(
           // Debounce localStorage saves to prevent spam during streaming
           let saveTimeout: ReturnType<typeof setTimeout> | null = null;
           let pendingValue: any = null;
+          let quotaFailedAt = 0;
+          let compactMode = false; // Once quota exceeded, always save compacted
+
+          // Strip base64, tool_activity, video_embed; cap messages per conversation
+          const compactConvo = (entry: any, maxMsgs: number) => {
+            const [id, convo] = entry;
+            if (!convo?.messages) return entry;
+            const msgs = convo.messages.slice(-maxMsgs).map((m: any) => {
+              if (!Array.isArray(m.content)) return m;
+              return {
+                ...m,
+                content: m.content
+                  .filter((b: any) => b.type !== 'tool_activity' && b.type !== 'video_embed')
+                  .map((b: any) => {
+                    if (b.type === 'image' && b.url?.startsWith('data:')) {
+                      return { ...b, url: '[base64-stripped]' };
+                    }
+                    if (b.type === 'text' && b.text && b.text.length > 4000) {
+                      return { ...b, text: b.text.slice(0, 4000) + '...[trimmed]' };
+                    }
+                    return b;
+                  }),
+              };
+            });
+            return [id, { ...convo, messages: msgs }];
+          };
+
+          const sortByRecent = (arr: any[]) =>
+            [...arr].sort((a: any, b: any) => {
+              const aTime = (a[1]?.updatedAt || a[1]?.createdAt || 0);
+              const bTime = (b[1]?.updatedAt || b[1]?.createdAt || 0);
+              return bTime - aTime;
+            });
 
           const doSave = (name: string, value: any) => {
+            // Skip if in hard cooldown (localStorage truly full)
+            if (quotaFailedAt && Date.now() - quotaFailedAt < 60_000) return;
+
             const { state } = value;
             const conversationsArray = state.conversations instanceof Map
               ? Array.from(state.conversations.entries())
               : state.conversations;
 
-            localStorage.setItem(
-              name,
-              JSON.stringify({
-                state: {
-                  ...state,
-                  conversations: conversationsArray,
-                },
-              })
-            );
+            // If we've hit quota before, proactively compact every save (no spam)
+            if (compactMode) {
+              try {
+                const sorted = sortByRecent(conversationsArray);
+                const trimmed = sorted.slice(0, 5).map((e: any) => compactConvo(e, 10));
+                localStorage.setItem(name, JSON.stringify({ state: { ...state, conversations: trimmed } }));
+              } catch {
+                // Even compact mode failed — hard cooldown
+                quotaFailedAt = Date.now();
+              }
+              return;
+            }
+
+            try {
+              localStorage.setItem(
+                name,
+                JSON.stringify({
+                  state: { ...state, conversations: conversationsArray },
+                })
+              );
+            } catch (e: any) {
+              if (e?.name === 'QuotaExceededError') {
+                // Switch to permanent compact mode — one-time warning only
+                compactMode = true;
+                console.warn('[ChatStore] localStorage quota exceeded — switching to compact mode (SQLite is primary)');
+                // Immediately retry in compact mode
+                doSave(name, value);
+              }
+            }
           };
 
           return (name: string, value: any) => {
@@ -768,3 +835,12 @@ export const useChatStore = create<ChatState & ChatActions>()(
     }
   )
 );
+
+// Startup: prune localStorage if it's oversized (>2MB)
+try {
+  const stored = localStorage.getItem('alin-chat-storage');
+  if (stored && stored.length > 2_000_000) {
+    console.warn(`[ChatStore] localStorage is ${(stored.length / 1_000_000).toFixed(1)}MB — pruning on startup`);
+    localStorage.removeItem('alin-chat-storage');
+  }
+} catch { /* ignore */ }

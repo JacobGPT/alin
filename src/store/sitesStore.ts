@@ -42,6 +42,7 @@ interface SitesActions {
   loadSites: () => Promise<void>;
   loadSite: (siteId: string) => Promise<void>;
   createSite: (name: string, tbwoRunId?: string) => Promise<DbSite>;
+  deleteSite: (siteId: string) => Promise<void>;
   deploySite: (siteId: string) => Promise<void>;
   deploySiteR2: (siteId: string) => Promise<void>;
   loadDeployments: (siteId: string) => Promise<void>;
@@ -150,6 +151,20 @@ export const useSitesStore = create<SitesState & SitesActions>()(
       } catch (err) {
         set((s) => { s.error = (err as Error).message; s.loading = false; });
         throw err;
+      }
+    },
+
+    deleteSite: async (siteId: string) => {
+      try {
+        await dbService.deleteSite(siteId);
+        set((s) => {
+          s.sites = s.sites.filter(site => site.id !== siteId);
+          if (s.currentSite?.id === siteId) {
+            s.currentSite = null;
+          }
+        });
+      } catch (err) {
+        set((s) => { s.error = (err as Error).message; });
       }
     },
 

@@ -14,6 +14,7 @@ import { useTBWOStore } from '../store/tbwoStore';
 import { TBWOType, QualityTarget } from '../types/tbwo';
 import { useAuthStore } from '../store/authStore';
 import { useImageStore } from '../store/imageStore';
+import { useSettingsStore } from '../store/settingsStore';
 
 // ============================================================================
 // SYSTEM PROMPT
@@ -266,29 +267,34 @@ export const ALIN_TOOLS: ClaudeTool[] = [
     },
   },
 
-  // Image Generation (FLUX.2 [max])
+  // Image Generation (Multi-Provider)
   {
     name: 'generate_image',
-    description: 'Generate a new image using FLUX.2 [max]. Supports photorealistic photos, logos with text, illustrations, product shots. Include "Search the internet" in prompt for web-grounded context. Use hex codes for precise brand colors. Never replace user-provided images — only generate when no user asset exists.',
+    description: 'Generate a new image using one of multiple AI providers. ALWAYS ask the user which provider they want: FLUX.2 [max] (logos, text, brand colors), DALL-E 3 (creative/artistic), Imagen 4.0 (photorealistic), Imagen 4.0 Fast (quick drafts), Imagen 4.0 Ultra (highest quality). If user says "just pick": text/logo → flux2-max, people/photo → imagen-4, artistic → dall-e-3. NEVER override user-provided images. IMPORTANT: Pick width/height based on content type — photorealistic/landscape scenes should be wide (1536x1024 or 1792x1024), portraits should be tall (1024x1536 or 1024x1792), logos/icons should be square (1024x1024). NEVER default to 1024x1024 for photos or scenes.',
     input_schema: {
       type: 'object',
       properties: {
         prompt: {
           type: 'string',
-          description: 'Detailed image description. Be specific about subject, composition, lighting, style, mood. For brand colors use hex codes like #10b981. For logos include exact text to render.',
+          description: 'Detailed image description.',
+        },
+        provider: {
+          type: 'string',
+          enum: ['flux2-max', 'dall-e-3', 'imagen-4', 'imagen-4-fast', 'imagen-4-ultra'],
+          description: 'Which provider to use. User must choose or say just pick.',
         },
         width: {
           type: 'integer',
-          description: 'Image width in pixels (256-2048). Common: 1920 (hero), 1024 (general), 800 (card), 512 (icon). Default: 1024.',
+          description: 'Image width in pixels. Default 1024.',
         },
         height: {
           type: 'integer',
-          description: 'Image height in pixels (256-2048). Common: 1080 (hero 16:9), 1024 (square), 600 (card). Default: 1024.',
+          description: 'Image height in pixels. Default 1024.',
         },
         reference_images: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Up to 10 reference image URLs for style/identity consistency across generations.',
+          description: 'Reference image URLs for consistency.',
         },
         purpose: {
           type: 'string',
@@ -296,7 +302,39 @@ export const ALIN_TOOLS: ClaudeTool[] = [
           description: 'Intended use of this image.',
         },
       },
+      required: ['prompt', 'provider'],
+    },
+  },
+
+  // Image Editing (Nano Banana Pro / FLUX.2)
+  {
+    name: 'edit_image',
+    description: 'Edit an existing image using AI. Default to Nano Banana Pro (widest range of edits). Use FLUX.2 [max] only for retexturing or brand color precision.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'What to change.' },
+        source_image_base64: { type: 'string', description: 'Base64-encoded image data from user upload.' },
+        source_image_url: { type: 'string', description: 'URL of image to edit.' },
+        provider: { type: 'string', enum: ['nano-banana', 'flux2-max'], description: 'Default: nano-banana' },
+      },
       required: ['prompt'],
+    },
+  },
+
+  // Video Generation (Veo 3.1)
+  {
+    name: 'generate_video',
+    description: 'Generate a short AI video (4-8 sec). Ask quality preference: full quality (Veo 3.1, ~30-90s) or fast draft (Veo 3.1 Fast, ~10-20s). Elite plan only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Detailed video description with subject, action, camera, lighting, style.' },
+        provider: { type: 'string', enum: ['veo-3.1', 'veo-3.1-fast'], description: 'User must choose quality tier.' },
+        duration_seconds: { type: 'integer', enum: [4, 6, 8], description: 'Video duration. Default 4.' },
+        aspect_ratio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: '16:9 landscape, 9:16 portrait, 1:1 square.' },
+      },
+      required: ['prompt', 'provider'],
     },
   },
 
@@ -543,6 +581,131 @@ export const ALIN_TOOLS: ClaudeTool[] = [
       required: ['blendFile', 'outputPath'],
     },
   },
+
+  // Video Embed
+  {
+    name: 'embed_video',
+    description: 'Embed a video player directly in the chat. Use proactively when a video would help the user understand better than text alone. WHEN TO USE: user asks "how do I..." for anything visual, asks about a product/app/service, is debugging something with video walkthroughs, asks about concepts with famous explanations, mentions music/movies/trailers, or struggles with something that has great tutorials. You do NOT need the user to ask for a video.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Video URL (YouTube, Vimeo, Loom, Twitch, Dailymotion). Must be a real, valid URL.',
+        },
+        title: {
+          type: 'string',
+          description: 'Brief title/description (e.g., "Fireship: React in 100 Seconds")',
+        },
+        context: {
+          type: 'string',
+          description: 'One sentence explaining why this video is relevant.',
+        },
+      },
+      required: ['url'],
+    },
+  },
+
+  // Change Voice (voice mode)
+  {
+    name: 'change_voice',
+    description: 'Change the text-to-speech voice. ALWAYS call this tool whenever the user asks to switch, change, preview, or try a different voice — even if you already changed voices earlier in this conversation. You MUST call this tool every time, never skip it. Available voices: rachel (warm female), drew (confident male), bella (soft female), josh (deep male), adam (deep male), sam (young male), antoni (warm male), elli (sweet female), alloy, echo, fable, onyx, nova, shimmer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        voice: {
+          type: 'string',
+          description: 'Voice name to switch to (e.g. "josh", "bella", "drew", "rachel", "adam", "sam", "nova", "alloy", "echo", "fable", "onyx", "shimmer")',
+        },
+        preview: {
+          type: 'boolean',
+          description: 'If true, play a short sample of the voice without permanently switching',
+        },
+      },
+      required: ['voice'],
+    },
+  },
+
+  // Capture Screenshot
+  {
+    name: 'capture_screenshot',
+    description: 'Capture a screenshot of the user\'s screen or a specific application window. Useful for visual debugging, UI verification, and understanding what the user sees.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        target: {
+          type: 'string',
+          description: 'What to capture: "screen" for full screen, or a window title to capture a specific window',
+          default: 'screen',
+        },
+      },
+      required: [],
+    },
+  },
+
+  // Str Replace Editor (precise text editing)
+  {
+    name: 'str_replace_editor',
+    description: 'Make precise text replacements in files. Specify the file path and the exact text to find and replace. Supports creating new files when old_str is empty.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        command: {
+          type: 'string',
+          enum: ['view', 'create', 'str_replace', 'insert', 'undo_edit'],
+          description: 'The editing command to execute',
+        },
+        path: {
+          type: 'string',
+          description: 'Absolute file path to edit',
+        },
+        old_str: {
+          type: 'string',
+          description: 'Text to find (must match exactly)',
+        },
+        new_str: {
+          type: 'string',
+          description: 'Text to replace with',
+        },
+        insert_line: {
+          type: 'number',
+          description: 'Line number to insert at (for insert command)',
+        },
+        view_range: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Line range to view [start, end]',
+        },
+      },
+      required: ['command', 'path'],
+    },
+  },
+
+  // Computer Use (mouse/keyboard automation)
+  {
+    name: 'computer',
+    description: 'Control the computer by performing mouse and keyboard actions. Use for UI testing, automation, and interacting with desktop applications.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['screenshot', 'click', 'double_click', 'type', 'key', 'scroll', 'move'],
+          description: 'The action to perform',
+        },
+        coordinate: {
+          type: 'array',
+          items: { type: 'number' },
+          description: '[x, y] coordinates for click/move actions',
+        },
+        text: {
+          type: 'string',
+          description: 'Text to type or key combination to press',
+        },
+      },
+      required: ['action'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -602,6 +765,9 @@ export async function executeAlinTool(
       case 'str_replace_editor':
         return await executeTextEditor(toolInput);
 
+      case 'capture_screenshot':
+        return await executeCaptureScreenshot(toolInput);
+
       case 'generate_image':
         return await executeGenerateImage(toolInput);
 
@@ -631,6 +797,45 @@ export async function executeAlinTool(
 
       case 'blender_render':
         return await executeBlenderRender(toolInput);
+
+      case 'embed_video':
+        return await executeEmbedVideo(toolInput);
+
+      case 'edit_image': {
+        // Extract actual base64 from conversation if Claude sent a placeholder like {{IMAGE_0}}
+        const editInput = { ...toolInput };
+        const b64 = editInput['source_image_base64'] as string | undefined;
+        if (!b64 || b64.includes('{{IMAGE') || b64.length < 100) {
+          // Find the most recent user-uploaded image in conversation
+          const chatState = (await import('../store/chatStore')).useChatStore.getState();
+          const conv = chatState.getCurrentConversation();
+          if (conv?.messages) {
+            for (let i = conv.messages.length - 1; i >= 0; i--) {
+              const msg = conv.messages[i];
+              if (msg.role !== 'user') continue;
+              for (const block of msg.content) {
+                if (block.type === 'image' && (block as any).url?.startsWith('data:')) {
+                  const dataUrl = (block as any).url as string;
+                  const base64Match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+                  if (base64Match) {
+                    editInput['source_image_base64'] = base64Match[1];
+                    break;
+                  }
+                }
+              }
+              if (editInput['source_image_base64'] !== b64) break;
+            }
+          }
+        }
+        return await executeServerTool('edit_image', editInput);
+      }
+
+      case 'change_voice':
+        return await executeChangeVoice(toolInput);
+
+      case 'generate_video':
+        // Route to server for Veo 3.1 handling
+        return await executeServerTool('generate_video', toolInput);
 
       default:
         return {
@@ -1269,8 +1474,11 @@ async function executeSystemStatus(_input: Record<string, unknown>): Promise<Too
   // Browser-based metrics (limited)
   const memory = (performance as any).memory;
 
+  const now = new Date();
   const status = {
-    timestamp: new Date().toISOString(),
+    currentDateTime: now.toISOString(),
+    localTime: now.toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'long' }),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     browser: {
       userAgent: navigator.userAgent,
       language: navigator.language,
@@ -1333,6 +1541,28 @@ async function executeComputerUse(input: Record<string, unknown>): Promise<ToolE
 }
 
 // ============================================================================
+// CAPTURE SCREENSHOT TOOL
+// ============================================================================
+
+async function executeCaptureScreenshot(input: Record<string, unknown>): Promise<ToolExecutionResult> {
+  try {
+    const resp = await fetch('/api/hardware/webcam', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
+      body: JSON.stringify({ action: 'screenshot', target: input.target || 'screen' }),
+    });
+    if (!resp.ok) return { success: false, error: `Screenshot capture failed: ${resp.status}` };
+    const data = await resp.json();
+    return {
+      success: true,
+      result: data.image ? `Screenshot captured successfully. Image data available.` : 'Screenshot captured but no image data returned.',
+    };
+  } catch (e: any) {
+    return { success: false, error: `Screenshot failed: ${e.message}` };
+  }
+}
+
+// ============================================================================
 // TEXT EDITOR TOOL
 // ============================================================================
 
@@ -1370,6 +1600,7 @@ async function executeTextEditor(input: Record<string, unknown>): Promise<ToolEx
 
 async function executeGenerateImage(input: Record<string, unknown>): Promise<ToolExecutionResult> {
   const prompt = input['prompt'] as string;
+  const provider = (input['provider'] as string) || 'dall-e-3';
   const width = (input['width'] as number) || 1024;
   const height = (input['height'] as number) || 1024;
   const reference_images = (input['reference_images'] as string[]) || [];
@@ -1379,7 +1610,7 @@ async function executeGenerateImage(input: Record<string, unknown>): Promise<Too
   if (input['size'] && typeof input['size'] === 'string' && !input['width']) {
     const parts = (input['size'] as string).split('x').map(Number);
     if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
-      return executeGenerateImageViaBackend(prompt, parts[0], parts[1], reference_images, purpose);
+      return executeGenerateImageViaBackend(prompt, parts[0], parts[1], reference_images, purpose, provider);
     }
   }
 
@@ -1387,10 +1618,10 @@ async function executeGenerateImage(input: Record<string, unknown>): Promise<Too
     return { success: false, error: 'Image prompt is required' };
   }
 
-  console.log(`[ALIN] Generating image: "${prompt.slice(0, 80)}..." (${width}x${height}, purpose: ${purpose})`);
+  console.log(`[ALIN] Generating image: "${prompt.slice(0, 80)}..." (${width}x${height}, provider: ${provider})`);
 
   try {
-    return await executeGenerateImageViaBackend(prompt, width, height, reference_images, purpose);
+    return await executeGenerateImageViaBackend(prompt, width, height, reference_images, purpose, provider);
   } catch (outerError: any) {
     console.error('[ALIN] Image generation failed:', outerError);
     return { success: false, error: outerError.message || 'Image generation failed' };
@@ -1402,13 +1633,14 @@ async function executeGenerateImageViaBackend(
   width: number,
   height: number,
   reference_images: string[],
-  purpose: string
+  purpose: string,
+  provider: string = 'dall-e-3'
 ): Promise<ToolExecutionResult> {
   try {
     const response = await fetch('/api/images/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...useAuthStore.getState().getAuthHeader() },
-      body: JSON.stringify({ prompt, width, height, reference_images, purpose }),
+      body: JSON.stringify({ prompt, provider, width, height, reference_images, purpose }),
     });
 
     if (!response.ok) {
@@ -1423,8 +1655,8 @@ async function executeGenerateImageViaBackend(
     useImageStore.getState().addImage({
       url: imageUrl,
       prompt,
-      revisedPrompt: '',
-      model: 'flux2-max',
+      revisedPrompt: data.revised_prompt || '',
+      model: provider,
       size: `${width}x${height}`,
       quality: 'max',
       style: purpose,
@@ -1434,16 +1666,78 @@ async function executeGenerateImageViaBackend(
       success: true,
       result: JSON.stringify({
         url: imageUrl,
-        width: data.image?.width || width,
-        height: data.image?.height || height,
-        provider: 'flux2-max',
-        message: `Image generated successfully (${width}×${height}). The image has been added to your Image Gallery.`,
+        width: data.width || width,
+        height: data.height || height,
+        provider: data.provider || provider,
+        message: `Image generated successfully via ${provider}. The image has been added to your Image Gallery.`,
       }),
     };
   } catch (error: any) {
     return {
       success: false,
       error: `Backend image generation failed: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Generic server-side tool executor — routes tool calls to the backend
+ * for tools that are handled entirely server-side (edit_image, generate_video, etc.)
+ */
+async function executeServerTool(
+  toolName: string,
+  toolInput: Record<string, unknown>
+): Promise<ToolExecutionResult> {
+  try {
+    // All server-side tools go through the unified tool executor
+    const endpoint = '/api/tools/execute';
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...useAuthStore.getState().getAuthHeader() },
+      body: JSON.stringify({ toolName, toolInput }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({ error: `Server error ${response.status}` }));
+      return { success: false, error: data.error || `Tool ${toolName} failed` };
+    }
+
+    const data = await response.json();
+
+    if (data.success === false) {
+      return { success: false, error: data.error || `Tool ${toolName} failed` };
+    }
+
+    // Server tool functions return { success, result: JSON.stringify({url,...}) }
+    // Unwrap the inner result to avoid double-encoding
+    let innerResult: Record<string, any> = data;
+    if (data.result && typeof data.result === 'string') {
+      try { innerResult = JSON.parse(data.result); } catch { /* not JSON, use data as-is */ }
+    }
+
+    // For image edits, add to gallery
+    if (toolName === 'edit_image' && innerResult.url) {
+      useImageStore.getState().addImage({
+        url: innerResult.url,
+        prompt: (toolInput['prompt'] as string) || 'Edited image',
+        revisedPrompt: '',
+        model: innerResult.provider || 'nano-banana',
+        size: '1024x1024',
+        quality: 'edited',
+        style: 'edit',
+      });
+    }
+
+    // Return the inner result (properly single-encoded)
+    return {
+      success: true,
+      result: data.result && typeof data.result === 'string' ? data.result : JSON.stringify(data),
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: `Server tool ${toolName} failed: ${error.message}`,
     };
   }
 }
@@ -1878,5 +2172,54 @@ async function executeBlenderRender(input: Record<string, unknown>): Promise<Too
     }
   } catch (error: any) {
     return { success: false, error: `BLENDER CONNECTION ERROR: ${error.message}. No render was produced.` };
+  }
+}
+
+async function executeChangeVoice(input: Record<string, unknown>): Promise<ToolExecutionResult> {
+  const voice = (input.voice as string || '').toLowerCase();
+  const preview = input.preview as boolean;
+
+  const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'rachel', 'drew', 'bella', 'josh', 'adam', 'sam', 'antoni', 'elli', 'arnold', 'clyde', 'domi'];
+  if (!validVoices.includes(voice)) {
+    return { success: false, error: `Unknown voice "${voice}". Available: ${validVoices.join(', ')}` };
+  }
+
+  if (preview) {
+    // Preview: temporarily switch voice so the AI's spoken response uses it.
+    // The user will hear the new voice in ALIN's response and can decide to keep it.
+    const previousVoice = useSettingsStore.getState().voice.voice;
+    useSettingsStore.getState().updateVoicePreferences({ voice: voice as any });
+    return {
+      success: true,
+      result: `Voice temporarily switched to "${voice}" for this response. The user will hear your next response in this voice. Previous voice was "${previousVoice}". Tell the user they're hearing the ${voice} voice and ask if they want to keep it or switch back to ${previousVoice}.`,
+    };
+  }
+
+  // Permanent switch — update settings. The next TTS call will use this voice automatically.
+  useSettingsStore.getState().updateVoicePreferences({ voice: voice as any });
+  return {
+    success: true,
+    result: `Voice changed to "${voice}". All future spoken responses will use this voice.`,
+  };
+}
+
+async function executeEmbedVideo(input: Record<string, unknown>): Promise<ToolExecutionResult> {
+  const url = input.url as string;
+  if (!url) return { success: false, error: 'url is required' };
+
+  try {
+    const response = await fetch('/api/tools/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${useAuthStore.getState().token || ''}` },
+      body: JSON.stringify({ toolName: 'embed_video', toolInput: { url, title: input.title || '', context: input.context || '' } }),
+    });
+    const data = await response.json();
+    if (!data.success) return { success: false, error: data.error || 'Failed to embed video' };
+    if (!data.video_embed) {
+      return { success: true, result: data.message || 'Video embedded.' };
+    }
+    return { success: true, result: JSON.stringify(data.video_embed) };
+  } catch (error: any) {
+    return { success: false, error: error.message };
   }
 }

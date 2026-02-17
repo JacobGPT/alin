@@ -27,16 +27,6 @@ export type { OpenAIConfig, OpenAIStreamChunk, OpenAIResponse, OpenAITool } from
 // Transport primitives
 export { streamFromServer } from '../api/serverStreamClient';
 export type { ServerStreamCallbacks, ServerStreamParams, ServerStreamResult } from '../api/serverStreamClient';
-export { WebSocketManager, getWebSocketManager, initializeWebSocket } from '../api/websocket';
-export type { WebSocketConfig, WebSocketMessage } from '../api/websocket';
 
 // Context window management (mechanical token budgeting, NOT decision logic)
 export { compressToolResultContent, prepareMessages } from '../api/contextManager';
-
-// File sandbox
-export { FileUploadHandler, createFileUploadHandler } from '../api/fileHandler';
-export type { FileUploadConfig, ProcessedFile, FileValidationResult } from '../api/fileHandler';
-
-// Search adapter
-export { BraveSearchClient, createBraveSearchClient, shouldSearchWeb, extractSearchQuery } from '../api/braveSearch';
-export type { BraveSearchConfig, BraveSearchParams, BraveSearchResult, BraveSearchResponse } from '../api/braveSearch';

@@ -54,6 +54,8 @@ export type ToolActivityType =
   | 'file_read'
   | 'file_write'
   | 'image_generate'
+  | 'image_edit'
+  | 'video_generate'
   | 'directory_scan'
   | 'code_search'
   | 'terminal_command'

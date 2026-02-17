@@ -1,10 +1,12 @@
 /**
  * Image Store - Tracks generated images for the Image Gallery
+ *
+ * No localStorage persist — images are stored in SQLite and loaded via dbInit.
+ * This prevents localStorage quota overflow from large image URLs/base64 data.
  */
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import * as dbService from '../api/dbService';
 
@@ -34,62 +36,57 @@ interface ImageActions {
 }
 
 export const useImageStore = create<ImageState & ImageActions>()(
-  persist(
-    immer((set, get) => ({
-      images: [],
+  immer((set, get) => ({
+    images: [],
 
-      addImage: (image) => {
-        const id = nanoid();
-        const now = Date.now();
-        set((state) => {
-          state.images.unshift({
-            ...image,
-            id,
-            timestamp: now,
-          });
-          // Keep last 100 images
-          if (state.images.length > 100) {
-            state.images = state.images.slice(0, 100);
-          }
-        });
-
-        dbService.createImage({
+    addImage: (image) => {
+      const id = nanoid();
+      const now = Date.now();
+      set((state) => {
+        state.images.unshift({
+          ...image,
           id,
-          url: image.url,
-          prompt: image.prompt,
-          revisedPrompt: image.revisedPrompt,
-          model: image.model,
-          size: image.size,
-          quality: image.quality,
-          style: image.style,
-          conversationId: image.conversationId,
-          messageId: image.messageId,
-          createdAt: now,
-        }).catch(e => console.warn('[imageStore] DB createImage failed:', e));
-
-        return id;
-      },
-
-      removeImage: (id) => {
-        set((state) => {
-          const index = state.images.findIndex((img) => img.id === id);
-          if (index !== -1) {
-            state.images.splice(index, 1);
-          }
+          timestamp: now,
         });
-        dbService.deleteImage(id).catch(e => console.warn('[imageStore] DB deleteImage failed:', e));
-      },
+        // Keep last 100 images
+        if (state.images.length > 100) {
+          state.images = state.images.slice(0, 100);
+        }
+      });
 
-      clearImages: () => {
-        set({ images: [] });
-      },
+      dbService.createImage({
+        id,
+        url: image.url,
+        prompt: image.prompt,
+        revisedPrompt: image.revisedPrompt,
+        model: image.model,
+        size: image.size,
+        quality: image.quality,
+        style: image.style,
+        conversationId: image.conversationId,
+        messageId: image.messageId,
+        createdAt: now,
+      }).catch(e => console.warn('[imageStore] DB createImage failed:', e));
 
-      getImagesByConversation: (conversationId) => {
-        return get().images.filter((img) => img.conversationId === conversationId);
-      },
-    })),
-    {
-      name: 'alin-image-storage',
-    }
-  )
+      return id;
+    },
+
+    removeImage: (id) => {
+      set((state) => {
+        const index = state.images.findIndex((img) => img.id === id);
+        if (index !== -1) {
+          state.images.splice(index, 1);
+        }
+      });
+      dbService.deleteImage(id).catch(e => console.warn('[imageStore] DB deleteImage failed:', e));
+    },
+
+    clearImages: () => {
+      set({ images: [] });
+    },
+
+    getImagesByConversation: (conversationId) => {
+      return get().images.filter((img) => img.conversationId === conversationId);
+    },
+  }))
 );

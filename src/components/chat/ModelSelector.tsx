@@ -52,96 +52,195 @@ export interface ModelVersionInfo {
 }
 
 // ============================================================================
-// MODEL OPTIONS WITH DETAILED VERSIONS
+// MODEL OPTIONS WITH DETAILED VERSIONS (ordered best → oldest)
 // ============================================================================
 
 const MODEL_OPTIONS: ModelOption[] = [
   {
     id: 'claude',
-    name: 'Claude',
-    description: 'Anthropic Claude - Best for reasoning & analysis',
+    name: 'Anthropic',
+    description: 'Claude models - Best for reasoning & analysis',
     icon: SparklesIcon,
     available: true,
     models: [
       {
+        id: 'claude-opus-4-6',
+        name: 'Claude Opus 4.6',
+        description: 'Most intelligent — deep reasoning and extended thinking',
+        contextWindow: '200K',
+      },
+      {
         id: 'claude-sonnet-4-5-20250929',
         name: 'Claude Sonnet 4.5',
-        description: 'Best balance of speed and quality',
+        description: 'Fast and capable all-rounder, great for coding',
         contextWindow: '200K',
         recommended: true,
       },
       {
-        id: 'claude-opus-4-6',
-        name: 'Claude Opus 4.6',
-        description: 'Most capable, best for complex tasks',
-        contextWindow: '200K',
-      },
-      {
         id: 'claude-haiku-4-5-20251001',
         name: 'Claude Haiku 4.5',
-        description: 'Fastest and most cost-effective',
-        contextWindow: '200K',
-      },
-      {
-        id: 'claude-sonnet-4-20250514',
-        name: 'Claude Sonnet 4',
-        description: 'Previous generation Sonnet',
+        description: 'Fastest Claude, quick tasks and classifications',
         contextWindow: '200K',
       },
     ],
   },
   {
     id: 'gpt',
-    name: 'GPT',
-    description: 'OpenAI GPT - Best for creative & code tasks',
+    name: 'OpenAI',
+    description: 'GPT models - Best for creative & code tasks',
     icon: CpuChipIcon,
     available: true,
     models: [
       {
-        id: 'gpt-4o',
-        name: 'GPT-4o',
-        description: 'Most capable GPT model',
+        id: 'gpt-5.2',
+        name: 'GPT-5.2',
+        description: 'OpenAI flagship — best coding, reasoning, vision, agentic',
+        contextWindow: '200K',
+      },
+      {
+        id: 'gpt-5.1',
+        name: 'GPT-5.1',
+        description: 'Previous flagship, excellent coding and reasoning',
+        contextWindow: '128K',
+      },
+      {
+        id: 'gpt-5',
+        name: 'GPT-5',
+        description: 'Strong reasoning with configurable effort',
         contextWindow: '128K',
         recommended: true,
       },
       {
+        id: 'gpt-5-mini',
+        name: 'GPT-5 Mini',
+        description: 'Fast reasoning at low cost, well-defined tasks',
+        contextWindow: '128K',
+      },
+      {
+        id: 'gpt-5-nano',
+        name: 'GPT-5 Nano',
+        description: 'Cheapest reasoning, summarization, classification',
+        contextWindow: '128K',
+      },
+      {
+        id: 'gpt-4.1',
+        name: 'GPT-4.1',
+        description: '1M context, strong coding and instruction following',
+        contextWindow: '1M',
+      },
+      {
+        id: 'gpt-4.1-mini',
+        name: 'GPT-4.1 Mini',
+        description: '1M context at affordable price, versatile',
+        contextWindow: '1M',
+      },
+      {
+        id: 'gpt-4.1-nano',
+        name: 'GPT-4.1 Nano',
+        description: '1M context, cheapest long-context GPT',
+        contextWindow: '1M',
+      },
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        description: 'Multimodal, creative writing, vision, structured output',
+        contextWindow: '128K',
+      },
+      {
         id: 'gpt-4o-mini',
         name: 'GPT-4o Mini',
-        description: 'Smaller, faster GPT-4o variant',
+        description: 'Cheapest multimodal, great JSON extraction',
         contextWindow: '128K',
       },
       {
-        id: 'gpt-4-turbo',
-        name: 'GPT-4 Turbo',
-        description: 'Previous GPT-4 with vision',
-        contextWindow: '128K',
+        id: 'o3',
+        name: 'o3',
+        description: 'Deep multi-step reasoning for hardest problems',
+        contextWindow: '200K',
       },
       {
-        id: 'gpt-3.5-turbo',
-        name: 'GPT-3.5 Turbo',
-        description: 'Fast and cost-effective',
-        contextWindow: '16K',
+        id: 'o4-mini',
+        name: 'o4-mini',
+        description: 'Fast reasoning, strong math/coding/visual tasks',
+        contextWindow: '200K',
       },
       {
-        id: 'o1-preview',
-        name: 'o1 Preview',
-        description: 'Reasoning model (preview)',
-        contextWindow: '128K',
+        id: 'o3-mini',
+        name: 'o3-mini',
+        description: 'Efficient reasoning, science/math/coding',
+        contextWindow: '200K',
+      },
+    ],
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    description: 'Google Gemini - Best for multimodal & long context',
+    icon: BoltIcon,
+    available: true,
+    models: [
+      {
+        id: 'gemini-3-pro-preview',
+        name: 'Gemini 3 Pro',
+        description: 'Strongest reasoning, agentic coding, native multimodal',
+        contextWindow: '1M',
       },
       {
-        id: 'o1-mini',
-        name: 'o1 Mini',
-        description: 'Smaller reasoning model',
-        contextWindow: '128K',
+        id: 'gemini-3-flash-preview',
+        name: 'Gemini 3 Flash',
+        description: 'Fast frontier model, rivals much larger models',
+        contextWindow: '200K',
+      },
+      {
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        description: '1M token context, built-in Google Search grounding',
+        contextWindow: '1M',
+      },
+      {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        description: 'Hybrid reasoning, excellent value and speed',
+        contextWindow: '1M',
+        recommended: true,
+      },
+      {
+        id: 'gemini-2.5-flash-lite',
+        name: 'Gemini 2.5 Flash-Lite',
+        description: 'Ultra-fast, lowest cost, great for background tasks',
+        contextWindow: '1M',
+      },
+    ],
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    description: 'DeepSeek - Best value for reasoning & math',
+    icon: CpuChipIcon,
+    available: true,
+    models: [
+      {
+        id: 'deepseek-chat',
+        name: 'DeepSeek V3.2',
+        description: 'Near-frontier intelligence at 95% lower cost',
+        contextWindow: '64K',
+        recommended: true,
+      },
+      {
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek Reasoner',
+        description: 'Chain-of-thought reasoning, IMO gold medalist math',
+        contextWindow: '64K',
       },
     ],
   },
   {
     id: 'both',
     name: 'Both',
-    description: 'Run Claude & GPT in parallel, compare responses',
+    description: 'Run any two models in parallel, compare responses',
     icon: ArrowsRightLeftIcon,
     available: true,
+    models: [],
   },
   {
     id: 'auto',
@@ -153,7 +252,7 @@ const MODEL_OPTIONS: ModelOption[] = [
   {
     id: 'hybrid',
     name: 'Hybrid',
-    description: 'Claude plans, GPT executes (or vice versa)',
+    description: 'One model plans, another executes — any combination',
     icon: AdjustmentsHorizontalIcon,
     available: true,
   },
@@ -165,6 +264,15 @@ const MODEL_OPTIONS: ModelOption[] = [
     available: false,
   },
 ];
+
+// Provider IDs that have model lists
+const PROVIDER_IDS = ['claude', 'gpt', 'gemini', 'deepseek'] as const;
+const PROVIDER_NAMES: Record<string, string> = {
+  claude: 'Anthropic',
+  gpt: 'OpenAI',
+  gemini: 'Gemini',
+  deepseek: 'DeepSeek',
+};
 
 // ============================================================================
 // MAIN COMPONENT
@@ -191,6 +299,20 @@ export function ModelSelector() {
         (m) => m.id === selectedModelVersions.gpt
       );
       return gptModel?.name || 'GPT-4o';
+    } else if (modelMode === 'gemini') {
+      const geminiModel = MODEL_OPTIONS.find((o) => o.id === 'gemini')?.models?.find(
+        (m) => m.id === selectedModelVersions.gemini
+      );
+      return geminiModel?.name || 'Gemini 2.5 Flash';
+    } else if (modelMode === 'deepseek') {
+      const deepseekModel = MODEL_OPTIONS.find((o) => o.id === 'deepseek')?.models?.find(
+        (m) => m.id === selectedModelVersions.deepseek
+      );
+      return deepseekModel?.name || 'DeepSeek V3.2';
+    } else if (modelMode === 'both') {
+      return null; // Dual selectors shown separately
+    } else if (modelMode === 'hybrid') {
+      return null; // Dual selectors shown separately
     }
     return null;
   };
@@ -270,30 +392,67 @@ export function ModelSelector() {
         </div>
       </Listbox>
 
-      {/* Model Version Selector (only for claude and gpt modes) */}
-      {(modelMode === 'claude' || modelMode === 'gpt') && (
+      {/* Model Version Selector (single provider modes) */}
+      {(modelMode === 'claude' || modelMode === 'gpt' || modelMode === 'gemini' || modelMode === 'deepseek') && (
         <ModelVersionSelector
-          provider={modelMode}
+          provider={modelMode as 'claude' | 'gpt' | 'gemini' | 'deepseek'}
           selectedVersion={selectedModelVersions[modelMode]}
           onVersionChange={(version) => setModelVersion(modelMode, version)}
           models={selectedOption.models || []}
           allowedModels={caps.allowedModels}
         />
       )}
+
+      {/* Dual Model Version Selectors for Both mode — grouped by provider */}
+      {modelMode === 'both' && (
+        <>
+          <GroupedModelVersionSelector
+            label="Model A"
+            selectedVersion={selectedModelVersions.bothClaude || 'claude-sonnet-4-5-20250929'}
+            onVersionChange={(version) => setModelVersion('bothClaude' as any, version)}
+            allowedModels={caps.allowedModels}
+          />
+          <GroupedModelVersionSelector
+            label="Model B"
+            selectedVersion={selectedModelVersions.bothGPT || 'gpt-5'}
+            onVersionChange={(version) => setModelVersion('bothGPT' as any, version)}
+            allowedModels={caps.allowedModels}
+          />
+        </>
+      )}
+
+      {/* Dual Model Version Selectors for Hybrid mode — grouped by provider */}
+      {modelMode === 'hybrid' && (
+        <>
+          <GroupedModelVersionSelector
+            label="Planner"
+            selectedVersion={selectedModelVersions.hybridPlanner || 'claude-sonnet-4-5-20250929'}
+            onVersionChange={(version) => setModelVersion('hybridPlanner' as any, version)}
+            allowedModels={caps.allowedModels}
+          />
+          <GroupedModelVersionSelector
+            label="Executor"
+            selectedVersion={selectedModelVersions.hybridExecutor || 'gpt-5'}
+            onVersionChange={(version) => setModelVersion('hybridExecutor' as any, version)}
+            allowedModels={caps.allowedModels}
+          />
+        </>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// MODEL VERSION SELECTOR
+// MODEL VERSION SELECTOR (single provider)
 // ============================================================================
 
 interface ModelVersionSelectorProps {
-  provider: 'claude' | 'gpt';
+  provider: 'claude' | 'gpt' | 'gemini' | 'deepseek';
   selectedVersion: string;
   onVersionChange: (version: string) => void;
   models: ModelVersionInfo[];
   allowedModels: string[];
+  label?: string;
 }
 
 function ModelVersionSelector({
@@ -325,11 +484,11 @@ function ModelVersionSelector({
           <div className="p-2">
             <div className="mb-2 px-3 py-1">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
-                {provider === 'claude' ? 'Claude Models' : 'GPT Models'}
+                {provider === 'claude' ? 'Anthropic Models' : provider === 'gpt' ? 'OpenAI Models' : provider === 'gemini' ? 'Gemini Models' : 'DeepSeek Models'}
               </h4>
             </div>
             {models.map((model) => {
-              const isLocked = allowedModels.length > 0 && !allowedModels.includes(model.id);
+              const isLocked = allowedModels.length > 0 && !allowedModels.includes('*') && !allowedModels.includes(model.id);
               return (
                 <Menu.Item key={model.id} disabled={isLocked}>
                   {({ active }) => (
@@ -376,6 +535,118 @@ function ModelVersionSelector({
                     </button>
                   )}
                 </Menu.Item>
+              );
+            })}
+          </div>
+        </Menu.Items>
+      </Transition>
+    </Menu>
+  );
+}
+
+// ============================================================================
+// GROUPED MODEL VERSION SELECTOR (for Both/Hybrid — sections by provider)
+// ============================================================================
+
+interface GroupedModelVersionSelectorProps {
+  label: string;
+  selectedVersion: string;
+  onVersionChange: (version: string) => void;
+  allowedModels: string[];
+}
+
+function GroupedModelVersionSelector({
+  label,
+  selectedVersion,
+  onVersionChange,
+  allowedModels,
+}: GroupedModelVersionSelectorProps) {
+  // Find the selected model across all providers
+  const allModels = PROVIDER_IDS.flatMap(
+    (pid) => MODEL_OPTIONS.find((o) => o.id === pid)?.models || []
+  );
+  const selectedModel = allModels.find((m) => m.id === selectedVersion) || allModels[0];
+
+  return (
+    <Menu as="div" className="relative">
+      <Menu.Button className="flex items-center gap-1.5 rounded-lg border border-border-primary bg-background-secondary px-2.5 py-2 text-sm transition-colors hover:bg-background-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary">
+        <span className="text-text-quaternary text-xs mr-0.5">{label}</span>
+        <span className="text-text-secondary">{selectedModel?.name || 'Select model'}</span>
+        <ChevronDownIcon className="h-3.5 w-3.5 text-text-tertiary" />
+      </Menu.Button>
+
+      <Transition
+        as={Fragment}
+        enter="transition ease-out duration-100"
+        enterFrom="transform opacity-0 scale-95"
+        enterTo="transform opacity-100 scale-100"
+        leave="transition ease-in duration-75"
+        leaveFrom="transform opacity-100 scale-100"
+        leaveTo="transform opacity-0 scale-95"
+      >
+        <Menu.Items className="absolute right-0 z-50 mt-2 w-80 max-h-96 overflow-y-auto origin-top-right rounded-lg border border-border-primary bg-background-elevated shadow-xl focus:outline-none">
+          <div className="p-2">
+            {PROVIDER_IDS.map((providerId) => {
+              const providerModels = MODEL_OPTIONS.find((o) => o.id === providerId)?.models || [];
+              if (providerModels.length === 0) return null;
+              return (
+                <Fragment key={providerId}>
+                  <div className="px-3 py-1.5 mt-1 first:mt-0">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+                      {PROVIDER_NAMES[providerId]}
+                    </span>
+                  </div>
+                  {providerModels.map((model) => {
+                    const isLocked = allowedModels.length > 0 && !allowedModels.includes('*') && !allowedModels.includes(model.id);
+                    return (
+                      <Menu.Item key={model.id} disabled={isLocked}>
+                        {({ active }) => (
+                          <button
+                            onClick={() => !isLocked && onVersionChange(model.id)}
+                            className={`flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors ${
+                              isLocked
+                                ? 'opacity-50 cursor-not-allowed'
+                                : active ? 'bg-background-hover' : ''
+                            } ${model.id === selectedVersion ? 'bg-brand-primary/10' : ''}`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-sm font-medium ${
+                                    model.id === selectedVersion
+                                      ? 'text-brand-primary'
+                                      : 'text-text-primary'
+                                  }`}
+                                >
+                                  {model.name}
+                                </span>
+                                {isLocked && (
+                                  <LockClosedIcon className="h-3.5 w-3.5 text-text-quaternary" />
+                                )}
+                                {model.recommended && !isLocked && (
+                                  <span className="text-xs bg-brand-primary/20 text-brand-primary px-1.5 py-0.5 rounded">
+                                    Recommended
+                                  </span>
+                                )}
+                                {model.contextWindow && (
+                                  <span className="text-xs bg-background-tertiary text-text-tertiary px-1.5 py-0.5 rounded">
+                                    {model.contextWindow}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-text-tertiary mt-0.5">
+                                {isLocked ? 'Upgrade to Pro to unlock' : model.description}
+                              </p>
+                            </div>
+                            {model.id === selectedVersion && !isLocked && (
+                              <CheckIcon className="h-4 w-4 text-brand-primary flex-shrink-0 mt-0.5" />
+                            )}
+                          </button>
+                        )}
+                      </Menu.Item>
+                    );
+                  })}
+                </Fragment>
               );
             })}
           </div>

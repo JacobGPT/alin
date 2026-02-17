@@ -63,7 +63,33 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+/** Check if an auth token is available (without making a network request) */
+export function hasAuthToken(): boolean {
+  try {
+    const raw = localStorage.getItem('alin-auth-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return !!parsed?.state?.token;
+    }
+  } catch {}
+  return false;
+}
+
+// Track 401 suppression to avoid spamming console
+let _auth401Warned = false;
+
 async function apiCall<T>(method: string, url: string, body?: unknown): Promise<T> {
+  // Skip API calls entirely when no auth token is available
+  if (!hasAuthToken()) {
+    if (!_auth401Warned) {
+      _auth401Warned = true;
+      console.warn('[dbService] No auth token — DB API calls will be skipped until login');
+    }
+    throw new Error(`No auth token for ${method} ${url}`);
+  }
+  // Reset warning flag since we have a token now
+  _auth401Warned = false;
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...getAuthHeaders(),
@@ -484,6 +510,10 @@ export async function listSites(limit = 50, offset = 0): Promise<DbSite[]> {
 export async function getSite(siteId: string): Promise<DbSite> {
   const r = await apiCall<{ success: boolean; site: DbSite }>('GET', `/api/sites/${siteId}`);
   return r.site;
+}
+
+export async function deleteSite(siteId: string): Promise<void> {
+  await apiCall<{ success: boolean }>('DELETE', `/api/sites/${siteId}`);
 }
 
 export async function deploySite(siteId: string): Promise<DbDeployment> {

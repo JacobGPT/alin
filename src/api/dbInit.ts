@@ -5,7 +5,7 @@
  * If backend is unavailable, logs warning and continues with localStorage data.
  */
 
-import { isBackendAvailable } from './dbService';
+import { isBackendAvailable, hasAuthToken } from './dbService';
 import * as db from './dbService';
 import { useChatStore } from '../store/chatStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -16,6 +16,50 @@ import { useArtifactStore } from '../store/artifactStore';
 import { useTBWOStore } from '../store/tbwoStore';
 
 // ============================================================================
+// PENDING DELETES — replay conversation deletes that failed on prior sessions
+// ============================================================================
+
+function getPendingDeletes(): string[] {
+  try {
+    const raw = localStorage.getItem('alin-pending-deletes');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setPendingDeletes(ids: string[]): void {
+  if (ids.length === 0) {
+    localStorage.removeItem('alin-pending-deletes');
+  } else {
+    localStorage.setItem('alin-pending-deletes', JSON.stringify(ids));
+  }
+}
+
+async function replayPendingDeletes(): Promise<void> {
+  const pending = getPendingDeletes();
+  if (pending.length === 0) return;
+
+  console.log(`[dbInit] Replaying ${pending.length} pending conversation deletes...`);
+  const remaining: string[] = [];
+
+  for (const id of pending) {
+    try {
+      await db.deleteConversation(id);
+      console.log(`[dbInit] Deleted orphaned conversation: ${id}`);
+    } catch (e) {
+      console.warn(`[dbInit] Failed to delete conversation ${id}, will retry next load:`, e);
+      remaining.push(id);
+    }
+  }
+
+  setPendingDeletes(remaining);
+  if (remaining.length === 0) {
+    console.log('[dbInit] All pending deletes replayed successfully');
+  }
+}
+
+// ============================================================================
 // STORE LOADERS
 // ============================================================================
 
@@ -24,9 +68,12 @@ async function loadChatFromDb(): Promise<void> {
   const conversations = await db.listConversations(0, 500);
   if (conversations.length === 0) return; // nothing in DB, keep localStorage data
 
-  // Fetch messages for each conversation
+  // Filter out any conversations that are queued for deletion
+  const pendingDeletes = new Set(getPendingDeletes());
+
+  // Fetch messages for each conversation (skip pending deletes)
   const convMap = new Map<string, any>();
-  const msgFetches = conversations.map(async (conv) => {
+  const msgFetches = conversations.filter(c => !pendingDeletes.has(c.id)).map(async (conv) => {
     try {
       const result = await db.getConversation(conv.id);
       const fullConv = {
@@ -65,6 +112,29 @@ async function loadChatFromDb(): Promise<void> {
   await Promise.allSettled(msgFetches);
 
   if (convMap.size > 0) {
+    // Reconciliation: conversations in DB but NOT in localStorage were deleted by the user
+    // but the delete never reached the backend. Queue them for cleanup.
+    const localConvIds = new Set(useChatStore.getState().conversations.keys());
+    if (localConvIds.size > 0) {
+      const orphanIds: string[] = [];
+      for (const dbId of convMap.keys()) {
+        if (!localConvIds.has(dbId)) {
+          orphanIds.push(dbId);
+          convMap.delete(dbId);
+        }
+      }
+      if (orphanIds.length > 0) {
+        console.log(`[dbInit] Found ${orphanIds.length} orphaned conversations in DB (deleted locally), cleaning up...`);
+        const currentPending = getPendingDeletes();
+        const newPending = [...currentPending, ...orphanIds.filter(id => !currentPending.includes(id))];
+        setPendingDeletes(newPending);
+        // Fire-and-forget delete from DB
+        for (const id of orphanIds) {
+          db.deleteConversation(id).catch(e => console.warn(`[dbInit] Orphan delete failed for ${id}:`, e));
+        }
+      }
+    }
+
     useChatStore.setState((state: any) => {
       state.conversations = convMap;
     });
@@ -371,7 +441,7 @@ async function migrateLocalStorageToDb(): Promise<void> {
     }
   }
 
-  // Migrate image metadata
+  // Migrate image metadata and remove from localStorage (prevents quota overflow)
   const imageData = localStorage.getItem('alin-image-storage');
   if (imageData) {
     try {
@@ -397,6 +467,9 @@ async function migrateLocalStorageToDb(): Promise<void> {
     } catch (e) {
       console.warn('[dbInit] Failed to migrate image data:', e);
     }
+    // Remove from localStorage — images now live only in SQLite
+    localStorage.removeItem('alin-image-storage');
+    console.log('[dbInit] Removed alin-image-storage from localStorage');
   }
 
   // Migrate settings
@@ -429,10 +502,21 @@ async function migrateLocalStorageToDb(): Promise<void> {
 // MAIN INIT
 // ============================================================================
 
+let _initStarted = false;
+
 export async function initializeDatabase(): Promise<void> {
+  // Guard against double-init from React Strict Mode
+  if (_initStarted) return;
+  _initStarted = true;
   const available = await isBackendAvailable();
   if (!available) {
     console.warn('[dbInit] Backend not available, using localStorage only');
+    return;
+  }
+
+  // Check for auth token before attempting any authenticated API calls
+  if (!hasAuthToken()) {
+    console.log('[dbInit] No auth token yet — skipping DB load (will use localStorage)');
     return;
   }
 
@@ -444,6 +528,9 @@ export async function initializeDatabase(): Promise<void> {
   } catch (e) {
     console.warn('[dbInit] Migration failed (non-fatal):', e);
   }
+
+  // Replay any pending deletes that failed on previous sessions
+  await replayPendingDeletes();
 
   // Load all stores from DB in parallel
   const results = await Promise.allSettled([

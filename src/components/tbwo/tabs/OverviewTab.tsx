@@ -130,8 +130,14 @@ export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (ta
               <p className="text-xs text-text-tertiary">Tasks Done</p>
             </div>
             <div className="rounded-lg bg-background-tertiary p-3 text-center">
-              <p className="text-xl font-bold text-text-primary">{podsArray.filter(p => p.status === 'working').length}/{podsArray.length}</p>
-              <p className="text-xs text-text-tertiary">Active Pods</p>
+              <p className="text-xl font-bold text-text-primary">
+                {tbwo?.status === 'completed' || tbwo?.status === 'failed'
+                  ? podsArray.length
+                  : podsArray.filter(p => p.status === 'working').length}/{podsArray.length}
+              </p>
+              <p className="text-xs text-text-tertiary">
+                {tbwo?.status === 'completed' || tbwo?.status === 'failed' ? 'Pods Used' : 'Active Pods'}
+              </p>
             </div>
             <div className="rounded-lg bg-background-tertiary p-3 text-center">
               <p className="text-xl font-bold text-text-primary">{tbwo.plan?.phases.length || 0}</p>

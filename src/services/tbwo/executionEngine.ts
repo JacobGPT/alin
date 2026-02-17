@@ -406,6 +406,21 @@ export class ExecutionEngine {
         startedAt: isResume ? (tbwo.startedAt || state.startTime) : state.startTime,
       });
 
+      // Create background job for notification tracking
+      import('../../store/backgroundStore').then(({ useBackgroundStore }) => {
+        const store = useBackgroundStore.getState();
+        const jobId = store.createJob(
+          'tbwo',
+          `TBWO: ${tbwo.objective.slice(0, 50)}`,
+          `Executing ${tbwo.type} with ${tbwo.plan!.phases.length} phases`,
+          { tbwoId }
+        );
+        // Store in TBWO metadata for later completion
+        useTBWOStore.getState().updateTBWO(tbwoId, {
+          metadata: { ...(useTBWOStore.getState().getTBWOById(tbwoId)?.metadata || {}), backgroundJobId: jobId },
+        });
+      }).catch(() => {});
+
       // Spawn pods based on plan strategy
       state.status = 'executing';
       await this.spawnPods(state, tbwo);
@@ -2207,6 +2222,16 @@ export class ExecutionEngine {
     // Run Truth Guard on Website Sprint TBWOs before generating manifest
     await this.runPostCompletionTruthGuard(state);
 
+    // Check Truth Guard results - warn and adjust status if failed
+    const tgTbwo = useTBWOStore.getState().getTBWOById(state.tbwoId);
+    const truthGuardResult = tgTbwo?.metadata?.truthGuardResult as { passed?: boolean; violations?: any[] } | undefined;
+    if (truthGuardResult && !truthGuardResult.passed) {
+      const violationCount = truthGuardResult.violations?.length || 0;
+      this.postToChat(state.tbwoId, [
+        { type: 'text' as const, text: `**Truth Guard Warning:** ${violationCount} unresolved violations detected. Quality score has been adjusted. Review the violations in the Receipts tab.` },
+      ]);
+    }
+
     // Run Output Guard (cognitive subsystem) for generic content detection
     await this.runPostCompletionOutputGuard(state);
 
@@ -2362,6 +2387,86 @@ export class ExecutionEngine {
       }).catch(() => {});
     }
 
+    // Store expected file count in metadata for quality scoring
+    const preTBWOForExpected = useTBWOStore.getState().getTBWOById(state.tbwoId);
+    if (preTBWOForExpected?.type === 'website_sprint' && preTBWOForExpected.metadata?.sprintConfig) {
+      try {
+        const expectedFiles = getExpectedFiles(preTBWOForExpected.metadata.sprintConfig as any);
+        useTBWOStore.getState().updateTBWO(state.tbwoId, {
+          metadata: {
+            ...(preTBWOForExpected.metadata || {}),
+            expectedFileCount: expectedFiles.length,
+          },
+        });
+      } catch {}
+    }
+
+    // ========================================================================
+    // REMEDIATION PASS — check for missing files and create them before completing
+    // ========================================================================
+    const preTBWO = useTBWOStore.getState().getTBWOById(state.tbwoId);
+    if (preTBWO?.type === 'website_sprint' && preTBWO.metadata?.sprintConfig) {
+      try {
+        const expectedFiles = getExpectedFiles(preTBWO.metadata.sprintConfig as any);
+        const actualFiles = Array.from(state.artifacts.values()).map(a => {
+          const p = (a as any).path || '';
+          return p.split('/').pop() || p;
+        });
+        const missing = expectedFiles.filter(ef => !actualFiles.some(af => af === ef.path));
+
+        if (missing.length > 0 && !this.isTimeBudgetExpired(state.tbwoId)) {
+          this.postToChat(state.tbwoId, [
+            { type: 'text' as const, text: `**Remediation pass:** ${missing.length} expected files missing (${missing.map(m => m.path).join(', ')}). Creating them now...` },
+          ]);
+
+          // Build a remediation phase with one task per missing file
+          const remediationPhase: Phase = {
+            id: `remediation-${Date.now()}`,
+            name: 'Remediation — Missing Files',
+            description: `Create ${missing.length} files that were expected but not produced in earlier phases.`,
+            order: 999,
+            estimatedDuration: missing.length * 2,
+            dependsOn: [],
+            tasks: missing.map((m, idx) => ({
+              id: `remediation-task-${idx}`,
+              name: `Create ${m.path}`,
+              description: `Create the file ${m.path} (${m.description}). Match the style, design tokens, and conventions of the existing files already created. This file was expected but not produced in earlier phases.`,
+              status: 'pending' as const,
+              estimatedDuration: 2,
+            })),
+            assignedPods: Array.from(state.activePods.keys()),
+            status: 'pending',
+            progress: 0,
+          };
+
+          this.postToChat(state.tbwoId, [
+            { type: 'text' as const, text: `**Phase (Remediation): ${remediationPhase.name}**\n${remediationPhase.description}\nTasks: ${remediationPhase.tasks.length}` },
+          ]);
+
+          const remResult = await this.executePhase(state, remediationPhase);
+
+          this.postToChat(state.tbwoId, [
+            { type: 'text' as const, text: `Remediation ${remResult.success ? 'completed' : 'finished with errors'}. Tasks: ${remResult.tasksCompleted} completed, ${remResult.tasksFailed} failed. New artifacts: ${remResult.artifacts.length}` },
+          ]);
+
+          // Re-deliver any new files
+          this.deliverFilesToChat(state);
+        }
+      } catch (remErr) {
+        console.warn('[ExecutionEngine] Remediation pass failed:', remErr);
+      }
+    }
+
+    // Complete background job
+    try {
+      const completionTBWOForJob = useTBWOStore.getState().getTBWOById(state.tbwoId);
+      const bgJobId = completionTBWOForJob?.metadata?.backgroundJobId as string;
+      if (bgJobId) {
+        const { useBackgroundStore } = await import('../../store/backgroundStore');
+        useBackgroundStore.getState().completeJob(bgJobId, `Completed: ${state.artifacts.size} files created`);
+      }
+    } catch {}
+
     // Mark as completed
     state.status = 'completed';
     useTBWOStore.getState().updateTBWO(state.tbwoId, {
@@ -2391,7 +2496,7 @@ export class ExecutionEngine {
       { type: 'text' as const, text: completionMsg },
     ]);
 
-    // File manifest validation (website_sprint only)
+    // Final file manifest report (post-remediation)
     const completionTBWOForManifest = useTBWOStore.getState().getTBWOById(state.tbwoId);
     if (completionTBWOForManifest?.type === 'website_sprint' && completionTBWOForManifest.metadata?.sprintConfig) {
       try {
@@ -2406,7 +2511,7 @@ export class ExecutionEngine {
         if (missing.length > 0 || extra.length > 0) {
           let manifestMsg = '**File Manifest Check:**\n';
           if (missing.length > 0) {
-            manifestMsg += `\nMissing files (${missing.length}):\n`;
+            manifestMsg += `\nStill missing (${missing.length}):\n`;
             for (const m of missing) {
               manifestMsg += `- ${m.path} — ${m.description}\n`;
             }
@@ -2466,6 +2571,16 @@ export class ExecutionEngine {
 
     // Terminate pods
     await this.terminatePods(state);
+
+    // Fail background job
+    try {
+      const failedTBWO = useTBWOStore.getState().getTBWOById(state.tbwoId);
+      const bgJobId = failedTBWO?.metadata?.backgroundJobId as string;
+      if (bgJobId) {
+        const { useBackgroundStore } = await import('../../store/backgroundStore');
+        useBackgroundStore.getState().failJob(bgJobId, errorMessage);
+      }
+    } catch {}
 
     // Fulfill contract (even on failure, so timers stop)
     if (state.contractId) {

@@ -412,7 +412,7 @@ export function PodVisualization({ tbwo }: PodVisualizationProps) {
         </p>
       ) : definitionPods.length > 0 ? (
         <p className="text-xs text-text-tertiary">
-          Showing {definitionPods.length} planned pods (execution not started)
+          Showing {definitionPods.length} pods{tbwo?.status === 'completed' ? ' (execution completed)' : tbwo?.status === 'executing' ? ' (execution in progress)' : tbwo?.status === 'failed' ? ' (execution failed)' : ' (planned)'}
         </p>
       ) : null}
 

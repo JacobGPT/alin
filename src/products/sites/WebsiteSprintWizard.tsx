@@ -65,6 +65,9 @@ import type { SiteBrief, MissingQuestion, SandboxPipelineStatus, ValidationRepor
 // Suggestion engine
 import { generateSuggestions } from './suggestionEngine';
 
+// Model tier presets
+import { MODEL_TIER_PRESETS, type ModelTier } from '../../services/tbwo/modelRouter';
+
 // Cognitive subsystem (lazy — imported at use site)
 import type { CognitiveBrief } from './cognitive/types';
 
@@ -114,6 +117,7 @@ export function WebsiteSprintWizard({ onComplete }: WebsiteSprintWizardProps) {
   // Launch state
   const [qualityTarget, setQualityTarget] = useState(QualityTarget.PREMIUM);
   const [timeBudget, setTimeBudget] = useState(60);
+  const [modelTier, setModelTier] = useState<'budget' | 'pro' | 'max'>('pro');
   const [launchedTbwoId, setLaunchedTbwoId] = useState<string | null>(null);
 
   // Preview state
@@ -307,14 +311,49 @@ export function WebsiteSprintWizard({ onComplete }: WebsiteSprintWizardProps) {
       };
 
       const navPages = brief.navPages?.length ? brief.navPages : brief.pages;
-      const pages = navPages.map((pageName, idx) => ({
-        name: pageName,
-        path: idx === 0 || pageName.toLowerCase() === 'home' ? '/' : `/${pageName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-        sections: [{ type: 'hero' as const }],
-        links: [],
-        isInMainNav: true,
-        navOrder: idx,
-      }));
+      const pages = navPages.map((pageName, idx) => {
+        const lower = pageName.toLowerCase();
+        const isHome = idx === 0 || lower === 'home';
+
+        // Map page name to appropriate sections based on page type
+        type SType = 'hero' | 'features' | 'about' | 'testimonials' | 'cta' | 'footer' | 'gallery' | 'pricing' | 'faq' | 'team' | 'blog' | 'custom';
+        let sections: Array<{ type: SType }>;
+        if (isHome) {
+          sections = [{ type: 'hero' }, { type: 'features' }, { type: 'about' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('pricing') || lower.includes('plans')) {
+          sections = [{ type: 'hero' }, { type: 'pricing' }, { type: 'faq' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('about') || lower.includes('story') || lower.includes('team')) {
+          sections = [{ type: 'hero' }, { type: 'about' }, { type: 'team' }, { type: 'footer' }];
+        } else if (lower.includes('contact') || lower.includes('support')) {
+          sections = [{ type: 'hero' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('testimonial') || lower.includes('review') || lower.includes('case stud')) {
+          sections = [{ type: 'hero' }, { type: 'testimonials' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('feature') || lower.includes('product') || lower.includes('service') || lower.includes('solution')) {
+          sections = [{ type: 'hero' }, { type: 'features' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('blog') || lower.includes('news') || lower.includes('article')) {
+          sections = [{ type: 'hero' }, { type: 'blog' }, { type: 'footer' }];
+        } else if (lower.includes('faq') || lower.includes('help')) {
+          sections = [{ type: 'hero' }, { type: 'faq' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('gallery') || lower.includes('portfolio') || lower.includes('showcase')) {
+          sections = [{ type: 'hero' }, { type: 'gallery' }, { type: 'footer' }];
+        } else if (lower.includes('demo') || lower.includes('trial') || lower.includes('signup') || lower.includes('register')) {
+          sections = [{ type: 'hero' }, { type: 'features' }, { type: 'cta' }, { type: 'footer' }];
+        } else if (lower.includes('integration') || lower.includes('partner') || lower.includes('ecosystem')) {
+          sections = [{ type: 'hero' }, { type: 'features' }, { type: 'cta' }, { type: 'footer' }];
+        } else {
+          // Default: hero + about + cta + footer
+          sections = [{ type: 'hero' }, { type: 'about' }, { type: 'cta' }, { type: 'footer' }];
+        }
+
+        return {
+          name: pageName,
+          path: isHome ? '/' : `/${pageName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          sections,
+          links: [],
+          isInMainNav: true,
+          navOrder: idx,
+        };
+      });
 
       const config: Partial<WebsiteSprintConfig> = {
         pages,
@@ -367,6 +406,22 @@ export function WebsiteSprintWizard({ onComplete }: WebsiteSprintWizardProps) {
         fullProvenance[field] = 'USER_PROVIDED';
       }
 
+      // Apply model tier routing rules
+      const tierPreset = MODEL_TIER_PRESETS[modelTier];
+      const modelRoutingConfig = {
+        enabled: true,
+        rules: tierPreset.rules.map(r => ({
+          podRole: r.podRole as any,
+          provider: r.provider,
+          model: r.model,
+          reason: r.reason,
+        })),
+        fallback: tierPreset.fallback,
+      };
+
+      // Store routing config in settings so modelRouter picks it up
+      useSettingsStore.getState().updateTBWOPreferences({ modelRouting: modelRoutingConfig });
+
       useTBWOStore.getState().updateTBWO(tbwoId, {
         plan: tbwo.plan,
         pods: tbwo.pods,
@@ -383,6 +438,7 @@ export function WebsiteSprintWizard({ onComplete }: WebsiteSprintWizardProps) {
           contextHint,
           provenance: fullProvenance,
           rawSourceArtifact: sourceText.length > 1000 ? '[stored separately]' : sourceText,
+          modelTier,
           ...(cognitiveBrief ? { cognitiveBrief } : {}),
         },
       });
@@ -607,6 +663,8 @@ export function WebsiteSprintWizard({ onComplete }: WebsiteSprintWizardProps) {
                 timeBudget={timeBudget}
                 setTimeBudget={setTimeBudget}
                 provenance={provenance}
+                modelTier={modelTier}
+                setModelTier={setModelTier}
               />
             )}
             {phase === 'design-media' && brief && (
@@ -1338,6 +1396,8 @@ function BriefPhase({
   timeBudget,
   setTimeBudget,
   provenance,
+  modelTier,
+  setModelTier,
 }: {
   brief: SiteBrief;
   editedFields: Set<string>;
@@ -1347,6 +1407,8 @@ function BriefPhase({
   timeBudget: number;
   setTimeBudget: (t: number) => void;
   provenance: Record<string, string>;
+  modelTier: ModelTier;
+  setModelTier: (t: ModelTier) => void;
 }) {
   const getFieldTag = (field: string): string | null => {
     if (editedFields.has(field)) return 'Edited';
@@ -1474,7 +1536,7 @@ function BriefPhase({
               Annual billing
             </label>
           </div>
-          {brief.pricing.tiers.length > 0 && (
+          {(brief.pricing?.tiers?.length ?? 0) > 0 && (
             <div className="space-y-2">
               {brief.pricing.tiers.map((tier, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs text-text-secondary">
@@ -1486,7 +1548,7 @@ function BriefPhase({
               ))}
             </div>
           )}
-          {brief.pricing.tiers.length === 0 && (
+          {(!brief.pricing?.tiers || brief.pricing.tiers.length === 0) && (
             <p className="text-xs text-text-quaternary italic">No pricing tiers specified. Pods will ask during execution.</p>
           )}
         </div>
@@ -1514,7 +1576,7 @@ function BriefPhase({
       </div>
 
       {/* Required Unknowns */}
-      {brief.requiredUnknowns.length > 0 && (
+      {(brief.requiredUnknowns?.length ?? 0) > 0 && (
         <div className="rounded-lg border border-semantic-warning/30 bg-semantic-warning/5 p-4">
           <div className="flex items-center gap-2 mb-2">
             <ExclamationTriangleIcon className="h-4 w-4 text-semantic-warning" />
@@ -1538,7 +1600,7 @@ function BriefPhase({
       )}
 
       {/* Assumptions */}
-      {brief.assumptions.length > 0 && (
+      {(brief.assumptions?.length ?? 0) > 0 && (
         <div className="rounded-lg bg-background-tertiary p-4">
           <span className="text-xs font-medium text-text-tertiary block mb-1">Assumptions:</span>
           <ul className="space-y-0.5">
@@ -1568,6 +1630,40 @@ function BriefPhase({
                 <div className="text-[10px] text-text-tertiary">{option.desc}</div>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Model Tier */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-text-secondary">AI Model Tier</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['budget', 'pro', 'max'] as const).map((tier) => {
+              const preset = MODEL_TIER_PRESETS[tier];
+              return (
+                <button key={tier} onClick={() => setModelTier(tier)}
+                  className={`rounded-lg border-2 p-3 text-left transition-all ${modelTier === tier ? 'border-brand-primary bg-brand-primary/10' : 'border-border-primary hover:border-brand-primary/50'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-text-primary">{preset.label}</div>
+                    <div className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${tier === 'budget' ? 'bg-green-500/10 text-green-400' : tier === 'pro' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                      {preset.priceLabel}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-text-tertiary mt-1">{preset.description}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Show model breakdown for selected tier */}
+          <div className="mt-2 rounded-lg bg-background-tertiary p-3">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {MODEL_TIER_PRESETS[modelTier].rules.map((rule) => (
+                <div key={rule.podRole} className="flex items-center justify-between text-[10px]">
+                  <span className="text-text-secondary capitalize">{rule.podRole}</span>
+                  <span className="text-text-tertiary">{rule.reason.match(/rec: (.+)\)/)?.[1] || rule.model}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

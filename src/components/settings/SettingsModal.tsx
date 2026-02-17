@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   XMarkIcon,
-  KeyIcon,
+  UserCircleIcon,
   CpuChipIcon,
   PaintBrushIcon,
   ChatBubbleLeftRightIcon,
@@ -23,6 +23,7 @@ import {
   ArrowUpTrayIcon,
   ArrowPathIcon,
   CheckIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline';
 
 // Store
@@ -51,13 +52,13 @@ import {
 // ============================================================================
 
 const SETTINGS_SECTIONS = [
-  { id: 'api', label: 'Account', icon: KeyIcon },
+  { id: 'api', label: 'Profile', icon: UserCircleIcon },
   { id: 'model', label: 'Models', icon: CpuChipIcon },
   { id: 'appearance', label: 'Appearance', icon: PaintBrushIcon },
   { id: 'chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
   { id: 'voice', label: 'Voice', icon: SpeakerWaveIcon },
   { id: 'tbwo', label: 'TBWO', icon: DocumentDuplicateIcon },
-  { id: 'memory', label: 'Memory', icon: SparklesIcon },
+  { id: 'memory', label: 'Memory', icon: CircleStackIcon },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheckIcon },
   { id: 'performance', label: 'Performance', icon: BoltIcon },
   { id: 'experimental', label: 'Experimental', icon: BeakerIcon },

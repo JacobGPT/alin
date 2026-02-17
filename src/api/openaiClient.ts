@@ -45,7 +45,7 @@ export interface OpenAIConfig {
 
 // Helper to detect o-series reasoning models
 export function isReasoningModel(model: string): boolean {
-  return model.startsWith('o1') || model.startsWith('o3');
+  return model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4');
 }
 
 export interface OpenAIStreamChunk {
@@ -118,41 +118,26 @@ export interface StreamCallbacks {
 // PRICING (Updated Feb 2026)
 // ============================================================================
 
+// Pricing in $ per million tokens — used with formula: (tokens / 1M) * price
 const OPENAI_PRICING: Record<string, { input: number; output: number; cachedInput?: number }> = {
-  'gpt-4o': {
-    input: 2.5 / 1_000_000,
-    output: 10.0 / 1_000_000,
-    cachedInput: 1.25 / 1_000_000,
-  },
-  'gpt-4o-mini': {
-    input: 0.15 / 1_000_000,
-    output: 0.6 / 1_000_000,
-    cachedInput: 0.075 / 1_000_000,
-  },
-  'gpt-4-turbo': {
-    input: 10.0 / 1_000_000,
-    output: 30.0 / 1_000_000,
-  },
-  'gpt-4': {
-    input: 30.0 / 1_000_000,
-    output: 60.0 / 1_000_000,
-  },
-  'gpt-3.5-turbo': {
-    input: 0.5 / 1_000_000,
-    output: 1.5 / 1_000_000,
-  },
-  'o1': {
-    input: 15.0 / 1_000_000,
-    output: 60.0 / 1_000_000,
-  },
-  'o1-mini': {
-    input: 3.0 / 1_000_000,
-    output: 12.0 / 1_000_000,
-  },
-  'o3-mini': {
-    input: 1.1 / 1_000_000,
-    output: 4.4 / 1_000_000,
-  },
+  'gpt-4o':        { input: 2.5,   output: 10.0,  cachedInput: 1.25 },
+  'gpt-4o-mini':   { input: 0.15,  output: 0.6,   cachedInput: 0.075 },
+  'gpt-4-turbo':   { input: 10.0,  output: 30.0 },
+  'gpt-4':         { input: 30.0,  output: 60.0 },
+  'gpt-3.5-turbo': { input: 0.5,   output: 1.5 },
+  'o1':            { input: 15.0,  output: 60.0 },
+  'o1-mini':       { input: 3.0,   output: 12.0 },
+  'o3':            { input: 2.0,   output: 8.0 },
+  'o3-mini':       { input: 1.1,   output: 4.4 },
+  'o4-mini':       { input: 1.1,   output: 4.4 },
+  'gpt-5':         { input: 2.0,   output: 8.0 },
+  'gpt-5-mini':    { input: 0.4,   output: 1.6 },
+  'gpt-5-nano':    { input: 0.1,   output: 0.4 },
+  'gpt-5.1':       { input: 2.0,   output: 10.0 },
+  'gpt-5.2':       { input: 2.0,   output: 10.0 },
+  'gpt-4.1':       { input: 2.0,   output: 8.0 },
+  'gpt-4.1-mini':  { input: 0.4,   output: 1.6 },
+  'gpt-4.1-nano':  { input: 0.1,   output: 0.4 },
 };
 
 // ============================================================================
@@ -557,12 +542,12 @@ export class OpenAIAPIClient {
     };
 
     if (isReasoning) {
-      // O-series models: use max_completion_tokens, no temperature/penalties
+      // O-series models: max_completion_tokens, no temperature/penalties
       params.max_completion_tokens = this.config.maxTokens;
       params.reasoning_effort = this.config.reasoningEffort || 'medium';
     } else {
-      // Standard models: full parameter set
-      params.max_tokens = this.config.maxTokens;
+      // Standard models: max_completion_tokens (OpenAI deprecated max_tokens)
+      params.max_completion_tokens = this.config.maxTokens;
       params.temperature = this.config.temperature;
       params.top_p = this.config.topP;
       params.frequency_penalty = this.config.frequencyPenalty;
@@ -690,8 +675,8 @@ export class OpenAIAPIClient {
   private calculateCost(promptTokens: number, completionTokens: number): number {
     const pricing = OPENAI_PRICING[this.config.model] || OPENAI_PRICING['gpt-4o'];
 
-    const promptCost = promptTokens * pricing.input;
-    const completionCost = completionTokens * pricing.output;
+    const promptCost = (promptTokens / 1_000_000) * pricing.input;
+    const completionCost = (completionTokens / 1_000_000) * pricing.output;
 
     return promptCost + completionCost;
   }
@@ -828,8 +813,8 @@ export class OpenAIAPIClient {
       supportsVision: this.supportsVision(),
       supportsTools: true,
       supportsStreaming: true,
-      costPer1kPromptTokens: pricing.input * 1000,
-      costPer1kCompletionTokens: pricing.output * 1000,
+      costPer1kPromptTokens: pricing.input / 1000,
+      costPer1kCompletionTokens: pricing.output / 1000,
     };
   }
 

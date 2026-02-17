@@ -54,6 +54,10 @@ export function AppShell({ children }: AppShellProps) {
   // Start background services + telemetry session
   useEffect(() => {
     proactiveService.start();
+    // Initialize internal trust system (no UI, powers intelligence)
+    import('../../store/trustStore').then(({ useTrustStore }) => {
+      useTrustStore.getState().initialize();
+    }).catch(() => {});
     const caps = getCapabilitiesSnapshot();
     if (caps.canHardwareMonitor) {
       hardwareService.start();

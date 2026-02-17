@@ -19,9 +19,11 @@ import {
   PhotoIcon,
   ClockIcon,
   MagnifyingGlassIcon,
+  MicrophoneIcon,
 } from '@heroicons/react/24/outline';
 
 import { useModeStore } from '@store/modeStore';
+import { useSettingsStore } from '@store/settingsStore';
 import { type ALINMode, getAllModes, type ModeConfig } from '../../config/modes';
 import { useCapabilities } from '../../hooks/useCapabilities';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
@@ -37,6 +39,7 @@ const MODE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   Photo: PhotoIcon,
   Clock: ClockIcon,
   MagnifyingGlass: MagnifyingGlassIcon,
+  Microphone: MicrophoneIcon,
 };
 
 function getModeIcon(config: ModeConfig) {
@@ -50,7 +53,13 @@ function getModeIcon(config: ModeConfig) {
 export function ModeSelector() {
   const currentMode = useModeStore((state) => state.currentMode);
   const setMode = useModeStore((state) => state.setMode);
-  const modes = getAllModes();
+  const experimental = useSettingsStore((s) => s.experimental);
+  const allModes = getAllModes();
+  // Filter modes based on experimental feature toggles
+  const modes = allModes
+    .filter(mode => mode.id !== 'tbwo' || experimental.enableTBWO)
+    .filter(mode => mode.id !== 'voice' || experimental.enableVoice)
+    .filter(mode => mode.id !== 'image' || experimental.enableImageGeneration);
   const currentConfig = (modes.find((m) => m.id === currentMode) ?? modes[0])!;
   const CurrentIcon = getModeIcon(currentConfig);
   const caps = useCapabilities();

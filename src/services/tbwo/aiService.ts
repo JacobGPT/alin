@@ -179,6 +179,8 @@ export class AIService {
   private getProviderStr(): string {
     if (this.config.provider === 'anthropic' || this.config.provider === 'claude') return 'anthropic';
     if (this.config.provider === 'openai' || this.config.provider === 'gpt') return 'openai';
+    if (this.config.provider === 'gemini' || this.config.provider === 'google') return 'gemini';
+    if (this.config.provider === 'deepseek') return 'deepseek';
     return 'anthropic';
   }
 
@@ -861,8 +863,13 @@ export class AIService {
 
   static getDefaultModel(): string {
     try {
-      const selectedVersions = useSettingsStore.getState().selectedModelVersions;
-      return selectedVersions.claude || 'claude-sonnet-4-5-20250929';
+      const settings = useSettingsStore.getState();
+      const mode = settings.modelMode;
+      const versions = settings.selectedModelVersions;
+      if (mode === 'gpt') return versions.gpt || 'gpt-4o';
+      if (mode === 'gemini') return versions.gemini || 'gemini-2.5-flash';
+      if (mode === 'deepseek') return versions.deepseek || 'deepseek-chat';
+      return versions.claude || 'claude-sonnet-4-5-20250929';
     } catch {
       return 'claude-sonnet-4-5-20250929';
     }
@@ -872,6 +879,8 @@ export class AIService {
     try {
       const modelMode = useSettingsStore.getState().modelMode;
       if (modelMode === 'gpt') return 'openai';
+      if (modelMode === 'gemini') return 'gemini';
+      if (modelMode === 'deepseek') return 'deepseek';
       return 'anthropic';
     } catch {
       return 'anthropic';

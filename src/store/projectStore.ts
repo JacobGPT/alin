@@ -98,9 +98,20 @@ export const useProjectStore = create<ProjectStore>()(
       scanProject: async (rootPath: string) => {
         try {
           // Call backend scan endpoint
+          // Get auth headers for authenticated endpoint
+          let authHeaders: Record<string, string> = {};
+          try {
+            const raw = localStorage.getItem('alin-auth-storage');
+            if (raw) {
+              const token = JSON.parse(raw)?.state?.token;
+              if (token) authHeaders = { Authorization: `Bearer ${token}` };
+            }
+          } catch {}
+          if (!authHeaders.Authorization) return null; // Skip if no auth
+
           const resp = await fetch('/api/files/scan', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify({ path: rootPath, maxDepth: 3, maxFiles: 50 }),
           });
 

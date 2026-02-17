@@ -10,6 +10,7 @@ import {
   PodRole,
 } from '../../types/tbwo';
 import type { ExecutionPlan } from '../../types/tbwo';
+import { useSettingsStore } from '../settingsStore';
 
 export function createPlanningSlice(set: any, get: any) {
   return {
@@ -36,7 +37,7 @@ export function createPlanningSlice(set: any, get: any) {
             console.error('[TBWO] Website Sprint product not registered');
             return;
           }
-          const sprintConfig = (tbwo.metadata?.websiteSprintConfig as Record<string, unknown>) || sitesProduct.defaultConfig;
+          const sprintConfig = (tbwo.metadata?.sprintConfig as Record<string, unknown>) || (tbwo.metadata?.websiteSprintConfig as Record<string, unknown>) || sitesProduct.defaultConfig;
           const brief = tbwo.metadata?.siteBrief as any | undefined;
           const pods = sitesProduct.podsFactory(tbwoId, brief, sprintConfig);
           const plan = sitesProduct.planFactory(tbwoId, sprintConfig, pods, tbwo.objective, brief);
@@ -56,6 +57,12 @@ export function createPlanningSlice(set: any, get: any) {
             pods,
             status: TBWOStatus.AWAITING_APPROVAL,
           });
+
+          // Auto-approve if setting enabled
+          const tbwoPrefs = useSettingsStore.getState().tbwo;
+          if (tbwoPrefs?.autoApprove) {
+            get().approvePlan(tbwoId);
+          }
 
           console.log('[TBWO] generateExecutionPlan: website sprint plan created with', pods.size, 'pods and', plan.phases.length, 'phases');
           return;
@@ -154,6 +161,12 @@ export function createPlanningSlice(set: any, get: any) {
           plan,
           status: TBWOStatus.AWAITING_APPROVAL,
         });
+
+        // Auto-approve if setting enabled
+        const genericTbwoPrefs = useSettingsStore.getState().tbwo;
+        if (genericTbwoPrefs?.autoApprove) {
+          get().approvePlan(tbwoId);
+        }
 
         console.log('[TBWO] generateExecutionPlan: done, status set to AWAITING_APPROVAL');
       } catch (error: any) {

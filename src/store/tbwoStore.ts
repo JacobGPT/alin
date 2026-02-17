@@ -920,39 +920,56 @@ export const useTBWOStore = create<TBWOState & TBWOActions>()(
             const { state } = value;
             // partialize already converts tbwos Map to an array of [id, tbwo] tuples
             const tbwoEntries = Array.isArray(state.tbwos) ? state.tbwos : Array.from(state.tbwos.entries());
-            localStorage.setItem(
-              name,
-              JSON.stringify({
-                state: {
-                  ...state,
-                  tbwos: tbwoEntries.map(([id, tbwo]: [string, any]) => [
-                    id,
-                    {
-                      ...tbwo,
-                      pods: tbwo.pods instanceof Map ? Array.from(tbwo.pods.entries()) : (Array.isArray(tbwo.pods) ? tbwo.pods : []),
-                      activePods: tbwo.activePods instanceof Set ? Array.from(tbwo.activePods) : (Array.isArray(tbwo.activePods) ? tbwo.activePods : []),
-                      timeBudget: tbwo.timeBudget ? {
-                        ...tbwo.timeBudget,
-                        phases: tbwo.timeBudget.phases instanceof Map ? Array.from(tbwo.timeBudget.phases.entries()) : (Array.isArray(tbwo.timeBudget.phases) ? tbwo.timeBudget.phases : []),
-                      } : tbwo.timeBudget,
-                      plan: tbwo.plan ? {
-                        ...tbwo.plan,
-                        podStrategy: tbwo.plan.podStrategy ? {
-                          ...tbwo.plan.podStrategy,
-                          dependencies: tbwo.plan.podStrategy.dependencies instanceof Map ? Array.from(tbwo.plan.podStrategy.dependencies.entries()) : (Array.isArray(tbwo.plan.podStrategy.dependencies) ? tbwo.plan.podStrategy.dependencies : []),
-                        } : tbwo.plan.podStrategy,
-                      } : tbwo.plan,
-                      receipts: tbwo.receipts ? {
-                        ...tbwo.receipts,
-                        podReceipts: tbwo.receipts.podReceipts instanceof Map ? Array.from(tbwo.receipts.podReceipts.entries()) : (Array.isArray(tbwo.receipts.podReceipts) ? tbwo.receipts.podReceipts : []),
-                      } : tbwo.receipts,
-                    },
-                  ]),
-                },
-              })
-            );
-          } catch (e) {
-            console.error('[TBWO] Failed to save to localStorage:', e);
+
+            const serializeTbwo = (tbwo: any) => ({
+              ...tbwo,
+              pods: tbwo.pods instanceof Map ? Array.from(tbwo.pods.entries()) : (Array.isArray(tbwo.pods) ? tbwo.pods : []),
+              activePods: tbwo.activePods instanceof Set ? Array.from(tbwo.activePods) : (Array.isArray(tbwo.activePods) ? tbwo.activePods : []),
+              timeBudget: tbwo.timeBudget ? {
+                ...tbwo.timeBudget,
+                phases: tbwo.timeBudget.phases instanceof Map ? Array.from(tbwo.timeBudget.phases.entries()) : (Array.isArray(tbwo.timeBudget.phases) ? tbwo.timeBudget.phases : []),
+              } : tbwo.timeBudget,
+              plan: tbwo.plan ? {
+                ...tbwo.plan,
+                podStrategy: tbwo.plan.podStrategy ? {
+                  ...tbwo.plan.podStrategy,
+                  dependencies: tbwo.plan.podStrategy.dependencies instanceof Map ? Array.from(tbwo.plan.podStrategy.dependencies.entries()) : (Array.isArray(tbwo.plan.podStrategy.dependencies) ? tbwo.plan.podStrategy.dependencies : []),
+                } : tbwo.plan.podStrategy,
+              } : tbwo.plan,
+              receipts: tbwo.receipts ? {
+                ...tbwo.receipts,
+                podReceipts: tbwo.receipts.podReceipts instanceof Map ? Array.from(tbwo.receipts.podReceipts.entries()) : (Array.isArray(tbwo.receipts.podReceipts) ? tbwo.receipts.podReceipts : []),
+              } : tbwo.receipts,
+              // Strip large chat/artifact data to reduce localStorage size
+              chatConversationId: tbwo.chatConversationId,
+              artifacts: undefined,
+            });
+
+            const serialized = tbwoEntries.map(([id, tbwo]: [string, any]) => [id, serializeTbwo(tbwo)]);
+            const json = JSON.stringify({ state: { ...state, tbwos: serialized } });
+
+            // Only persist if under 2MB to avoid quota errors
+            if (json.length > 2_000_000) {
+              // Keep only the 5 most recent TBWOs
+              const trimmed = serialized
+                .sort(([, a]: any, [, b]: any) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                .slice(0, 5);
+              const trimmedJson = JSON.stringify({ state: { ...state, tbwos: trimmed } });
+              if (trimmedJson.length < 4_500_000) {
+                localStorage.setItem(name, trimmedJson);
+              }
+              // If still too large, just skip — DB is the durable store
+              return;
+            }
+
+            localStorage.setItem(name, json);
+          } catch (e: any) {
+            if (e?.name === 'QuotaExceededError') {
+              // Quota exceeded — remove TBWO from localStorage, rely on DB
+              try { localStorage.removeItem(name); } catch {}
+            } else {
+              console.warn('[TBWO] Failed to save to localStorage:', e);
+            }
           }
         },
         removeItem: (name) => localStorage.removeItem(name),

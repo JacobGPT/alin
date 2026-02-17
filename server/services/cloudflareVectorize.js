@@ -57,6 +57,14 @@ export class CloudflareVectorize {
     const data = await resp.json();
 
     if (!data.success) {
+      const errCode = data.errors?.[0]?.code;
+      const errMsg = data.errors?.[0]?.message || 'Unknown error';
+      if (errCode === 10000 || errMsg.toLowerCase().includes('authentication')) {
+        throw new Error(
+          'Vectorize authentication failed. Your Cloudflare API token may not have Vectorize permissions, ' +
+          'or the index may not exist. Create it with: wrangler vectorize create ' + indexName + ' --dimensions 1536 --metric cosine'
+        );
+      }
       throw new Error(`Vectorize upsert failed: ${JSON.stringify(data.errors)}`);
     }
 

@@ -7,6 +7,7 @@
 
 import type { UserPatterns } from './types';
 import type { CognitiveBrief } from './types';
+import { useMemoryStore } from '../../../store/memoryStore';
 
 const RETENTION_TAG = 'site-retention';
 const RETENTION_CATEGORY = 'site_patterns';
@@ -17,7 +18,6 @@ const RETENTION_CATEGORY = 'site_patterns';
 export function storeUserPatterns(cb: CognitiveBrief): void {
   try {
     // Dynamic import to avoid circular deps
-    const { useMemoryStore } = require('../../../store/memoryStore');
     const store = useMemoryStore.getState();
 
     const patterns: UserPatterns = {
@@ -63,7 +63,6 @@ export function storeUserPatterns(cb: CognitiveBrief): void {
  */
 export function recallUserPatterns(): UserPatterns | null {
   try {
-    const { useMemoryStore } = require('../../../store/memoryStore');
     const store = useMemoryStore.getState();
 
     const results = store.retrieveMemories({

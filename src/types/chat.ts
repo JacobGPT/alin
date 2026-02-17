@@ -35,7 +35,8 @@ export type ContentBlock =
   | RedactedThinkingBlock
   | ToolUseBlock
   | ToolResultBlock
-  | ToolActivityBlock;
+  | ToolActivityBlock
+  | VideoEmbedBlock;
 
 export interface TextBlock {
   type: 'text';
@@ -102,6 +103,16 @@ export interface ToolActivityBlock {
   activities: ToolActivitySummary[];
 }
 
+export interface VideoEmbedBlock {
+  type: 'video_embed';
+  url: string;
+  embed_url: string;
+  platform: 'youtube' | 'vimeo' | 'loom' | 'twitch' | 'dailymotion' | 'unknown';
+  title?: string;
+  thumbnail?: string;
+  timestamp?: number;
+}
+
 /**
  * Code execution result
  */
@@ -164,6 +175,10 @@ export interface Message {
 
   // Stop reason from API (e.g., 'end_turn', 'max_tokens', 'tool_use')
   stopReason?: string;
+
+  // Both/Hybrid mode labels
+  modelLabel?: string;        // e.g., "Claude Sonnet 4.5", "GPT-5"
+  hybridPhase?: 'planner' | 'executor';
 }
 
 export interface ConfidenceSignals {
@@ -179,7 +194,7 @@ export interface ConfidenceSignals {
  */
 export interface ToolActivitySummary {
   id: string;
-  type: 'web_search' | 'web_fetch' | 'image_search' | 'memory_recall' | 'memory_store' | 'code_execute' | 'file_read' | 'file_write' | 'image_generate' | 'directory_scan' | 'code_search' | 'terminal_command' | 'git_operation' | 'file_edit' | 'site_validate' | 'conversion_audit' | 'site_improve' | 'video_analyze' | 'motion_validate' | 'scene_validate' | 'output_guard' | 'other';
+  type: 'web_search' | 'web_fetch' | 'image_search' | 'memory_recall' | 'memory_store' | 'code_execute' | 'file_read' | 'file_write' | 'image_generate' | 'image_edit' | 'video_generate' | 'directory_scan' | 'code_search' | 'terminal_command' | 'git_operation' | 'file_edit' | 'site_validate' | 'conversion_audit' | 'site_improve' | 'video_analyze' | 'motion_validate' | 'scene_validate' | 'output_guard' | 'other';
   label: string;
   status: 'pending' | 'running' | 'completed' | 'error';
   query?: string;

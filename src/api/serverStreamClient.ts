@@ -12,11 +12,22 @@ import type { ContentBlock } from '../types/chat';
 // TYPES
 // ============================================================================
 
+export interface VideoEmbedData {
+  url: string;
+  embed_url: string;
+  platform: 'youtube' | 'vimeo' | 'loom' | 'twitch' | 'dailymotion' | 'unknown';
+  title?: string;
+  thumbnail?: string;
+  timestamp?: number;
+  context?: string;
+}
+
 export interface ServerStreamCallbacks {
   onText?: (text: string) => void;
   onThinking?: (thinking: string) => void;
-  onToolUse?: (tool: { id: string; name: string; input: Record<string, unknown> }) => void;
+  onToolUse?: (tool: { id: string; name: string; input: Record<string, unknown>; thought_signature?: string }) => void;
   onModeHint?: (hint: { suggestedMode: string; confidence: number; reason: string }) => void;
+  onVideoEmbed?: (video: VideoEmbedData) => void;
   onError?: (error: Error) => void;
 }
 
@@ -121,6 +132,7 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
               id: data.id || '',
               name: data.name || '',
               input: (data.input || {}) as Record<string, unknown>,
+              ...(data.thought_signature ? { thought_signature: data.thought_signature as string } : {}),
             };
             toolCalls.push(toolCall);
 
@@ -130,13 +142,14 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
               currentText = '';
             }
 
-            // Add tool_use content block
+            // Add tool_use content block (include thought_signature for Gemini 3)
             contentBlocks.push({
               type: 'tool_use',
               toolUseId: toolCall.id,
               toolName: toolCall.name,
               toolInput: toolCall.input,
-            });
+              ...(toolCall.thought_signature ? { thought_signature: toolCall.thought_signature } : {}),
+            } as any);
 
             callbacks.onToolUse?.(toolCall);
           } else if (data.type === 'usage') {
@@ -150,6 +163,22 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
             if (data.outputTokens) usage.outputTokens = data.outputTokens;
           } else if (data.type === 'mode_hint') {
             callbacks.onModeHint?.(data);
+          } else if (data.type === 'video_embed') {
+            // Flush any accumulated text before the video embed
+            if (currentText) {
+              contentBlocks.push({ type: 'text', text: currentText });
+              currentText = '';
+            }
+            contentBlocks.push({
+              type: 'video_embed' as const,
+              url: data.url,
+              embed_url: data.embed_url,
+              platform: data.platform || 'unknown',
+              title: data.title || '',
+              thumbnail: data.thumbnail || '',
+              timestamp: data.timestamp || 0,
+            });
+            callbacks.onVideoEmbed?.(data);
           } else if (data.type === 'error') {
             const errMsg = data.error || 'Stream error';
             console.error('[StreamClient] Server error:', errMsg, data.details ? data.details.slice(0, 300) : '');

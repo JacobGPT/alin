@@ -12,17 +12,28 @@ import { useAuthStore } from '../store/authStore';
 
 const SESSION_ID = crypto.randomUUID();
 
+// Track whether telemetry endpoint exists to avoid 404 spam
+let _telemetryAvailable: boolean | null = null;
+
 async function send(endpoint: string, data: Record<string, unknown>): Promise<void> {
+  // Skip if we already know the endpoint doesn't exist
+  if (_telemetryAvailable === false) return;
+
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...useAuthStore.getState().getAuthHeader(),
     };
-    await fetch(endpoint, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({ ...data, sessionId: SESSION_ID }),
     });
+    if (res.status === 404) {
+      _telemetryAvailable = false; // Endpoint doesn't exist — stop trying
+    } else {
+      _telemetryAvailable = true;
+    }
   } catch {
     // Telemetry should never break the app — fail silently
   }

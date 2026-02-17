@@ -13,6 +13,11 @@ interface ConversationPattern {
     type: 'action' | 'info' | 'tbwo' | 'memory' | 'tool';
     title: string;
     description: string;
+    action?: {
+      label: string;
+      handler: string;
+      params?: Record<string, unknown>;
+    };
   };
 }
 
@@ -31,6 +36,19 @@ class ProactiveService {
   private lastChangeTimestamp: number = 0;
   private watchingPath: string | null = null;
   private recentFileChanges: FileChange[] = [];
+  private _watchFailed = false; // Stop polling after auth failure
+
+  /** Get auth headers from localStorage (shared helper) */
+  private getAuthHeaders(): Record<string, string> {
+    try {
+      const raw = localStorage.getItem('alin-auth-storage');
+      if (raw) {
+        const token = JSON.parse(raw)?.state?.token;
+        if (token) return { Authorization: `Bearer ${token}` };
+      }
+    } catch {}
+    return {};
+  }
 
   /**
    * Start background monitoring (conversation analysis + file watching)
@@ -72,10 +90,12 @@ class ProactiveService {
    */
   async startFileWatcher(dirPath: string): Promise<void> {
     try {
-      // Register watcher with backend
+      const authHeaders = this.getAuthHeaders();
+      if (!authHeaders.Authorization) return; // Skip if no auth
+
       const resp = await fetch('/api/files/watch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           path: dirPath,
           extensions: ['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.html'],
@@ -104,9 +124,10 @@ class ProactiveService {
       this.fileWatchInterval = null;
     }
     if (this.watchingPath) {
+      const authHeaders = this.getAuthHeaders();
       fetch('/api/files/watch', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ path: this.watchingPath }),
       }).catch(() => {});
       this.watchingPath = null;
@@ -117,12 +138,23 @@ class ProactiveService {
    * Poll backend for file change events
    */
   private async pollFileChanges(): Promise<void> {
-    if (!this.watchingPath || !useProactiveStore.getState().enabled) return;
+    if (!this.watchingPath || !useProactiveStore.getState().enabled || this._watchFailed) return;
 
     try {
+      const authHeaders = this.getAuthHeaders();
+      if (!authHeaders.Authorization) {
+        this._watchFailed = true; // No auth — stop polling
+        return;
+      }
+
       const resp = await fetch(
-        `/api/files/changes?path=${encodeURIComponent(this.watchingPath)}&since=${this.lastChangeTimestamp}`
+        `/api/files/changes?path=${encodeURIComponent(this.watchingPath)}&since=${this.lastChangeTimestamp}`,
+        { headers: authHeaders }
       );
+      if (resp.status === 401 || resp.status === 403) {
+        this._watchFailed = true; // Auth failed — stop polling permanently
+        return;
+      }
       if (!resp.ok) return;
 
       const data = await resp.json();
@@ -263,6 +295,7 @@ class ProactiveService {
           confidence: pattern.confidence,
           expiresAt: Date.now() + 30000,
           source: 'pattern',
+          ...(pattern.suggestion.action ? { action: pattern.suggestion.action } : {}),
         });
       }
     });
@@ -382,9 +415,13 @@ class ProactiveService {
         type: 'long_conversation',
         confidence: 0.8,
         suggestion: {
-          type: 'info',
+          type: 'action',
           title: 'Long Conversation',
-          description: `This conversation has ${messages.length} messages. Consider starting a new one to keep context focused, or save key information to memory.`,
+          description: `This conversation has ${messages.length} messages. Start a new one to keep context focused.`,
+          action: {
+            label: 'New Chat',
+            handler: 'start_new_chat',
+          },
         },
       });
     }

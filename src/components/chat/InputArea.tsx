@@ -23,8 +23,6 @@ import {
   MicrophoneIcon,
   StopIcon,
   LightBulbIcon,
-  ComputerDesktopIcon,
-  CodeBracketIcon,
 } from '@heroicons/react/24/outline';
 
 // Store
@@ -38,6 +36,7 @@ import { useUIStore } from '@store/uiStore';
 // Components
 import { Button } from '@components/ui/Button';
 import { ProactiveSuggestions } from './ProactiveSuggestions';
+import { ProactiveSuggestionPanel } from './ProactiveSuggestionPanel';
 
 import { getAPIService, initializeAPIService } from '@api/apiService';
 import { ModelProvider, MessageRole } from '../../types/chat';
@@ -63,9 +62,11 @@ import { formatFileSize } from './utils/contentSegments';
 
 interface InputAreaProps {
   conversationId: string;
+  onOpenVoiceConversation?: () => void;
+  sendRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-export function InputArea({ conversationId }: InputAreaProps) {
+export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: InputAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -94,92 +95,140 @@ export function InputArea({ conversationId }: InputAreaProps) {
   const reasoningEffort = useSettingsStore((state) => state.reasoningEffort);
   const setThinkingBudget = useSettingsStore((state) => state.setThinkingBudget);
   const setReasoningEffort = useSettingsStore((state) => state.setReasoningEffort);
-  const enableComputerUse = useSettingsStore((state) => state.enableComputerUse);
-  const enableTextEditor = useSettingsStore((state) => state.enableTextEditor);
   const caps = useCapabilities();
-  const toggleComputerUse = useSettingsStore((state) => state.toggleComputerUse);
-  const toggleTextEditor = useSettingsStore((state) => state.toggleTextEditor);
 
   // Derived state for UI controls
   const isGPTMode = modelMode === 'gpt';
   const selectedGPTModel = selectedModelVersions?.gpt || 'gpt-4o';
-  const isOSeriesModel = selectedGPTModel.startsWith('o1') || selectedGPTModel.startsWith('o3');
+  const isOSeriesModel = selectedGPTModel.startsWith('o1') || selectedGPTModel.startsWith('o3') || selectedGPTModel.startsWith('o4');
 
   // ========================================================================
-  // VOICE INPUT (Web Speech API)
+  // VOICE INPUT — MediaRecorder → Whisper STT (with Web Speech API live preview)
   // ========================================================================
 
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const voiceStartPositionRef = useRef<number>(0);
 
   const startListening = useCallback(() => {
+    const baseInputAtStart = useChatStore.getState().inputValue;
+    voiceStartPositionRef.current = baseInputAtStart.length;
+
+    // Start MediaRecorder for Whisper transcription
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.start(250); // collect in 250ms chunks
+      mediaRecorderRef.current = recorder;
+    }).catch((err) => {
+      console.error('[Voice] Microphone access denied:', err);
+    });
+
+    // Start Web Speech API for live preview while recording
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('[Voice] SpeechRecognition not supported in this browser');
-      return;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      let finalTranscript = '';
+      let lastProcessedIndex = -1;
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            if (i > lastProcessedIndex) {
+              finalTranscript += transcript + ' ';
+              lastProcessedIndex = i;
+            }
+          } else {
+            interimTranscript = transcript;
+          }
+        }
+        if (interimTranscript) {
+          setInputValue(baseInputAtStart + finalTranscript + interimTranscript);
+        } else {
+          setInputValue(baseInputAtStart + finalTranscript);
+        }
+      };
+
+      recognition.onerror = () => {};
+      recognition.onend = () => {};
+
+      recognitionRef.current = recognition;
+      try { recognition.start(); } catch {}
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    let finalTranscript = '';
-    let lastProcessedIndex = -1;
-    // Capture the input value at start so we have a stable base
-    const baseInputAtStart = useChatStore.getState().inputValue;
-
-    recognition.onresult = (event: any) => {
-      let interimTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          // Only add genuinely new final results
-          if (i > lastProcessedIndex) {
-            finalTranscript += transcript + ' ';
-            lastProcessedIndex = i;
-          }
-        } else {
-          interimTranscript = transcript;
-        }
-      }
-      // Update input: stable base + accumulated finals + current interim
-      if (interimTranscript) {
-        setInputValue(baseInputAtStart + finalTranscript + interimTranscript);
-      } else {
-        setInputValue(baseInputAtStart + finalTranscript);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error('[Voice] Recognition error:', event.error);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      // Set final clean value
-      setInputValue(baseInputAtStart + finalTranscript.trimEnd());
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
     setIsListening(true);
   }, [setInputValue]);
 
-  const stopListening = useCallback(() => {
+  const stopListening = useCallback(async () => {
+    // Stop Web Speech API preview
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
     setIsListening(false);
-  }, []);
+
+    // Stop MediaRecorder and send to Whisper
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      setIsTranscribing(true);
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+        recorder.stop();
+      });
+
+      // Stop all mic tracks
+      recorder.stream.getTracks().forEach(t => t.stop());
+      mediaRecorderRef.current = null;
+
+      if (audioChunksRef.current.length > 0) {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        audioChunksRef.current = [];
+
+        try {
+          const { useAuthStore } = await import('@store/authStore');
+          const token = useAuthStore.getState().token;
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'recording.webm');
+
+          const res = await fetch('/api/voice/transcribe', {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text) {
+              // Replace only the voice portion, preserving pre-voice typed text
+              const preVoiceText = useChatStore.getState().inputValue.slice(0, voiceStartPositionRef.current);
+              setInputValue((preVoiceText ? preVoiceText + ' ' : '') + data.text);
+            }
+          }
+        } catch (err) {
+          console.error('[Voice] Whisper transcription failed, keeping Web Speech result:', err);
+        }
+      }
+      setIsTranscribing(false);
+    }
+  }, [setInputValue]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      if (recognitionRef.current) { recognitionRef.current.stop(); }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
       }
     };
   }, []);
@@ -200,8 +249,36 @@ export function InputArea({ conversationId }: InputAreaProps) {
   // HANDLERS
   // ========================================================================
   
+  // Helper to get a display label for a model ID
+  const getModelLabel = (modelId: string | undefined): string => {
+    if (!modelId) return 'Unknown Model';
+    if (modelId.includes('opus')) return 'Claude Opus 4.6';
+    if (modelId.includes('sonnet-4-5')) return 'Claude Sonnet 4.5';
+    if (modelId.includes('sonnet-4-2')) return 'Claude Sonnet 4';
+    if (modelId.includes('haiku')) return 'Claude Haiku 4.5';
+    if (modelId.includes('gpt-5-mini')) return 'GPT-5 Mini';
+    if (modelId.includes('gpt-5.2')) return 'GPT-5.2';
+    if (modelId.includes('gpt-5.1')) return 'GPT-5.1';
+    if (modelId.includes('gpt-5')) return 'GPT-5';
+    if (modelId.includes('gpt-4o-mini')) return 'GPT-4o Mini';
+    if (modelId.includes('gpt-4o')) return 'GPT-4o';
+    if (modelId.includes('o4-mini')) return 'o4-mini';
+    if (modelId.includes('o3-mini')) return 'o3-mini';
+    if (modelId.includes('gemini-3-pro')) return 'Gemini 3 Pro';
+    if (modelId.includes('gemini-3-flash')) return 'Gemini 3 Flash';
+    if (modelId.includes('gemini-2.5-pro')) return 'Gemini 2.5 Pro';
+    if (modelId.includes('gemini-2.5-flash-lite')) return 'Gemini 2.5 Flash-Lite';
+    if (modelId.includes('gemini-2.5-flash')) return 'Gemini 2.5 Flash';
+    if (modelId === 'deepseek-reasoner') return 'DeepSeek Reasoner';
+    if (modelId === 'deepseek-chat') return 'DeepSeek V3.2';
+    return modelId;
+  };
+
   const handleSend = async () => {
-    if (!inputValue.trim() && attachedFiles.length === 0) return;
+    // Read inputValue fresh from store (not closure) — critical for voice mode
+    // where setInputValue() is called externally just before handleSend()
+    const currentInputValue = useChatStore.getState().inputValue || inputValue;
+    if (!currentInputValue.trim() && attachedFiles.length === 0) return;
     if (isSendingMessage) return;
 
     // If streaming, interrupt current response and then send new message
@@ -220,10 +297,10 @@ export function InputArea({ conversationId }: InputAreaProps) {
     const content: any[] = [];
 
     // Add text
-    if (inputValue.trim()) {
+    if (currentInputValue.trim()) {
       content.push({
         type: 'text',
-        text: inputValue.trim(),
+        text: currentInputValue.trim(),
       });
     }
 
@@ -385,15 +462,22 @@ export function InputArea({ conversationId }: InputAreaProps) {
 
       // Apply selected model version and determine provider before sending
       const settings = useSettingsStore.getState();
+      const isBothMode = settings.modelMode === 'both';
+      const isHybridMode = settings.modelMode === 'hybrid';
       const isGPT = settings.modelMode === 'gpt';
-      const selectedModel = settings.selectedModelVersions[isGPT ? 'gpt' : 'claude'];
-      const provider = isGPT ? ModelProvider.OPENAI : ModelProvider.ANTHROPIC;
+      const isGemini = settings.modelMode === 'gemini';
+      const isDeepSeek = settings.modelMode === 'deepseek';
+      const selectedModel = isBothMode ? settings.selectedModelVersions.bothClaude
+        : isHybridMode ? settings.selectedModelVersions.hybridPlanner
+        : isGemini ? settings.selectedModelVersions.gemini
+        : isDeepSeek ? settings.selectedModelVersions.deepseek
+        : settings.selectedModelVersions[isGPT ? 'gpt' : 'claude'];
+      const provider = isGemini ? ('gemini' as any)
+        : isDeepSeek ? ('deepseek' as any)
+        : isGPT ? ModelProvider.OPENAI : ModelProvider.ANTHROPIC;
 
-      // Model version and thinking config are now read from settingsStore
-      // by apiService at send time and passed to the server proxy.
-      // No client-side SDK configuration needed.
       if (selectedModel) {
-        console.log(`[ALIN] Using ${isGPT ? 'GPT' : 'Claude'} model: ${selectedModel}`);
+        console.log(`[ALIN] Using ${isBothMode ? 'Both' : isHybridMode ? 'Hybrid' : isGPT ? 'GPT' : 'Claude'} mode: ${selectedModel}`);
       }
       console.log('[ALIN] Extended thinking:', settings.enableThinking ? `enabled (budget: ${settings.thinkingBudget})` : 'disabled');
 
@@ -405,7 +489,9 @@ export function InputArea({ conversationId }: InputAreaProps) {
         role: MessageRole.ASSISTANT,
         content: [{ type: 'text', text: '' }],
         isStreaming: true,
-      });
+        ...(isBothMode ? { modelLabel: getModelLabel(settings.selectedModelVersions.bothClaude) } : {}),
+        ...(isHybridMode ? { modelLabel: getModelLabel(settings.selectedModelVersions.hybridPlanner), hybridPhase: 'planner' } : {}),
+      } as any);
 
       // Start streaming state
       chatStore.startStreaming(assistantMessageId);
@@ -430,7 +516,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
 
       // Content segment tracking for interleaved tool activities, thinking, and images
       interface ContentSegment {
-        type: 'text' | 'tool_activity' | 'thinking' | 'image' | 'file';
+        type: 'text' | 'tool_activity' | 'thinking' | 'image' | 'file' | 'video_embed';
         text?: string;
         activityIds?: string[];
         thinkingContent?: string;
@@ -440,6 +526,12 @@ export function InputArea({ conversationId }: InputAreaProps) {
         fileName?: string;
         fileContent?: string;
         fileLanguage?: string;
+        videoUrl?: string;
+        videoEmbedUrl?: string;
+        videoPlatform?: string;
+        videoTitle?: string;
+        videoThumbnail?: string;
+        videoTimestamp?: number;
       }
       const segments: ContentSegment[] = [];
       let currentTextSegment: ContentSegment | null = null;
@@ -482,6 +574,12 @@ export function InputArea({ conversationId }: InputAreaProps) {
 
       function addFileSegment(filename: string, content: string, language: string) {
         segments.push({ type: 'file', fileName: filename, fileContent: content, fileLanguage: language });
+        currentTextSegment = null;
+        currentThinkingSegment = null;
+      }
+
+      function addVideoEmbedSegment(video: { url: string; embed_url: string; platform: string; title?: string; thumbnail?: string; timestamp?: number }) {
+        segments.push({ type: 'video_embed', videoUrl: video.url, videoEmbedUrl: video.embed_url, videoPlatform: video.platform, videoTitle: video.title, videoThumbnail: video.thumbnail, videoTimestamp: video.timestamp });
         currentTextSegment = null;
         currentThinkingSegment = null;
       }
@@ -543,6 +641,16 @@ export function InputArea({ conversationId }: InputAreaProps) {
                 ? segment.fileContent.slice(0, 5000) + `\n\n/* ... ${segment.fileContent.length} chars total */`
                 : segment.fileContent,
               filename: segment.fileName,
+            } as any);
+          } else if (segment.type === 'video_embed' && segment.videoUrl && segment.videoEmbedUrl) {
+            blocks.push({
+              type: 'video_embed',
+              url: segment.videoUrl,
+              embed_url: segment.videoEmbedUrl,
+              platform: segment.videoPlatform || 'unknown',
+              title: segment.videoTitle || '',
+              thumbnail: segment.videoThumbnail || '',
+              timestamp: segment.videoTimestamp || 0,
             } as any);
           }
         }
@@ -625,6 +733,12 @@ export function InputArea({ conversationId }: InputAreaProps) {
           onFileGenerated: (filename: string, content: string, language: string) => {
             // Insert generated file inline in the message as a code block
             addFileSegment(filename, content, language);
+            chatStore.updateMessage(assistantMessageId, {
+              content: buildContentBlocks(),
+            });
+          },
+          onVideoEmbed: (video) => {
+            addVideoEmbedSegment(video);
             chatStore.updateMessage(assistantMessageId, {
               content: buildContentBlocks(),
             });
@@ -785,6 +899,218 @@ export function InputArea({ conversationId }: InputAreaProps) {
         await api.sendCodingStream(messages, wsStore.workspaceId || '', streamCallbacks);
         // Refresh workspace tree after coding loop completes
         wsStore.refreshTree();
+      } else if (isBothMode) {
+        // ── BOTH MODE: Run two models in parallel ──
+        const claudeModel = settings.selectedModelVersions.bothClaude;
+        const gptModel = settings.selectedModelVersions.bothGPT;
+
+        // First message is already created (Claude) — send Claude stream
+        const claudePromise = api.sendMessageStream(messages, ModelProvider.ANTHROPIC, streamCallbacks);
+
+        // Create second assistant message for GPT
+        const gptMessageId = addMessage(conversationId, {
+          role: MessageRole.ASSISTANT,
+          content: [{ type: 'text', text: '' }],
+          isStreaming: true,
+          modelLabel: getModelLabel(gptModel),
+        } as any);
+
+        // Build separate segment tracking for GPT message
+        const gptSegments: typeof segments extends (infer T)[] ? T[] : never = [];
+        let gptTextSegment: any = null;
+
+        const buildGptContentBlocks = (): ContentBlock[] => {
+          const blocks: ContentBlock[] = [];
+          for (const s of gptSegments) {
+            if (s.type === 'text' && s.text) blocks.push({ type: 'text', text: s.text });
+            else if (s.type === 'image' && s.imageUrl) blocks.push({ type: 'image', url: s.imageUrl, alt: s.imageAlt || 'Generated image', caption: s.imageCaption } as any);
+            else if (s.type === 'video_embed' && s.videoUrl) blocks.push({ type: 'video_embed', url: s.videoUrl, embed_url: s.videoEmbedUrl, platform: s.videoPlatform || 'unknown', title: s.videoTitle, thumbnail: s.videoThumbnail, timestamp: s.videoTimestamp } as any);
+          }
+          if (blocks.length === 0) blocks.push({ type: 'text', text: '' });
+          return blocks;
+        };
+
+        const gptCallbacks: typeof streamCallbacks = {
+          onStart: () => {},
+          onThinking: () => {},
+          onChunk: (chunk: string) => {
+            if (!gptTextSegment || gptTextSegment.type !== 'text') {
+              gptTextSegment = { type: 'text', text: '' };
+              gptSegments.push(gptTextSegment);
+            }
+            gptTextSegment.text += chunk;
+            chatStore.updateMessage(gptMessageId, { content: buildGptContentBlocks() });
+          },
+          onToolStart: () => {},
+          onImageGenerated: (url: string, prompt: string, revisedPrompt?: string) => {
+            gptSegments.push({ type: 'image', imageUrl: url, imageAlt: prompt, imageCaption: revisedPrompt || prompt });
+            gptTextSegment = null;
+            chatStore.updateMessage(gptMessageId, { content: buildGptContentBlocks() });
+          },
+          onFileGenerated: () => {},
+          onVideoEmbed: (video) => {
+            gptSegments.push({ type: 'video_embed', videoUrl: video.url, videoEmbedUrl: video.embed_url, videoPlatform: video.platform, videoTitle: video.title, videoThumbnail: video.thumbnail, videoTimestamp: video.timestamp });
+            gptTextSegment = null;
+            chatStore.updateMessage(gptMessageId, { content: buildGptContentBlocks() });
+          },
+          onComplete: (response: any) => {
+            chatStore.updateMessage(gptMessageId, {
+              content: buildGptContentBlocks(),
+              isStreaming: false,
+              tokens: response?.usage ? {
+                prompt: response.usage.inputTokens || response.usage.promptTokens || 0,
+                completion: response.usage.outputTokens || response.usage.completionTokens || 0,
+                total: response.usage.totalTokens || 0,
+              } : undefined,
+              cost: response?.cost,
+              stopReason: response?.stopReason || response?.finishReason,
+            });
+          },
+          onError: (error: Error) => {
+            chatStore.updateMessage(gptMessageId, {
+              content: [{ type: 'text', text: `GPT Error: ${error.message}` }],
+              isStreaming: false,
+            });
+          },
+        };
+
+        const gptPromise = api.sendMessageStream(messages, ModelProvider.OPENAI, gptCallbacks);
+
+        // Wait for both to complete
+        await Promise.allSettled([claudePromise, gptPromise]);
+      } else if (isHybridMode) {
+        // ── HYBRID MODE: Planner → Executor ──
+        const plannerModel = settings.selectedModelVersions.hybridPlanner;
+        const executorModel = settings.selectedModelVersions.hybridExecutor;
+        const plannerProvider = plannerModel.startsWith('gpt') || plannerModel.startsWith('o1') || plannerModel.startsWith('o3') || plannerModel.startsWith('o4')
+          ? ModelProvider.OPENAI : ModelProvider.ANTHROPIC;
+        const executorProvider = executorModel.startsWith('gpt') || executorModel.startsWith('o1') || executorModel.startsWith('o3') || executorModel.startsWith('o4')
+          ? ModelProvider.OPENAI : ModelProvider.ANTHROPIC;
+
+        // Phase 1: Planner — first message already created
+        let plannerOutput = '';
+        const plannerCallbacks: typeof streamCallbacks = {
+          ...streamCallbacks,
+          onChunk: (chunk: string) => {
+            plannerOutput += chunk;
+            streamCallbacks.onChunk?.(chunk);
+          },
+          onComplete: (response: any) => {
+            // Mark planner message as done, then start executor
+            streamCallbacks.onComplete?.(response);
+          },
+        };
+
+        await api.sendMessageStream(messages, plannerProvider, plannerCallbacks);
+
+        // Phase 2: Executor — create new message
+        const executorMessageId = addMessage(conversationId, {
+          role: MessageRole.ASSISTANT,
+          content: [{ type: 'text', text: '' }],
+          isStreaming: true,
+          modelLabel: getModelLabel(executorModel),
+          hybridPhase: 'executor',
+        } as any);
+
+        chatStore.startStreaming(executorMessageId);
+        statusStore.setCurrentMessageId(executorMessageId);
+
+        const executorSegments: any[] = [];
+        let executorTextSegment: any = null;
+
+        const buildExecutorBlocks = (): ContentBlock[] => {
+          const blocks: ContentBlock[] = [];
+          for (const s of executorSegments) {
+            if (s.type === 'text' && s.text) blocks.push({ type: 'text', text: s.text });
+            else if (s.type === 'image' && s.imageUrl) blocks.push({ type: 'image', url: s.imageUrl, alt: s.imageAlt || 'Generated image', caption: s.imageCaption } as any);
+            else if (s.type === 'video_embed' && s.videoUrl) blocks.push({ type: 'video_embed', url: s.videoUrl, embed_url: s.videoEmbedUrl, platform: s.videoPlatform || 'unknown', title: s.videoTitle, thumbnail: s.videoThumbnail, timestamp: s.videoTimestamp } as any);
+          }
+          if (blocks.length === 0) blocks.push({ type: 'text', text: '' });
+          return blocks;
+        };
+
+        const executorCallbacks: typeof streamCallbacks = {
+          onStart: () => {
+            statusStore.setPhase('responding', 'Executing planned response...');
+          },
+          onThinking: (thinking: string) => {
+            if (thinkingEnabledForThisMessage) {
+              const seg = { type: 'thinking', thinkingContent: thinking };
+              executorSegments.push(seg);
+              const blocks = executorSegments
+                .filter((s: any) => s.type === 'text' && s.text)
+                .map((s: any) => ({ type: 'text' as const, text: s.text }));
+              if (blocks.length === 0) blocks.push({ type: 'text', text: '' });
+              chatStore.updateMessage(executorMessageId, { content: blocks });
+            }
+          },
+          onChunk: (chunk: string) => {
+            if (!executorTextSegment || executorTextSegment.type !== 'text') {
+              executorTextSegment = { type: 'text', text: '' };
+              executorSegments.push(executorTextSegment);
+            }
+            executorTextSegment.text += chunk;
+            chatStore.updateMessage(executorMessageId, { content: buildExecutorBlocks() });
+          },
+          onToolStart: () => {},
+          onImageGenerated: (url: string, prompt: string, revisedPrompt?: string) => {
+            executorSegments.push({ type: 'image', imageUrl: url, imageAlt: prompt, imageCaption: revisedPrompt || prompt });
+            executorTextSegment = null;
+            chatStore.updateMessage(executorMessageId, { content: buildExecutorBlocks() });
+          },
+          onFileGenerated: () => {},
+          onVideoEmbed: (video) => {
+            executorSegments.push({ type: 'video_embed', videoUrl: video.url, videoEmbedUrl: video.embed_url, videoPlatform: video.platform, videoTitle: video.title, videoThumbnail: video.thumbnail, videoTimestamp: video.timestamp });
+            executorTextSegment = null;
+            chatStore.updateMessage(executorMessageId, { content: buildExecutorBlocks() });
+          },
+          onComplete: (response: any) => {
+            chatStore.updateMessage(executorMessageId, {
+              content: buildExecutorBlocks(),
+              isStreaming: false,
+              tokens: response?.usage ? {
+                prompt: response.usage.inputTokens || response.usage.promptTokens || 0,
+                completion: response.usage.outputTokens || response.usage.completionTokens || 0,
+                total: response.usage.totalTokens || 0,
+              } : undefined,
+              cost: response?.cost,
+              stopReason: response?.stopReason || response?.finishReason,
+            });
+            chatStore.completeStreaming();
+            statusStore.completeProcessing();
+            clearTimeout(safetyTimeout);
+          },
+          onError: (error: Error) => {
+            chatStore.updateMessage(executorMessageId, {
+              content: [{ type: 'text', text: `Executor Error: ${error.message}` }],
+              isStreaming: false,
+            });
+            chatStore.completeStreaming();
+            statusStore.completeProcessing();
+            clearTimeout(safetyTimeout);
+          },
+        };
+
+        // Send to executor with the planner's output appended as context
+        const executorMessages = [
+          ...messages,
+          {
+            id: `planner_${Date.now()}`,
+            role: MessageRole.ASSISTANT,
+            content: [{ type: 'text' as const, text: plannerOutput }],
+            timestamp: Date.now(),
+            conversationId,
+          },
+          {
+            id: `planner_directive_${Date.now()}`,
+            role: MessageRole.USER,
+            content: [{ type: 'text' as const, text: 'Now execute the plan above. Provide the final, polished response to the user.' }],
+            timestamp: Date.now(),
+            conversationId,
+          },
+        ];
+
+        await api.sendMessageStream(executorMessages, executorProvider, executorCallbacks);
       } else {
         await api.sendMessageStream(messages, provider, streamCallbacks);
       }
@@ -814,6 +1140,12 @@ export function InputArea({ conversationId }: InputAreaProps) {
     }
   };
   
+  // Expose send function via ref for voice conversation mode
+  useEffect(() => {
+    if (sendRef) sendRef.current = handleSend;
+    return () => { if (sendRef) sendRef.current = null; };
+  }, [sendRef, handleSend]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Cmd/Ctrl + Enter to send
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -907,6 +1239,11 @@ export function InputArea({ conversationId }: InputAreaProps) {
   };
 
   const handleStop = () => {
+    // Abort the in-flight fetch/SSE stream
+    try {
+      getAPIService().cancel();
+    } catch (_) { /* service may not be initialized */ }
+
     const chatStore = useChatStore.getState();
 
     // Clear streaming on the current message
@@ -930,9 +1267,6 @@ export function InputArea({ conversationId }: InputAreaProps) {
         }
       }
     }
-
-    // Server-side streaming — abort handled by the server proxy
-    // UI state is already cleaned up above
   };
 
   // ========================================================================
@@ -942,84 +1276,7 @@ export function InputArea({ conversationId }: InputAreaProps) {
   const canSend = (inputValue.trim() || attachedFiles.length > 0) && !isSendingMessage;
   
   return (
-    <div className="border-t border-border-primary bg-background-secondary">
-      {/* Proactive Suggestions */}
-      <ProactiveSuggestions
-        onAction={(handler, params) => {
-          if (handler === 'switchMode' && params?.['mode']) {
-            useModeStore.getState().setMode(params['mode'] as any);
-          } else if (handler === 'openModal' && params?.['type']) {
-            useUIStore.getState().openModal({ type: params['type'] as any });
-          }
-        }}
-      />
-
-      {/* Editing Banner */}
-      {editingMessageId && (
-        <div className="flex items-center justify-between px-4 py-2 bg-brand-primary/10 border-b border-brand-primary/20">
-          <span className="text-xs font-medium text-brand-primary">Editing message</span>
-          <button
-            onClick={cancelEditMessage}
-            className="text-xs text-text-tertiary hover:text-text-primary"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
-      {/* Attached Files */}
-      <AnimatePresence>
-        {attachedFiles.length > 0 && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden border-b border-border-primary"
-          >
-            <div className="flex flex-wrap gap-2 p-4">
-              {attachedFiles.map((file, index) => (
-                <div
-                  key={index}
-                  className="group relative flex items-center gap-2 rounded-lg border border-border-primary bg-background-tertiary p-2 pr-8"
-                >
-                  {/* File Icon/Preview */}
-                  {file.type.startsWith('image/') ? (
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={file.name}
-                      className="h-12 w-12 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded bg-background-elevated">
-                      <PaperClipIcon className="h-6 w-6 text-text-tertiary" />
-                    </div>
-                  )}
-                  
-                  {/* File Info */}
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-text-primary" style={{ maxWidth: '150px' }}>
-                      {file.name}
-                    </p>
-                    <p className="text-xs text-text-tertiary">
-                      {formatFileSize(file.size)}
-                    </p>
-                  </div>
-                  
-                  {/* Remove Button */}
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="absolute right-1 top-1 rounded bg-background-primary p-1 opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    <XMarkIcon className="h-4 w-4 text-text-tertiary" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
+    <div className="bg-transparent">
       {/* Full-Screen Drag Overlay */}
       {isDragging && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background-primary/80 backdrop-blur-sm">
@@ -1035,12 +1292,93 @@ export function InputArea({ conversationId }: InputAreaProps) {
         </div>
       )}
 
-      {/* Input Container */}
-      <div className="p-4">
+      {/* Island Container */}
+      <div className="max-w-3xl mx-auto w-full px-4 pb-4 pt-2">
+        {/* Proactive Suggestion Panel */}
+        <ProactiveSuggestionPanel />
+
+        {/* Proactive Suggestions */}
+        <ProactiveSuggestions
+          onAction={(handler, params) => {
+            if (handler === 'switchMode' && params?.['mode']) {
+              useModeStore.getState().setMode(params['mode'] as any);
+            } else if (handler === 'openModal' && params?.['type']) {
+              useUIStore.getState().openModal({ type: params['type'] as any });
+            }
+          }}
+        />
+
+        {/* Editing Banner */}
+        {editingMessageId && (
+          <div className="flex items-center justify-between px-4 py-2 mb-2 rounded-xl bg-brand-primary/10 border border-brand-primary/20">
+            <span className="text-xs font-medium text-brand-primary">Editing message</span>
+            <button
+              onClick={cancelEditMessage}
+              className="text-xs text-text-tertiary hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Attached Files */}
+        <AnimatePresence>
+          {attachedFiles.length > 0 && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden mb-2"
+            >
+              <div className="flex flex-wrap gap-2">
+                {attachedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="group relative flex items-center gap-2 rounded-lg border border-border-primary bg-background-tertiary p-2 pr-8"
+                  >
+                    {/* File Icon/Preview */}
+                    {file.type.startsWith('image/') ? (
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="h-12 w-12 rounded object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded bg-background-elevated">
+                        <PaperClipIcon className="h-6 w-6 text-text-tertiary" />
+                      </div>
+                    )}
+
+                    {/* File Info */}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-text-primary" style={{ maxWidth: '150px' }}>
+                        {file.name}
+                      </p>
+                      <p className="text-xs text-text-tertiary">
+                        {formatFileSize(file.size)}
+                      </p>
+                    </div>
+
+                    {/* Remove Button */}
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="absolute right-1 top-1 rounded bg-background-primary p-1 opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <XMarkIcon className="h-4 w-4 text-text-tertiary" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Input Box */}
         <div
-          className="relative rounded-lg border transition-colors border-border-primary bg-background-tertiary"
+          className="relative rounded-2xl border transition-colors border-border-primary bg-background-secondary shadow-lg shadow-black/10"
         >
-          
+
           {/* Textarea */}
           <textarea
             ref={textareaRef}
@@ -1054,9 +1392,9 @@ export function InputArea({ conversationId }: InputAreaProps) {
             rows={1}
             style={{ minHeight: '44px', maxHeight: '144px' }}
           />
-          
+
           {/* Bottom Bar */}
-          <div className="flex items-center justify-between border-t border-border-primary px-4 py-2">
+          <div className="flex items-center justify-between border-t border-border-primary/50 px-4 py-2">
             <div className="flex items-center gap-2">
               {/* File Upload */}
               <input
@@ -1117,48 +1455,33 @@ export function InputArea({ conversationId }: InputAreaProps) {
                 </select>
               )}
 
-              {/* Computer Use Toggle - Claude only, requires backend + plan */}
-              {!isGPTMode && caps.canComputerUse && (
-                <button
-                  onClick={toggleComputerUse}
-                  className={`rounded p-1.5 transition-colors ${
-                    enableComputerUse
-                      ? 'text-brand-primary bg-brand-primary/10 hover:bg-brand-primary/20'
-                      : 'text-text-tertiary hover:bg-background-hover hover:text-text-primary'
-                  }`}
-                  title={enableComputerUse ? 'Computer use enabled' : 'Enable computer use'}
-                >
-                  <ComputerDesktopIcon className="h-5 w-5" />
-                </button>
-              )}
-
-              {/* Text Editor Toggle - Claude only, requires backend */}
-              {!isGPTMode && caps.isApp && (
-                <button
-                  onClick={toggleTextEditor}
-                  className={`rounded p-1.5 transition-colors ${
-                    enableTextEditor
-                      ? 'text-brand-primary bg-brand-primary/10 hover:bg-background-hover hover:text-text-primary'
-                      : 'text-text-tertiary hover:bg-background-hover hover:text-text-primary'
-                  }`}
-                  title={enableTextEditor ? 'Text editor enabled' : 'Enable text editor'}
-                >
-                  <CodeBracketIcon className="h-5 w-5" />
-                </button>
-              )}
-
-              {/* Voice Input - requires browser SpeechRecognition */}
-              {caps.canVoiceInput && (
-                <button
-                  onClick={isListening ? stopListening : startListening}
-                  className={`rounded p-1.5 transition-colors ${
-                    isListening
+              {/* Voice Input — MediaRecorder + Whisper (with Web Speech preview) */}
+              <button
+                onClick={isListening ? stopListening : startListening}
+                disabled={isTranscribing}
+                className={`rounded p-1.5 transition-colors ${
+                  isTranscribing
+                    ? 'text-amber-400 bg-amber-400/10 cursor-wait'
+                    : isListening
                       ? 'text-red-400 bg-red-400/10 hover:bg-red-400/20 animate-pulse'
                       : 'text-text-tertiary hover:bg-background-hover hover:text-text-primary'
-                  }`}
-                  title={isListening ? 'Stop listening' : 'Voice input'}
+                }`}
+                title={isTranscribing ? 'Transcribing...' : isListening ? 'Stop listening' : 'Voice input'}
+              >
+                <MicrophoneIcon className="h-5 w-5" />
+              </button>
+
+              {/* Voice Conversation Mode */}
+              {onOpenVoiceConversation && (
+                <button
+                  onClick={onOpenVoiceConversation}
+                  className="rounded p-1.5 text-text-tertiary transition-colors hover:bg-background-hover hover:text-text-primary"
+                  title="Voice conversation mode"
                 >
-                  <MicrophoneIcon className="h-5 w-5" />
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+                    <circle cx="12" cy="12" r="4.5" fill="currentColor" />
+                  </svg>
                 </button>
               )}
             </div>
@@ -1196,12 +1519,6 @@ export function InputArea({ conversationId }: InputAreaProps) {
             )}
           </div>
         </div>
-        
-        {/* Helper Text */}
-        <p className="mt-2 text-xs text-text-quaternary">
-          Press <kbd className="rounded bg-background-elevated px-1.5 py-0.5 font-mono">Enter</kbd> to send,{' '}
-          <kbd className="rounded bg-background-elevated px-1.5 py-0.5 font-mono">Shift+Enter</kbd> for new line
-        </p>
       </div>
     </div>
   );

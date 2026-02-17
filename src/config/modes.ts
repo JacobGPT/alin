@@ -11,7 +11,7 @@ import { RightPanelContent } from '../types/ui';
 // MODE TYPES
 // ============================================================================
 
-export type ALINMode = 'regular' | 'coding' | 'image' | 'tbwo' | 'research';
+export type ALINMode = 'regular' | 'coding' | 'image' | 'tbwo' | 'research' | 'voice';
 
 export interface ModeConfig {
   id: ALINMode;
@@ -110,6 +110,18 @@ export const MODE_CONFIGS: Record<ALINMode, ModeConfig> = {
       emphasizeWebSearch: true,
       showSourceTracker: true,
     },
+  },
+
+  voice: {
+    id: 'voice',
+    name: 'Voice',
+    description: 'Voice conversation with spoken responses',
+    icon: 'Microphone',
+    color: 'text-rose-400',
+    enabledTools: ['change_voice'],
+    systemPromptAddition: '', // Prompt now served by server/prompts/voiceMode.js
+    rightPanelContent: RightPanelContent.NONE,
+    features: {},
   },
 };
 

@@ -10,7 +10,7 @@
  * - Export/import
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,14 +20,11 @@ import {
   ChartBarIcon,
   Bars3Icon,
   ArrowsRightLeftIcon,
-  CameraIcon,
-  ClockIcon,
 } from '@heroicons/react/24/outline';
 
 // Store
 import { useChatStore } from '@store/chatStore';
 import { useUIStore } from '@store/uiStore';
-import { RightPanelContent } from '../../types/ui';
 
 // Components
 import { MessageList } from './MessageList';
@@ -36,7 +33,7 @@ import { ModelSelector } from './ModelSelector';
 import { ModeSelector } from './ModeSelector';
 import { Button } from '@components/ui/Button';
 import { BackgroundJobIndicator } from './BackgroundJobIndicator';
-import { useCapabilities } from '../../hooks/useCapabilities';
+import { VoiceConversation } from './VoiceConversation';
 
 // ============================================================================
 // CHATCONTAINER COMPONENT
@@ -45,7 +42,9 @@ import { useCapabilities } from '../../hooks/useCapabilities';
 export default function ChatContainer() {
   const { conversationId } = useParams();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sendRef = useRef<(() => void) | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [voiceConvOpen, setVoiceConvOpen] = useState(false);
   
   // Store state
   const currentConversation = useChatStore((state) => state.getCurrentConversation());
@@ -56,8 +55,6 @@ export default function ChatContainer() {
   const openModal = useUIStore((state) => state.openModal);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const sidebarCollapsed = useUIStore((state) => state.layout.sidebarCollapsed);
-  const caps = useCapabilities();
-  
   // ========================================================================
   // EFFECTS
   // ========================================================================
@@ -118,14 +115,6 @@ export default function ChatContainer() {
     openModal({ type: 'audit-dashboard' });
   };
 
-  const handleVision = () => {
-    useUIStore.getState().setRightPanel(RightPanelContent.VISION, true);
-  };
-
-  const handleTimeline = () => {
-    useUIStore.getState().setRightPanel(RightPanelContent.TIME_TRAVEL, true);
-  };
-  
   // ========================================================================
   // RENDER
   // ========================================================================
@@ -187,30 +176,6 @@ export default function ChatContainer() {
 
           {/* Model Selector */}
           <ModelSelector />
-
-          {/* Vision / Screenshot — desktop only */}
-          {caps.isApp && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleVision}
-              leftIcon={<CameraIcon className="h-4 w-4" />}
-              className="hidden lg:inline-flex"
-            >
-              Vision
-            </Button>
-          )}
-
-          {/* Timeline / Time Travel */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleTimeline}
-            leftIcon={<ClockIcon className="h-4 w-4" />}
-            className="hidden lg:inline-flex"
-          >
-            Timeline
-          </Button>
 
           {/* Export */}
           <Button
@@ -282,8 +247,10 @@ export default function ChatContainer() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="relative flex-1 overflow-y-auto"
+        className="relative flex-1 overflow-y-auto flex flex-col"
       >
+        {/* Spacer pushes messages to bottom when few messages */}
+        <div className="flex-1" />
         {/* Message List */}
         <MessageList
           messages={currentConversation.messages}
@@ -313,8 +280,20 @@ export default function ChatContainer() {
         </AnimatePresence>
       </div>
       
+      {/* Voice Conversation Overlay */}
+      {voiceConvOpen && (
+        <VoiceConversation
+          onClose={() => setVoiceConvOpen(false)}
+          onSend={() => sendRef.current?.()}
+        />
+      )}
+
       {/* Input Area */}
-      <InputArea conversationId={currentConversation.id} />
+      <InputArea
+        conversationId={currentConversation.id}
+        onOpenVoiceConversation={() => setVoiceConvOpen(true)}
+        sendRef={sendRef}
+      />
     </div>
   );
 }

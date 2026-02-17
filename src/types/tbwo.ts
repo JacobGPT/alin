@@ -942,7 +942,7 @@ export interface ALINSuggestion {
 export interface ModelRoutingRule {
   podRole: PodRole | '*';
   taskPattern?: string;   // regex on task name (optional)
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'gemini' | 'deepseek';
   model: string;
   reason?: string;
 }

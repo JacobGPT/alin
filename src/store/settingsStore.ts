@@ -64,10 +64,11 @@ export interface ChatPreferences {
 
 export interface VoicePreferences {
   enabled: boolean;
-  voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+  voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'rachel' | 'drew' | 'bella' | 'josh' | 'adam' | 'sam';
   speed: number; // 0.25 - 4.0
   autoPlay: boolean;
   pushToTalk: boolean;
+  ttsProvider: 'auto' | 'elevenlabs' | 'openai' | 'browser'; // auto = ElevenLabs → OpenAI → Browser
 }
 
 export interface TBWOPreferences {
@@ -119,12 +120,18 @@ export interface ExperimentalFeatures {
 // ============================================================================
 
 // Model mode type
-export type ModelMode = 'claude' | 'gpt' | 'both' | 'auto' | 'hybrid' | 'local';
+export type ModelMode = 'claude' | 'gpt' | 'gemini' | 'deepseek' | 'both' | 'auto' | 'hybrid' | 'local';
 
 // Available model versions
 export interface ModelVersions {
   claude: string;
   gpt: string;
+  gemini: string;
+  deepseek: string;
+  bothClaude: string;
+  bothGPT: string;
+  hybridPlanner: string;
+  hybridExecutor: string;
 }
 
 interface SettingsState {
@@ -274,10 +281,11 @@ const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
 
 const DEFAULT_VOICE_PREFERENCES: VoicePreferences = {
   enabled: false,
-  voice: 'nova',
+  voice: 'rachel',
   speed: 1.0,
   autoPlay: false,
   pushToTalk: true,
+  ttsProvider: 'auto',
 };
 
 const DEFAULT_TBWO_PREFERENCES: TBWOPreferences = {
@@ -352,7 +360,13 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       modelMode: 'claude' as ModelMode,
       selectedModelVersions: {
         claude: 'claude-sonnet-4-5-20250929',
-        gpt: 'gpt-4o',
+        gpt: 'gpt-5',
+        gemini: 'gemini-2.5-flash',
+        deepseek: 'deepseek-chat',
+        bothClaude: 'claude-sonnet-4-5-20250929',
+        bothGPT: 'gpt-5',
+        hybridPlanner: 'claude-sonnet-4-5-20250929',
+        hybridExecutor: 'gpt-5',
       },
       enableThinking: true,
       thinkingBudget: 10000,
@@ -665,6 +679,17 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       partialize: (state) => {
         const { apiKeys, ...rest } = state;
         return rest;
+      },
+      merge: (persisted: any, current: any) => {
+        const merged = { ...current, ...persisted };
+        // Deep-merge selectedModelVersions so new fields get defaults
+        if (persisted?.selectedModelVersions) {
+          merged.selectedModelVersions = {
+            ...current.selectedModelVersions,
+            ...persisted.selectedModelVersions,
+          };
+        }
+        return merged;
       },
     }
   )

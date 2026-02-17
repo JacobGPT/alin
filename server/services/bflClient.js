@@ -26,7 +26,7 @@ async function bflRequest(endpoint, body) {
   const res = await fetch(`${BFL_BASE_URL}/${endpoint}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${BFL_API_KEY}`,
+      'x-key': BFL_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -49,16 +49,17 @@ async function bflRequest(endpoint, body) {
  * Poll for task completion with timeout
  * BFL API is async: submit → get task ID → poll until Ready
  */
-async function pollForResult(taskId) {
+async function pollForResult(taskId, pollingUrl) {
   const startTime = Date.now();
+  const pollUrl = pollingUrl || `${BFL_BASE_URL}/get_result?id=${taskId}`;
 
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
     if (Date.now() - startTime > GENERATION_TIMEOUT_MS) {
       throw new Error(`Image generation timed out after ${GENERATION_TIMEOUT_MS / 1000}s (task: ${taskId})`);
     }
 
-    const res = await fetch(`${BFL_BASE_URL}/get_result?id=${taskId}`, {
-      headers: { 'Authorization': `Bearer ${BFL_API_KEY}` },
+    const res = await fetch(pollUrl, {
+      headers: { 'x-key': BFL_API_KEY },
     });
 
     if (!res.ok) {
@@ -196,8 +197,8 @@ async function generateImage(prompt, options = {}, userId = 'system', r2Client =
     throw new Error('BFL did not return a task ID');
   }
 
-  // Poll for completion
-  const result = await pollForResult(task.id);
+  // Poll for completion (use polling_url if provided by the API)
+  const result = await pollForResult(task.id, task.polling_url);
 
   // Download and store in R2
   const imageUrl = result.sample || result.url || result.image;
@@ -242,7 +243,7 @@ async function editImage(prompt, sourceImageUrl, options = {}, userId = 'system'
   const task = await bflRequest('flux-2-max', body);
   if (!task.id) throw new Error('BFL did not return a task ID');
 
-  const result = await pollForResult(task.id);
+  const result = await pollForResult(task.id, task.polling_url);
   const imageUrl = result.sample || result.url || result.image;
   if (!imageUrl) throw new Error('BFL edit result did not contain an image URL');
 
@@ -262,7 +263,7 @@ async function checkBFLHealth() {
   if (!BFL_API_KEY) return { ok: false, error: 'BFL_API_KEY not configured' };
   try {
     const res = await fetch(`${BFL_BASE_URL}/credits`, {
-      headers: { 'Authorization': `Bearer ${BFL_API_KEY}` },
+      headers: { 'x-key': BFL_API_KEY },
     });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const data = await res.json();

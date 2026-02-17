@@ -12,8 +12,8 @@
  * - Annotations
  */
 
-import { useState, memo } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, memo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -36,6 +36,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { HandThumbUpIcon as HandThumbUpSolid, HandThumbDownIcon as HandThumbDownSolid } from '@heroicons/react/24/solid';
 import 'katex/dist/katex.min.css';
+import { VideoEmbed } from './VideoEmbed';
 
 // Types
 import { MessageRole } from '../../types/chat';
@@ -46,6 +47,8 @@ import { useChatStore } from '@store/chatStore';
 import { useSettingsStore } from '@store/settingsStore';
 import { useMemoryStore } from '@store/memoryStore';
 import { telemetry } from '../../services/telemetryService';
+import { onUserCorrection } from '../../services/selfModelService';
+import { useTrustStore } from '../../store/trustStore';
 // Components
 import { CodeBlock } from './CodeBlock';
 import { ToolActivityPanel } from './ToolActivityPanel';
@@ -95,6 +98,149 @@ function ThinkingBlockDisplay({ content, isStreaming }: { content: string; isStr
 }
 
 // ============================================================================
+// AUTHENTICATED IMAGE — fetches /api/ URLs with auth header
+// ============================================================================
+
+function useAuthToken(): string | null {
+  const [token, setToken] = useState<string | null>(null);
+  useEffect(() => {
+    import('@store/authStore').then(({ useAuthStore }) => {
+      setToken(useAuthStore.getState().token);
+    });
+  }, []);
+  return token;
+}
+
+function AuthenticatedImage({ url, alt, className, style }: { url: string; alt: string; className?: string; style?: React.CSSProperties }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const token = useAuthToken();
+  const needsAuth = url.startsWith('/api/') && !url.startsWith('/api/assets/');
+
+  useEffect(() => {
+    if (!needsAuth) return;
+    // Reset state on each attempt (fixes race condition when token arrives late)
+    setError(false);
+    setBlobUrl(null);
+    // Wait for token before fetching auth-protected URLs
+    if (!token) return;
+    let revoke: string | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (cancelled) return;
+        if (!res.ok) { setError(true); return; }
+        const blob = await res.blob();
+        if (cancelled) return;
+        revoke = URL.createObjectURL(blob);
+        setBlobUrl(revoke);
+      } catch { if (!cancelled) setError(true); }
+    })();
+    return () => { cancelled = true; if (revoke) URL.revokeObjectURL(revoke); };
+  }, [url, token, needsAuth]);
+
+  if (error) return <div className="text-sm text-text-tertiary italic">Failed to load image</div>;
+  const src = needsAuth ? blobUrl : url;
+  if (needsAuth && !blobUrl) {
+    return <div className="animate-pulse bg-background-tertiary rounded-lg" style={{ width: 300, height: 200, ...style }} />;
+  }
+  return <img src={src!} alt={alt} className={className} style={style} />;
+}
+
+// ============================================================================
+// MEDIA LIGHTBOX — fullscreen overlay for images & videos
+// ============================================================================
+
+function MediaLightbox({
+  src,
+  alt,
+  type,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  type: 'image' | 'video';
+  onClose: () => void;
+}) {
+  // Close on Escape key
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm cursor-zoom-out"
+        onClick={onClose}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
+        >
+          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Media content */}
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="max-w-[90vw] max-h-[90vh]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {type === 'image' ? (
+            <img
+              src={src}
+              alt={alt}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            />
+          ) : (
+            <video
+              src={src}
+              controls
+              autoPlay
+              className="max-w-full max-h-[90vh] rounded-lg shadow-2xl"
+            />
+          )}
+        </motion.div>
+
+        {/* Caption */}
+        {alt && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-lg text-center">
+            <span className="text-sm text-white/70 bg-black/50 px-4 py-2 rounded-full">{alt}</span>
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+async function fetchWithAuth(url: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (url.startsWith('/api/')) {
+    try {
+      const { useAuthStore } = await import('@store/authStore');
+      const token = useAuthStore.getState().token;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    } catch {}
+  }
+  const res = await fetch(url, { headers });
+  return res.blob();
+}
+
+// ============================================================================
 // MESSAGE COMPONENT
 // ============================================================================
 
@@ -111,9 +257,10 @@ export const MessageComponent = memo(function MessageComponent({
   showTimestamp,
   conversationId,
 }: MessageComponentProps) {
-  const [isHovered, setIsHovered] = useState(false);
+  // isHovered state removed — using CSS group-hover:opacity-100 instead to prevent layout shift
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string; type: 'image' | 'video' } | null>(null);
 
   // Store
   const deleteMessage = useChatStore((state) => state.deleteMessage);
@@ -194,31 +341,91 @@ export const MessageComponent = memo(function MessageComponent({
         isPinned: false,
         userModified: true,
       });
+
+      // Record feedback in trust system (invisible to user, powers intelligence)
+      useTrustStore.getState().recordFeedback(newFeedback);
+
+      // Record negative feedback as a user correction for self-model learning
+      if (newFeedback === 'negative') {
+        onUserCorrection(
+          textContent,
+          'User indicated this response was unhelpful',
+          message.model || 'general',
+        ).catch(() => {});
+      }
     }
   };
 
-  const handleSpeak = () => {
+  const handleSpeak = async () => {
     if (isSpeaking) {
+      // Stop any playing audio or Web Speech
       speechSynthesis.cancel();
+      const existing = document.querySelector(`audio[data-msg-id="${message.id}"]`) as HTMLAudioElement;
+      if (existing) { existing.pause(); existing.remove(); }
       setIsSpeaking(false);
       return;
     }
 
-    const textContent = message.content
+    const rawText = message.content
       .filter((block) => block.type === 'text')
       .map((block) => (block as any).text)
       .join('\n\n');
 
-    if (!textContent.trim()) return;
+    if (!rawText.trim()) return;
 
-    const utterance = new SpeechSynthesisUtterance(textContent);
-    utterance.rate = voicePreferences.speed || 1;
-    utterance.pitch = 1;
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    // Clean markdown for speech
+    const cleanText = rawText
+      .replace(/```[\s\S]*?```/g, ' code block omitted ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, 'image: $1')
+      .replace(/[-*+]\s/g, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
 
-    speechSynthesis.speak(utterance);
     setIsSpeaking(true);
+
+    // Try server TTS (ElevenLabs primary, OpenAI fallback)
+    try {
+      const token = (await import('@store/authStore')).useAuthStore.getState().token;
+      const ttsRes = await fetch('/api/voice/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text: cleanText, voice: voicePreferences.voice || 'nova' }),
+      });
+
+      if (ttsRes.ok && ttsRes.headers.get('content-type')?.includes('audio')) {
+        const blob = await ttsRes.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audio.setAttribute('data-msg-id', message.id);
+        audio.playbackRate = voicePreferences.speed || 1;
+        audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(audioUrl); audio.remove(); };
+        audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(audioUrl); audio.remove(); };
+        document.body.appendChild(audio);
+        await audio.play();
+        return;
+      }
+    } catch { /* fall through to Web Speech API */ }
+
+    // Fallback: Web Speech API
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = voicePreferences.speed || 1;
+      utterance.pitch = 1;
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      speechSynthesis.speak(utterance);
+    } else {
+      setIsSpeaking(false);
+    }
   };
   
   // ========================================================================
@@ -241,6 +448,22 @@ export const MessageComponent = memo(function MessageComponent({
     return openFence ? text + '\n' + openFence : text;
   };
 
+  // Convert LaTeX delimiters \[...\] and \(...\) to $$...$$ and $...$
+  // so remark-math can parse them for KaTeX rendering
+  const convertLatexDelimiters = (text: string): string => {
+    // Don't convert inside code blocks
+    const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
+    return parts.map((part, i) => {
+      // Odd indices are code blocks — leave them alone
+      if (i % 2 === 1) return part;
+      // Convert display math: \[...\] → $$...$$
+      let converted = part.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `$$${inner}$$`);
+      // Convert inline math: \(...\) → $...$
+      converted = converted.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => `$${inner}$`);
+      return converted;
+    }).join('');
+  };
+
   const renderContentBlock = (block: ContentBlock, index: number) => {
     switch (block.type) {
       case 'text':
@@ -252,7 +475,8 @@ export const MessageComponent = memo(function MessageComponent({
           );
         }
         // During streaming, close unclosed code fences so code renders live in a block
-        const displayText = message.isStreaming ? closeUnfinishedCodeFences(block.text || '') : (block.text || '');
+        const rawText = message.isStreaming ? closeUnfinishedCodeFences(block.text || '') : (block.text || '');
+        const displayText = convertLatexDelimiters(rawText);
         return (
           <div key={index} className="markdown-content">
             <ReactMarkdown
@@ -278,6 +502,18 @@ export const MessageComponent = memo(function MessageComponent({
                     </code>
                   );
                 },
+                a: ({ href, children, ...props }: any) => {
+                  if (href?.startsWith('/api/')) {
+                    // Internal API link — suppress navigation
+                    return <span className="text-brand-primary cursor-default" {...props}>{children}</span>;
+                  }
+                  // External link — open in new tab
+                  return (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline" {...props}>
+                      {children}
+                    </a>
+                  );
+                },
               }}
             >
               {displayText}
@@ -297,26 +533,26 @@ export const MessageComponent = memo(function MessageComponent({
       
       case 'image':
         return (
-          <div key={index} className="my-4 group/img relative inline-block">
-            <img
-              src={block.url}
-              alt={block.alt || 'Generated image'}
-              className="max-w-full rounded-lg border border-border-primary"
-              style={{ maxHeight: '500px' }}
-            />
+          <div key={index} className="my-1 group/img relative inline-block">
+            {/* Click to enlarge */}
+            <div
+              className="cursor-zoom-in"
+              onClick={() => setLightbox({ src: block.url, alt: block.alt || 'Generated image', type: 'image' })}
+            >
+              <AuthenticatedImage
+                url={block.url}
+                alt={block.alt || 'Generated image'}
+                className="max-w-full rounded-lg border border-border-primary hover:border-brand-primary/50 transition-colors"
+                style={{ maxHeight: '500px' }}
+              />
+            </div>
             {/* Download button overlay */}
-            <a
-              href={block.url}
-              download={`alin-image-${Date.now()}.png`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
               className="absolute top-2 right-2 rounded-lg bg-background-primary/80 p-2 opacity-0 group-hover/img:opacity-100 transition-opacity backdrop-blur-sm border border-border-primary hover:bg-background-elevated"
               title="Download image"
               onClick={(e) => {
                 e.stopPropagation();
-                // Fetch and download since image URLs may be cross-origin
-                fetch(block.url)
-                  .then(res => res.blob())
+                fetchWithAuth(block.url)
                   .then(blob => {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -326,14 +562,12 @@ export const MessageComponent = memo(function MessageComponent({
                     URL.revokeObjectURL(url);
                   })
                   .catch(() => {
-                    // Fallback: open in new tab
                     window.open(block.url, '_blank');
                   });
-                e.preventDefault();
               }}
             >
               <ArrowDownTrayIcon className="h-5 w-5 text-text-primary" />
-            </a>
+            </button>
             {block.caption && (
               <p className="mt-2 text-sm text-text-tertiary">{block.caption}</p>
             )}
@@ -344,10 +578,10 @@ export const MessageComponent = memo(function MessageComponent({
         return (
           <div
             key={index}
-            className="my-2 flex items-center gap-3 rounded-lg border border-border-primary bg-background-tertiary p-3"
+            className="my-1 flex items-center gap-2 rounded-lg border border-border-primary bg-background-tertiary p-2"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-elevated">
-              <ClipboardIcon className="h-5 w-5 text-text-tertiary" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-elevated">
+              <ClipboardIcon className="h-4 w-4 text-text-tertiary" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-text-primary truncate">
@@ -388,6 +622,19 @@ export const MessageComponent = memo(function MessageComponent({
           />
         );
 
+      case 'video_embed':
+        return (
+          <VideoEmbed
+            key={index}
+            url={(block as any).url}
+            embed_url={(block as any).embed_url}
+            platform={(block as any).platform}
+            title={(block as any).title}
+            thumbnail={(block as any).thumbnail}
+            timestamp={(block as any).timestamp}
+          />
+        );
+
       default:
         return null;
     }
@@ -399,8 +646,6 @@ export const MessageComponent = memo(function MessageComponent({
   
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       className={cn(
         'group relative rounded-lg transition-colors',
         isUser && 'ml-auto max-w-[80%]',
@@ -421,8 +666,8 @@ export const MessageComponent = memo(function MessageComponent({
 
         {/* Content */}
         <div className={cn(
-          'min-w-0 space-y-2',
-          isUser ? 'rounded-2xl bg-background-tertiary/80 px-4 py-3 w-fit max-w-full border border-border-primary/30' : 'flex-1'
+          'min-w-0',
+          isUser ? 'flex flex-col items-end gap-2' : 'flex-1 space-y-2'
         )}>
           {/* Role Badge - assistant/system only */}
           {showAvatar && !isUser && (
@@ -432,19 +677,61 @@ export const MessageComponent = memo(function MessageComponent({
                 {message.role === MessageRole.SYSTEM && 'System'}
                 {message.role === MessageRole.THINKING && 'Thinking'}
               </span>
+              {/* Model badge for Both/Hybrid mode */}
+              {message.modelLabel && (
+                <span className={cn(
+                  'text-xs font-medium px-1.5 py-0.5 rounded',
+                  message.modelLabel.toLowerCase().includes('claude')
+                    ? 'bg-orange-500/15 text-orange-400'
+                    : message.modelLabel.toLowerCase().includes('gemini')
+                    ? 'bg-blue-500/15 text-blue-400'
+                    : message.modelLabel.toLowerCase().includes('deepseek')
+                    ? 'bg-cyan-500/15 text-cyan-400'
+                    : 'bg-green-500/15 text-green-400'
+                )}>
+                  {message.modelLabel}
+                </span>
+              )}
+              {/* Hybrid phase badge */}
+              {message.hybridPhase && (
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400">
+                  {message.hybridPhase === 'planner' ? 'Planner' : 'Executor'}
+                </span>
+              )}
             </div>
           )}
-          {isUser && message.isEdited && (
-            <span className="text-xs text-text-quaternary text-right">(edited - branched)</span>
-          )}
 
-          {/* Message Content */}
-          <div className={cn(
-            'prose prose-invert max-w-none',
-            isUser && 'text-right'
-          )}>
-            {message.content.map((block, index) => renderContentBlock(block, index))}
-          </div>
+          {/* Message Content — for user messages, attachments float ABOVE the text bubble (like Claude/ChatGPT) */}
+          {isUser ? (() => {
+            const attachmentBlocks = message.content.filter(b => b.type === 'image' || b.type === 'file');
+            const otherBlocks = message.content.filter(b => b.type !== 'image' && b.type !== 'file');
+
+            return (
+              <>
+                {/* Attachments — separate row above text, no bubble background */}
+                {attachmentBlocks.length > 0 && (
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    {attachmentBlocks.map((block, index) => renderContentBlock(block, index))}
+                  </div>
+                )}
+                {/* Text bubble — compact, separate from attachments */}
+                {otherBlocks.length > 0 && (
+                  <div className="rounded-2xl bg-background-tertiary/80 px-4 py-2.5 w-fit max-w-full border border-border-primary/30">
+                    {message.isEdited && (
+                      <span className="text-xs text-text-quaternary block text-right mb-1">(edited - branched)</span>
+                    )}
+                    <div className="prose prose-invert max-w-none text-right">
+                      {otherBlocks.map((block, index) => renderContentBlock(block, attachmentBlocks.length + index))}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })() : (
+            <div className="prose prose-invert max-w-none">
+              {message.content.map((block, index) => renderContentBlock(block, index))}
+            </div>
+          )}
           
           {/* Metadata — only timestamp, no internal metrics */}
           {showTimestamp && chatPreferences.showTimestamps && (
@@ -453,40 +740,6 @@ export const MessageComponent = memo(function MessageComponent({
               isUser && 'justify-end'
             )}>
               <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-            </div>
-          )}
-
-          {/* Feedback buttons (thumbs up/down) — assistant messages only */}
-          {!isUser && !message.isStreaming && (
-            <div className="flex items-center gap-1 mt-1">
-              <button
-                onClick={() => handleFeedback('positive')}
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  message.feedback === 'positive'
-                    ? 'text-green-400 bg-green-500/15'
-                    : 'text-text-quaternary hover:text-green-400 hover:bg-green-500/10'
-                )}
-                title="Good response"
-              >
-                {message.feedback === 'positive'
-                  ? <HandThumbUpSolid className="w-3.5 h-3.5" />
-                  : <HandThumbUpIcon className="w-3.5 h-3.5" />}
-              </button>
-              <button
-                onClick={() => handleFeedback('negative')}
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  message.feedback === 'negative'
-                    ? 'text-red-400 bg-red-500/15'
-                    : 'text-text-quaternary hover:text-red-400 hover:bg-red-500/10'
-                )}
-                title="Bad response"
-              >
-                {message.feedback === 'negative'
-                  ? <HandThumbDownSolid className="w-3.5 h-3.5" />
-                  : <HandThumbDownIcon className="w-3.5 h-3.5" />}
-              </button>
             </div>
           )}
 
@@ -507,8 +760,8 @@ export const MessageComponent = memo(function MessageComponent({
           )}
         </div>
         
-        {/* Actions */}
-        {isHovered && !message.isStreaming && (
+        {/* Actions — always rendered, opacity-only transition to prevent layout shift */}
+        {!message.isStreaming && (
           <div className={cn(
             'flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity',
             isUser && 'order-first'
@@ -564,6 +817,34 @@ export const MessageComponent = memo(function MessageComponent({
                 >
                   {isSpeaking ? <StopIcon className="h-4 w-4" /> : <SpeakerWaveIcon className="h-4 w-4" />}
                 </button>
+                <button
+                  onClick={() => handleFeedback('positive')}
+                  className={cn(
+                    'rounded p-1 transition-colors',
+                    message.feedback === 'positive'
+                      ? 'text-green-400 bg-green-500/15'
+                      : 'text-text-tertiary hover:text-green-400 hover:bg-green-500/10'
+                  )}
+                  title="Good response"
+                >
+                  {message.feedback === 'positive'
+                    ? <HandThumbUpSolid className="w-3.5 h-3.5" />
+                    : <HandThumbUpIcon className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={() => handleFeedback('negative')}
+                  className={cn(
+                    'rounded p-1 transition-colors',
+                    message.feedback === 'negative'
+                      ? 'text-red-400 bg-red-500/15'
+                      : 'text-text-tertiary hover:text-red-400 hover:bg-red-500/10'
+                  )}
+                  title="Bad response"
+                >
+                  {message.feedback === 'negative'
+                    ? <HandThumbDownSolid className="w-3.5 h-3.5" />
+                    : <HandThumbDownIcon className="w-3.5 h-3.5" />}
+                </button>
               </>
             )}
           </div>
@@ -590,6 +871,16 @@ export const MessageComponent = memo(function MessageComponent({
           </svg>
           <span className="text-xs">Response was truncated due to length limits. Try increasing Max Tokens in Settings.</span>
         </div>
+      )}
+
+      {/* Lightbox for enlarged images/videos */}
+      {lightbox && (
+        <MediaLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          type={lightbox.type}
+          onClose={() => setLightbox(null)}
+        />
       )}
     </div>
   );

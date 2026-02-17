@@ -130,37 +130,37 @@ export interface StreamCallbacks {
 // PRICING (Updated Feb 2026)
 // ============================================================================
 
+// Pricing in $ per million tokens — used with formula: (tokens / 1M) * price
 export const CLAUDE_PRICING: Record<string, { input: number; output: number; cacheWrite?: number; cacheRead?: number }> = {
-  'claude-opus-4-6': {
-    input: 15.0 / 1_000_000,
-    output: 75.0 / 1_000_000,
-    cacheWrite: 18.75 / 1_000_000,
-    cacheRead: 1.5 / 1_000_000,
-  },
-  'claude-opus-4-20250514': {
-    input: 15.0 / 1_000_000,
-    output: 75.0 / 1_000_000,
-    cacheWrite: 18.75 / 1_000_000,
-    cacheRead: 1.5 / 1_000_000,
-  },
-  'claude-sonnet-4-5-20250929': {
-    input: 3.0 / 1_000_000,
-    output: 15.0 / 1_000_000,
-    cacheWrite: 3.75 / 1_000_000,
-    cacheRead: 0.3 / 1_000_000,
-  },
-  'claude-sonnet-4-20250514': {
-    input: 3.0 / 1_000_000,
-    output: 15.0 / 1_000_000,
-    cacheWrite: 3.75 / 1_000_000,
-    cacheRead: 0.3 / 1_000_000,
-  },
-  'claude-haiku-4-5-20251001': {
-    input: 0.8 / 1_000_000,
-    output: 4.0 / 1_000_000,
-    cacheWrite: 1.0 / 1_000_000,
-    cacheRead: 0.08 / 1_000_000,
-  },
+  // Claude
+  'claude-opus-4-6':            { input: 15.0,  output: 75.0,  cacheWrite: 18.75, cacheRead: 1.5 },
+  'claude-opus-4-20250514':     { input: 15.0,  output: 75.0,  cacheWrite: 18.75, cacheRead: 1.5 },
+  'claude-sonnet-4-5-20250929': { input: 3.0,   output: 15.0,  cacheWrite: 3.75,  cacheRead: 0.3 },
+  'claude-sonnet-4-20250514':   { input: 3.0,   output: 15.0,  cacheWrite: 3.75,  cacheRead: 0.3 },
+  'claude-haiku-4-5-20251001':  { input: 0.8,   output: 4.0,   cacheWrite: 1.0,   cacheRead: 0.08 },
+  // GPT
+  'gpt-5.2':       { input: 2.0,  output: 10.0 },
+  'gpt-5.1':       { input: 2.0,  output: 10.0 },
+  'gpt-5':         { input: 2.0,  output: 8.0 },
+  'gpt-5-mini':    { input: 0.4,  output: 1.6 },
+  'gpt-5-nano':    { input: 0.1,  output: 0.4 },
+  'gpt-4.1':       { input: 2.0,  output: 8.0 },
+  'gpt-4.1-mini':  { input: 0.4,  output: 1.6 },
+  'gpt-4.1-nano':  { input: 0.1,  output: 0.4 },
+  'gpt-4o':        { input: 2.5,  output: 10.0 },
+  'gpt-4o-mini':   { input: 0.15, output: 0.6 },
+  'o3':            { input: 2.0,  output: 8.0 },
+  'o4-mini':       { input: 1.1,  output: 4.4 },
+  'o3-mini':       { input: 1.1,  output: 4.4 },
+  // Gemini
+  'gemini-3-pro-preview':  { input: 1.25, output: 10.0 },
+  'gemini-3-flash-preview': { input: 0.15, output: 0.6 },
+  'gemini-2.5-pro':        { input: 1.25, output: 10.0 },
+  'gemini-2.5-flash':      { input: 0.15, output: 0.6 },
+  'gemini-2.5-flash-lite': { input: 0.075, output: 0.3 },
+  // DeepSeek
+  'deepseek-chat':     { input: 0.27, output: 1.1 },
+  'deepseek-reasoner': { input: 0.55, output: 2.19 },
 };
 
 // ============================================================================
@@ -799,14 +799,14 @@ export class ClaudeAPIClient {
     const pricing = CLAUDE_PRICING[this.config.model] ?? defaultPricing;
 
     let cost = 0;
-    cost += usage.inputTokens * pricing.input;
-    cost += usage.outputTokens * pricing.output;
+    cost += (usage.inputTokens / 1_000_000) * pricing.input;
+    cost += (usage.outputTokens / 1_000_000) * pricing.output;
 
     if (usage.cacheCreationTokens && pricing.cacheWrite) {
-      cost += usage.cacheCreationTokens * pricing.cacheWrite;
+      cost += (usage.cacheCreationTokens / 1_000_000) * pricing.cacheWrite;
     }
     if (usage.cacheReadTokens && pricing.cacheRead) {
-      cost += usage.cacheReadTokens * pricing.cacheRead;
+      cost += (usage.cacheReadTokens / 1_000_000) * pricing.cacheRead;
     }
 
     return cost;
@@ -925,8 +925,8 @@ export class ClaudeAPIClient {
       supportsVision: true,
       supportsTools: true,
       supportsStreaming: true,
-      costPer1kPromptTokens: pricing.input * 1000,
-      costPer1kCompletionTokens: pricing.output * 1000,
+      costPer1kPromptTokens: pricing.input / 1000,
+      costPer1kCompletionTokens: pricing.output / 1000,
     };
   }
 

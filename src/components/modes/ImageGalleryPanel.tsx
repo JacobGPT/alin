@@ -3,12 +3,13 @@
  * Connected to imageStore for persistent image tracking.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   PhotoIcon,
   ArrowDownTrayIcon,
   TrashIcon,
   ArrowsPointingOutIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { useImageStore, type GeneratedImage } from '../../store/imageStore';
 
@@ -17,6 +18,11 @@ export function ImageGalleryPanel() {
   const removeImage = useImageStore((state) => state.removeImage);
   const clearImages = useImageStore((state) => state.clearImages);
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+
+  const handleImageError = useCallback((imageId: string) => {
+    setBrokenImages(prev => new Set(prev).add(imageId));
+  }, []);
 
   const handleRemove = (id: string) => {
     removeImage(id);
@@ -53,12 +59,20 @@ export function ImageGalleryPanel() {
       {selectedImage && (
         <div className="p-3 border-b border-border-primary">
           <div className="relative rounded-lg overflow-hidden bg-background-tertiary">
-            <img
-              src={selectedImage.url}
-              alt={selectedImage.prompt}
-              className="w-full h-auto"
-              loading="lazy"
-            />
+            {brokenImages.has(selectedImage.id) ? (
+              <div className="w-full h-48 flex flex-col items-center justify-center bg-background-tertiary text-text-quaternary">
+                <ExclamationTriangleIcon className="h-8 w-8 mb-2" />
+                <span className="text-xs">Image URL expired or unavailable</span>
+              </div>
+            ) : (
+              <img
+                src={selectedImage.url}
+                alt={selectedImage.prompt}
+                className="w-full h-auto"
+                loading="lazy"
+                onError={() => handleImageError(selectedImage.id)}
+              />
+            )}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
               <p className="text-xs text-white line-clamp-2">
                 {selectedImage.revisedPrompt || selectedImage.prompt}
@@ -102,12 +116,20 @@ export function ImageGalleryPanel() {
                 className="group relative rounded-lg overflow-hidden bg-background-tertiary cursor-pointer"
                 onClick={() => setSelectedImage(image)}
               >
-                <img
-                  src={image.url}
-                  alt={image.prompt}
-                  className="w-full h-24 object-cover"
-                  loading="lazy"
-                />
+                {brokenImages.has(image.id) ? (
+                  <div className="w-full h-24 flex flex-col items-center justify-center bg-background-tertiary text-text-quaternary">
+                    <ExclamationTriangleIcon className="h-5 w-5 mb-1" />
+                    <span className="text-[9px]">Expired</span>
+                  </div>
+                ) : (
+                  <img
+                    src={image.url}
+                    alt={image.prompt}
+                    className="w-full h-24 object-cover"
+                    loading="lazy"
+                    onError={() => handleImageError(image.id)}
+                  />
+                )}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                   <div className="flex gap-1">
                     <button
