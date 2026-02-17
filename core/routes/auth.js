@@ -6,7 +6,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
-import { JWT_SECRET, JWT_EXPIRES_IN } from '../core/middleware.js';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../middleware/index.js';
 
 export function registerAuthRoutes(ctx) {
   const { app, db, stmts, requireAuth, requireAdmin, sendError, authLimiter, verifyLimiter, revokedTokens, resend } = ctx;

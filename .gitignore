@@ -2,12 +2,12 @@ node_modules/
 dist/
 dev-dist/
 output/
+data/
+*.db
+*.db-wal
+*.db-shm
 .env
 .env.local
-alin.db
-alin.db-wal
-alin.db-shm
-UsersjacobDownloadsALINalin.db
 .claude/
-nul
 tsconfig.tsbuildinfo
+nul

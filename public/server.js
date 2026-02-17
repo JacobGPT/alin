@@ -1,15 +1,13 @@
 /**
- * ALIN Backend Server
+ * ALIN Public Backend Server
  *
- * Modular architecture: core logic in server/core/, routes in server/routes/.
+ * Thin entry point — all core logic lives in @alin/core.
  * This file creates the context, mounts routes, and starts the server.
  *
- * INSTALL: npm install better-sqlite3
  * RUN: node server.js
  * PORT: http://localhost:3002
  */
 
-// Load .env file so all API keys are available via process.env
 import 'dotenv/config';
 
 import express from 'express';
@@ -18,38 +16,37 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // ── Core Modules ──
-import { initDatabase } from './server/core/database.js';
-import { createStatements } from './server/core/statements.js';
-import { createServerContext } from './server/core/context.js';
+import { initDatabase, createStatements } from '@alin/core/database';
+import { createServerContext } from '@alin/core/context';
 
 // ── Route Modules ──
-import { registerAuthRoutes } from './server/routes/auth.js';
-import { registerMiscRoutes } from './server/routes/misc.js';
-import { registerTelemetryRoutes } from './server/routes/telemetry.js';
-import { registerConversationRoutes } from './server/routes/conversations.js';
-import { registerStreamingRoutes } from './server/routes/streaming.js';
-import { registerCodingRoutes } from './server/routes/coding.js';
-import { registerSettingsRoutes } from './server/routes/settings.js';
-import { registerTBWORoutes } from './server/routes/tbwo.js';
-import { registerTBWOWorkspaceRoutes } from './server/routes/tbwoWorkspace.js';
-import { registerSandboxRoutes } from './server/routes/sandbox.js';
-import { registerSiteRoutes } from './server/routes/sites.js';
-import { registerSitePatchRoutes } from './server/routes/sitePatches.js';
-import { registerArtifactRoutes } from './server/routes/artifacts.js';
-import { registerMemoryRoutes } from './server/routes/memories.js';
-import { registerAuditRoutes } from './server/routes/audit.js';
-import { registerImageRoutes } from './server/routes/images.js';
-import { registerVoiceRoutes } from './server/routes/voice.js';
-import { registerVideoRoutes } from './server/routes/video.js';
-import { registerFileRoutes } from './server/routes/files.js';
-import { registerCodeOpsRoutes } from './server/routes/codeOps.js';
-import { registerComputerUseRoutes } from './server/routes/computerUse.js';
-import { registerWebFetchRoutes } from './server/routes/webFetch.js';
-import { registerSystemRoutes } from './server/routes/system.js';
-import { registerFileWatcherRoutes } from './server/routes/fileWatcher.js';
-import { registerSelfModelRoutes } from './server/routes/selfModel.js';
-import { registerAssetRoutes } from './server/routes/assets.js';
-import { registerCloudflareRoutes } from './server/routes/cloudflare.js';
+import { registerAuthRoutes } from '@alin/core/routes/auth';
+import { registerMiscRoutes } from '@alin/core/routes/misc';
+import { registerTelemetryRoutes } from '@alin/core/routes/telemetry';
+import { registerConversationRoutes } from '@alin/core/routes/conversations';
+import { registerStreamingRoutes } from '@alin/core/routes/streaming';
+import { registerCodingRoutes } from '@alin/core/routes/coding';
+import { registerSettingsRoutes } from '@alin/core/routes/settings';
+import { registerTBWORoutes } from '@alin/core/routes/tbwo';
+import { registerTBWOWorkspaceRoutes } from '@alin/core/routes/tbwoWorkspace';
+import { registerSandboxRoutes } from '@alin/core/routes/sandbox';
+import { registerSiteRoutes } from '@alin/core/routes/sites';
+import { registerSitePatchRoutes } from '@alin/core/routes/sitePatches';
+import { registerArtifactRoutes } from '@alin/core/routes/artifacts';
+import { registerMemoryRoutes } from '@alin/core/routes/memories';
+import { registerAuditRoutes } from '@alin/core/routes/audit';
+import { registerImageRoutes } from '@alin/core/routes/images';
+import { registerVoiceRoutes } from '@alin/core/routes/voice';
+import { registerVideoRoutes } from '@alin/core/routes/video';
+import { registerFileRoutes } from '@alin/core/routes/files';
+import { registerCodeOpsRoutes } from '@alin/core/routes/codeOps';
+import { registerComputerUseRoutes } from '@alin/core/routes/computerUse';
+import { registerWebFetchRoutes } from '@alin/core/routes/webFetch';
+import { registerSystemRoutes } from '@alin/core/routes/system';
+import { registerFileWatcherRoutes } from '@alin/core/routes/fileWatcher';
+import { registerSelfModelRoutes } from '@alin/core/routes/selfModel';
+import { registerAssetRoutes } from '@alin/core/routes/assets';
+import { registerCloudflareRoutes } from '@alin/core/routes/cloudflare';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,7 +73,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 // ── Initialize Database + Context ──
-const dbPath = process.env.DATABASE_PATH || '/data/alin.db';
+const dbPath = process.env.DATABASE_PATH || './data/alin-public.db';
 const db = initDatabase(dbPath);
 const stmts = createStatements(db);
 const ctx = createServerContext({ db, stmts, app, rootDir: __dirname });
@@ -105,19 +102,17 @@ app.get('/app/*', (req, res) => {
 });
 
 
-// ── Route Modules (Phase 6) ──
+// ── Route Modules ──
 registerAuthRoutes(ctx);
 registerMiscRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 2) ──
 registerTelemetryRoutes(ctx);
 registerConversationRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 5) ──
+// streaming → coding must come before TBWO/sites/images/misc (ctx late-binding)
 registerStreamingRoutes(ctx);
-registerCodingRoutes(ctx); // Must run before TBWO/sites — sets ctx.callClaudeSync + ctx.toolGenerateImage
+registerCodingRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 4) ──
 registerSettingsRoutes(ctx);
 registerTBWORoutes(ctx);
 registerTBWOWorkspaceRoutes(ctx);
@@ -128,19 +123,16 @@ registerArtifactRoutes(ctx);
 registerMemoryRoutes(ctx);
 registerAuditRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 6 cont.) ──
 registerImageRoutes(ctx);
 registerVoiceRoutes(ctx);
 registerVideoRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 3) ──
 registerFileRoutes(ctx);
 registerCodeOpsRoutes(ctx);
 registerComputerUseRoutes(ctx);
 registerWebFetchRoutes(ctx);
 registerSystemRoutes(ctx);
 
-// ── Extracted Route Modules (Phase 6 cont.) ──
 registerFileWatcherRoutes(ctx);
 registerSelfModelRoutes(ctx);
 
@@ -152,7 +144,7 @@ registerCloudflareRoutes(ctx);
 app.listen(PORT, () => {
   console.log('');
   console.log('========================================================');
-  console.log('           ALIN Backend Server');
+  console.log('           ALIN Public Backend Server');
   console.log('========================================================');
   console.log(`  Running on: http://localhost:${PORT}`);
   console.log(`  Database:   ${dbPath}`);

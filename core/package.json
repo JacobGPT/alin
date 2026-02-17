@@ -1,0 +1,16 @@
+{
+  "name": "@alin/core",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./config": "./config/index.js",
+    "./database": "./database/index.js",
+    "./database/*": "./database/*.js",
+    "./middleware": "./middleware/index.js",
+    "./context": "./context/index.js",
+    "./routes/*": "./routes/*.js",
+    "./services/*": "./services/*.js",
+    "./prompts": "./prompts/index.js",
+    "./prompts/*": "./prompts/*.js"
+  }
+}

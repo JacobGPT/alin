@@ -16,8 +16,8 @@ import { CloudflareKV } from '../services/cloudflareKV.js';
 import { CloudflareImages } from '../services/cloudflareImages.js';
 import { CloudflareStream } from '../services/cloudflareStream.js';
 import { CloudflareVectorize } from '../services/cloudflareVectorize.js';
-import { createAuthMiddleware, createSendError, safeJsonParse, setupSSE, sendSSE, JWT_SECRET, JWT_EXPIRES_IN, IS_PRODUCTION } from './middleware.js';
-import { DEFAULT_MODELS, PLAN_LIMITS, MODEL_METADATA, createCheckPlanLimits, getCurrentPeriod, getQuotaCount, incrementQuota } from './config.js';
+import { createAuthMiddleware, createSendError, safeJsonParse, setupSSE, sendSSE, JWT_SECRET, JWT_EXPIRES_IN, IS_PRODUCTION } from '../middleware/index.js';
+import { DEFAULT_MODELS, PLAN_LIMITS, MODEL_METADATA, createCheckPlanLimits, getCurrentPeriod, getQuotaCount, incrementQuota } from '../config/index.js';
 
 /**
  * Create the full server context object.

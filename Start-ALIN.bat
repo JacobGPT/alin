@@ -28,7 +28,7 @@ if not exist "node_modules" (
 )
 
 echo  [1/3] Starting ALIN Backend Proxy Server...
-start "ALIN-Backend" /min cmd /k "cd /d "%~dp0" && node server.js"
+start "ALIN-Backend" /min cmd /k "cd /d "%~dp0\public" && node server.js"
 
 :: Wait for backend to start
 echo        Waiting for backend...
@@ -48,7 +48,7 @@ if errorlevel 1 (
 )
 
 echo  [2/3] Starting ALIN Frontend...
-start "ALIN-Frontend" /min cmd /k "cd /d "%~dp0" && npm run dev"
+start "ALIN-Frontend" /min cmd /k "cd /d "%~dp0" && npm run dev:vite"
 
 :: Wait for frontend to be ready (8 seconds for Vite)
 echo  [3/3] Waiting for services to start...
@@ -59,16 +59,15 @@ echo  ========================================================
 echo                   ALIN is starting!
 echo  --------------------------------------------------------
 echo   Frontend:  Check ALIN-Frontend window for URL
-echo              (usually :3001, :3003, or :5173)
+echo              (usually :3000 or :5173)
 echo   Backend:   http://localhost:3002
 echo  --------------------------------------------------------
 echo   Opening ALIN in your default browser...
 echo  ========================================================
 echo.
 
-:: Try to open browser - try common Vite ports
-:: The actual URL will be shown in the frontend window
-start "" "http://localhost:3001"
+:: Try to open browser
+start "" "http://localhost:3000"
 
 echo  Press any key to stop ALIN and close all services...
 pause >nul

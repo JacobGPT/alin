@@ -9,6 +9,8 @@ export default defineConfig(({ command }) => ({
   // Dev: base '/' so you just go to localhost:3000
   // Build: base '/' so the backend serves it at /app/
   base: command === 'serve' ? '/' : '/app/',
+  // Vite public assets directory (renamed from default 'public' to avoid collision)
+  publicDir: 'static',
   plugins: [
     // React with SWC for ultra-fast refresh
     react(),

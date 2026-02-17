@@ -2,7 +2,7 @@
 buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "node server.js"
+startCommand = "node public/server.js"
 healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
