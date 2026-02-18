@@ -213,7 +213,7 @@ export function AppShell({ children }: AppShellProps) {
             exit={{ x: layout.rightPanelWidth }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             style={{ width: layout.rightPanelWidth }}
-            className="relative flex-shrink-0 border-l border-border-primary bg-background-secondary"
+            className="relative h-full flex-shrink-0 overflow-hidden border-l border-border-primary bg-background-secondary"
           >
             {/* Resize handle (left edge) */}
             <div

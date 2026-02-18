@@ -532,7 +532,7 @@ export const useTBWOStore = create<TBWOState & TBWOActions>()(
           },
           modelConfig: {
             provider: 'anthropic',
-            model: 'claude-sonnet-4-5-20250929',
+            model: 'claude-sonnet-4-6',
           },
           toolWhitelist: ['file_write', 'file_read', 'file_list', 'execute_code', 'run_command', 'scan_directory', 'code_search', 'edit_file', 'web_search', 'git', 'system_status', 'web_fetch', 'search_images', 'generate_image', 'site_validate', 'conversion_audit', 'site_improve', 'motion_validate', 'scene_validate', 'output_guard'],
           memoryScope: [],

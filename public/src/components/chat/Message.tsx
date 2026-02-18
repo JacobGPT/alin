@@ -353,6 +353,16 @@ export const MessageComponent = memo(function MessageComponent({
           message.model || 'general',
         ).catch(() => {});
       }
+
+      // Consequence Engine: resolve recent prediction based on user feedback (fire-and-forget)
+      import('../../services/consequenceService').then(({ resolveRecentPrediction }) => {
+        resolveRecentPrediction(
+          conversationId,
+          newFeedback === 'positive' ? 'correct' : 'wrong',
+          'user_feedback',
+          `User gave ${newFeedback} feedback on response`,
+        ).catch(() => {});
+      }).catch(() => {});
     }
   };
 

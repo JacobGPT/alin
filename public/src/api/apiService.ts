@@ -585,49 +585,61 @@ export class APIService {
             return { content: currentContentBlocks, stopReason: 'cancelled' } as ServerStreamResult;
           }
 
-          const continuationResult = await streamFromServer({
-            endpoint: '/api/chat/continue',
-            signal: this.currentAbort?.signal,
-            body: {
-              provider: providerStr,
-              model,
-              messages: continuationMessages,
-              system: '[DEPRECATED]',
-              mode: currentMode,
-              additionalContext,
-              tools,
-              thinking: enableThinking,
-              thinkingBudget,
-              maxTokens: settings.model?.maxTokens || 16384,
-            },
-            callbacks: {
-              onText: (text) => {
-                if (isFirstTextInRound && depth > 0) {
-                  callbacks.onChunk?.('\n\n');
-                  isFirstTextInRound = false;
-                }
-                callbacks.onChunk?.(text);
+          let continuationResult: ServerStreamResult;
+          try {
+            continuationResult = await streamFromServer({
+              endpoint: '/api/chat/continue',
+              signal: this.currentAbort?.signal,
+              body: {
+                provider: providerStr,
+                model,
+                messages: continuationMessages,
+                system: '[DEPRECATED]',
+                mode: currentMode,
+                additionalContext,
+                tools,
+                thinking: enableThinking,
+                thinkingBudget,
+                maxTokens: settings.model?.maxTokens || 16384,
               },
-              onThinking: (thinking) => callbacks.onThinking?.(thinking),
-              onToolUse: (tool) => {
-                if (depth < MAX_TOOL_DEPTH) {
-                  console.log('[APIService] Continuation tool use:', tool.name, `(depth: ${depth + 1})`);
-                  newPendingToolUses.push(tool);
+              callbacks: {
+                onText: (text) => {
+                  if (isFirstTextInRound && depth > 0) {
+                    callbacks.onChunk?.('\n\n');
+                    isFirstTextInRound = false;
+                  }
+                  callbacks.onChunk?.(text);
+                },
+                onThinking: (thinking) => callbacks.onThinking?.(thinking),
+                onToolUse: (tool) => {
+                  if (depth < MAX_TOOL_DEPTH) {
+                    console.log('[APIService] Continuation tool use:', tool.name, `(depth: ${depth + 1})`);
+                    newPendingToolUses.push(tool);
 
-                  const activityId = statusStore.startToolActivity(
-                    getToolActivityType(tool.name),
-                    getToolLabel(tool.name, tool.input),
-                    tool.input
-                  );
-                  callbacks.onToolStart?.(activityId, tool.name);
-                } else {
-                  console.warn('[APIService] Max tool depth reached, ignoring tool:', tool.name);
-                }
+                    const activityId = statusStore.startToolActivity(
+                      getToolActivityType(tool.name),
+                      getToolLabel(tool.name, tool.input),
+                      tool.input
+                    );
+                    callbacks.onToolStart?.(activityId, tool.name);
+                  } else {
+                    console.warn('[APIService] Max tool depth reached, ignoring tool:', tool.name);
+                  }
+                },
+                onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
+                onError: (error) => callbacks.onError?.(error),
               },
-              onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
-              onError: (error) => callbacks.onError?.(error),
-            },
-          });
+            });
+          } catch (contErr: any) {
+            // If continuation fetch fails (e.g. server→provider network error),
+            // emit the tool results as text so the user sees something useful
+            console.warn('[APIService] Continuation failed, emitting tool results as text:', contErr.message);
+            const fallbackText = currentToolResults.map(r =>
+              r.isError ? `Tool error: ${r.content}` : r.content
+            ).join('\n\n');
+            callbacks.onChunk?.(`\n\n${fallbackText}\n\n*(Could not get AI follow-up: ${contErr.message})*`);
+            return { content: currentContentBlocks, stopReason: 'error', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [] } as ServerStreamResult;
+          }
 
           if (newPendingToolUses.length > 0 && depth < MAX_TOOL_DEPTH && !this.cancelled) {
             const newToolResults = await this.executeTools(newPendingToolUses, callbacks, statusStore);
@@ -699,6 +711,15 @@ export class APIService {
         onThinkingBlock(convId, msgId, accumulatedThinking).catch(() => {});
       }
 
+      // Consequence Engine: extract predictions from assistant response (fire-and-forget)
+      // This is a client-side fallback — server-side extraction also runs via streaming.js
+      if (responseText.length > 50) {
+        import('../services/consequenceService').then(({ extractAndRecordPredictions }) => {
+          const convId = messages[0]?.conversationId || '';
+          extractAndRecordPredictions(responseText, convId, response.id, model).catch(() => {});
+        }).catch(() => {});
+      }
+
       callbacks.onComplete?.(response);
     } catch (error: any) {
       console.error('[APIService] Stream error:', error);
@@ -726,6 +747,17 @@ export class APIService {
 
       // Record tool reliability (fire-and-forget)
       recordToolCall(tool.name, result.success, Date.now() - toolStart, result.success ? undefined : result.error).catch(() => {});
+
+      // Consequence Engine: record tool outcome for pattern tracking (fire-and-forget)
+      if (!result.success) {
+        import('../services/consequenceService').then(({ recordOutcome }) => {
+          recordOutcome('tool_result', 'wrong', {
+            triggerSource: `${tool.name}: ${result.error?.slice(0, 150) || 'failed'}`,
+            domain: 'tool_reliability',
+            lessonLearned: `Tool ${tool.name} failed: ${result.error?.slice(0, 200) || 'unknown error'}`,
+          }).catch(() => {});
+        }).catch(() => {});
+      }
 
       // Detect generated images
       if (tool.name === 'generate_image' && result.success && result.result) {

@@ -8,7 +8,8 @@
 // ============================================================================
 
 export const DEFAULT_MODELS = {
-  claudeSonnet: process.env.DEFAULT_CLAUDE_MODEL || 'claude-sonnet-4-5-20250929',
+  claudeSonnet: process.env.DEFAULT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+  claudeSonnet45: process.env.CLAUDE_SONNET45_MODEL || 'claude-sonnet-4-5-20250929',
   claudeOpus: process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-6',
   claudeHaiku: process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
   gpt4o: process.env.GPT4O_MODEL || 'gpt-4o',
@@ -180,7 +181,8 @@ export const PLAN_LIMITS = {
 export const MODEL_METADATA = {
   // Anthropic
   'claude-opus-4-6':            { provider: 'anthropic', displayName: 'Claude Opus 4.6',        category: 'Anthropic', tier: 'pro',   description: 'Most intelligent, deep reasoning and extended thinking',   inputCost: 15, outputCost: 75 },
-  'claude-sonnet-4-5-20250929': { provider: 'anthropic', displayName: 'Claude Sonnet 4.5',      category: 'Anthropic', tier: 'free',  description: 'Fast and capable all-rounder, great for coding',           inputCost: 3, outputCost: 15 },
+  'claude-sonnet-4-6':            { provider: 'anthropic', displayName: 'Claude Sonnet 4.6',      category: 'Anthropic', tier: 'free',  description: 'Best coding, agents, reasoning — the new default',         inputCost: 3, outputCost: 15 },
+  'claude-sonnet-4-5-20250929': { provider: 'anthropic', displayName: 'Claude Sonnet 4.5',      category: 'Anthropic', tier: 'free',  description: 'Previous generation all-rounder',                          inputCost: 3, outputCost: 15 },
   'claude-haiku-4-5-20251001':  { provider: 'anthropic', displayName: 'Claude Haiku 4.5',       category: 'Anthropic', tier: 'pro',   description: 'Fastest Claude, quick tasks and classifications',          inputCost: 0.8, outputCost: 4 },
 
   // GPT-5.x Family

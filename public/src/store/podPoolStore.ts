@@ -200,7 +200,7 @@ export const usePodPoolStore = create<PodPoolStore>()(
             resourceUsage: { cpuPercent: 0, memoryMB: 0, tokensUsed: 0, apiCalls: 0, executionTime: 0 },
             completedTasks: [],
             messageLog: [],
-            modelConfig: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+            modelConfig: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
             toolWhitelist: [],
           } : undefined,
         };

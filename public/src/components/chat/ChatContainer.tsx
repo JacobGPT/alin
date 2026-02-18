@@ -20,11 +20,14 @@ import {
   ChartBarIcon,
   Bars3Icon,
   ArrowsRightLeftIcon,
+  BoltIcon,
+  EyeIcon,
 } from '@heroicons/react/24/outline';
 
 // Store
 import { useChatStore } from '@store/chatStore';
 import { useUIStore } from '@store/uiStore';
+import { RightPanelContent } from '../../types/ui';
 
 // Components
 import { MessageList } from './MessageList';
@@ -45,6 +48,7 @@ export default function ChatContainer() {
   const sendRef = useRef<(() => void) | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [voiceConvOpen, setVoiceConvOpen] = useState(false);
+  const [isPrivateMode, setIsPrivateMode] = useState(false);
   
   // Store state
   const currentConversation = useChatStore((state) => state.getCurrentConversation());
@@ -55,10 +59,24 @@ export default function ChatContainer() {
   const openModal = useUIStore((state) => state.openModal);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const sidebarCollapsed = useUIStore((state) => state.layout.sidebarCollapsed);
+  const setRightPanel = useUIStore((state) => state.setRightPanel);
   // ========================================================================
   // EFFECTS
   // ========================================================================
   
+  // Check if private mode for consequence engine visibility
+  useEffect(() => {
+    const headers: Record<string, string> = {};
+    try {
+      const raw = localStorage.getItem('alin-auth-storage');
+      if (raw) { const t = JSON.parse(raw)?.state?.token; if (t) headers['Authorization'] = `Bearer ${t}`; }
+    } catch {}
+    fetch('/api/consequence/config', { headers })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.config?.isPrivate) setIsPrivateMode(true); })
+      .catch(() => {});
+  }, []);
+
   // Set conversation from URL
   useEffect(() => {
     if (conversationId && conversationId !== currentConversation?.id) {
@@ -113,6 +131,14 @@ export default function ChatContainer() {
 
   const handleAudit = () => {
     openModal({ type: 'audit-dashboard' });
+  };
+
+  const handleConsequence = () => {
+    setRightPanel(RightPanelContent.CONSEQUENCE);
+  };
+
+  const handleProactive = () => {
+    setRightPanel(RightPanelContent.PROACTIVE);
   };
 
   // ========================================================================
@@ -198,6 +224,34 @@ export default function ChatContainer() {
           >
             Usage
           </Button>
+
+          {/* Consequence Engine — private only */}
+          {isPrivateMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleConsequence}
+              title="Consequence Engine"
+              className="hidden lg:inline-flex"
+              leftIcon={<BoltIcon className="h-4 w-4" />}
+            >
+              Brain
+            </Button>
+          )}
+
+          {/* Proactive Intelligence — private only */}
+          {isPrivateMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleProactive}
+              title="Proactive Intelligence"
+              className="hidden lg:inline-flex"
+              leftIcon={<EyeIcon className="h-4 w-4" />}
+            >
+              Intel
+            </Button>
+          )}
 
           {/* Background Jobs */}
           <BackgroundJobIndicator />

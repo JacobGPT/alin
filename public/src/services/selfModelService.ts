@@ -407,6 +407,26 @@ export async function buildAddendum(force = false): Promise<string> {
       }
     } catch {}
 
+    // Section 7: Consequence Engine — 5-Layer Neural Architecture
+    // On public: silent internal steering data (prefixed with "do not reference")
+    // On private: full intelligence report with domain dashboards + genome
+    try {
+      const { buildConsequenceAddendum } = await import('./consequenceService');
+      const consequenceAddendum = await buildConsequenceAddendum();
+      if (consequenceAddendum) {
+        parts.push(consequenceAddendum);
+      }
+    } catch {}
+
+    // Section 8: Proactive Intelligence (private only — background monitoring)
+    try {
+      const { buildProactiveAddendum } = await import('./proactiveIntelligenceService');
+      const proactiveAddendum = await buildProactiveAddendum();
+      if (proactiveAddendum) {
+        parts.push(proactiveAddendum);
+      }
+    } catch {}
+
     _cachedAddendum = parts.length > 0 ? parts.join('\n') : '';
     _addendumBuiltAt = Date.now();
     return _cachedAddendum;
@@ -420,6 +440,14 @@ export async function buildAddendum(force = false): Promise<string> {
 export function invalidateAddendum(): void {
   _cachedAddendum = null;
   _addendumBuiltAt = 0;
+  // Also invalidate consequence engine addendum cache
+  import('./consequenceService').then(({ invalidateAddendum: invalidateConsequence }) => {
+    invalidateConsequence();
+  }).catch(() => {});
+  // Also invalidate proactive intelligence addendum cache
+  import('./proactiveIntelligenceService').then(({ invalidateProactiveAddendum }) => {
+    invalidateProactiveAddendum();
+  }).catch(() => {});
 }
 
 // ============================================================================

@@ -122,7 +122,7 @@ export async function generatePatchPlan(callClaude, siteDir, changeRequest) {
 
   // 3. Call Claude
   const response = await callClaude({
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-4-6',
     messages: [{ role: 'user', content: prompt }],
     system: 'You are a precise site modification planner. Output ONLY valid JSON. No markdown fences, no explanation.',
     maxTokens: 16384,

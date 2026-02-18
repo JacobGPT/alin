@@ -70,11 +70,17 @@ const MODEL_OPTIONS: ModelOption[] = [
         contextWindow: '200K',
       },
       {
-        id: 'claude-sonnet-4-5-20250929',
-        name: 'Claude Sonnet 4.5',
-        description: 'Fast and capable all-rounder, great for coding',
+        id: 'claude-sonnet-4-6',
+        name: 'Claude Sonnet 4.6',
+        description: 'Best coding, agents, and reasoning — the new default',
         contextWindow: '200K',
         recommended: true,
+      },
+      {
+        id: 'claude-sonnet-4-5-20250929',
+        name: 'Claude Sonnet 4.5',
+        description: 'Previous generation all-rounder',
+        contextWindow: '200K',
       },
       {
         id: 'claude-haiku-4-5-20251001',

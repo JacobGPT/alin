@@ -135,6 +135,7 @@ export const CLAUDE_PRICING: Record<string, { input: number; output: number; cac
   // Claude
   'claude-opus-4-6':            { input: 15.0,  output: 75.0,  cacheWrite: 18.75, cacheRead: 1.5 },
   'claude-opus-4-20250514':     { input: 15.0,  output: 75.0,  cacheWrite: 18.75, cacheRead: 1.5 },
+  'claude-sonnet-4-6':            { input: 3.0,   output: 15.0,  cacheWrite: 3.75,  cacheRead: 0.3 },
   'claude-sonnet-4-5-20250929': { input: 3.0,   output: 15.0,  cacheWrite: 3.75,  cacheRead: 0.3 },
   'claude-sonnet-4-20250514':   { input: 3.0,   output: 15.0,  cacheWrite: 3.75,  cacheRead: 0.3 },
   'claude-haiku-4-5-20251001':  { input: 0.8,   output: 4.0,   cacheWrite: 1.0,   cacheRead: 0.08 },
@@ -933,6 +934,7 @@ export class ClaudeAPIClient {
   private getModelName(): string {
     const nameMap: Record<string, string> = {
       'claude-opus-4-6': 'Claude Opus 4.6',
+      'claude-sonnet-4-6': 'Claude Sonnet 4.6',
       'claude-sonnet-4-5-20250929': 'Claude Sonnet 4.5',
       'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
       'claude-sonnet-4-20250514': 'Claude Sonnet 4',

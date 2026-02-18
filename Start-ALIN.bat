@@ -61,13 +61,8 @@ echo  --------------------------------------------------------
 echo   Frontend:  Check ALIN-Frontend window for URL
 echo              (usually :3000 or :5173)
 echo   Backend:   http://localhost:3002
-echo  --------------------------------------------------------
-echo   Opening ALIN in your default browser...
 echo  ========================================================
 echo.
-
-:: Try to open browser
-start "" "http://localhost:3000"
 
 echo  Press any key to stop ALIN and close all services...
 pause >nul

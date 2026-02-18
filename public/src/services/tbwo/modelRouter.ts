@@ -58,16 +58,16 @@ export const MODEL_TIER_PRESETS: Record<ModelTier, ModelTierPreset> = {
     description: 'Strong models with best quality-to-cost balance',
     priceLabel: '$4.99',
     rules: [
-      { podRole: 'design',       provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Creative design (rec: Claude Sonnet 4.5)' },
-      { podRole: 'frontend',     provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Code generation (rec: Claude Sonnet 4.5)' },
+      { podRole: 'design',       provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Creative design (rec: Claude Sonnet 4.5)' },
+      { podRole: 'frontend',     provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Code generation (rec: Claude Sonnet 4.5)' },
       { podRole: 'copy',         provider: 'openai',    model: 'gpt-4o',                     reason: 'Natural language (rec: GPT-4o)' },
       { podRole: 'qa',           provider: 'gemini',    model: 'gemini-2.5-flash',           reason: 'Fast validation (rec: Gemini 2.5 Flash)' },
-      { podRole: 'animation',    provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Animation code (rec: Claude Sonnet 4.5)' },
-      { podRole: 'three_d',      provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: '3D scene code (rec: Claude Sonnet 4.5)' },
+      { podRole: 'animation',    provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Animation code (rec: Claude Sonnet 4.5)' },
+      { podRole: 'three_d',      provider: 'anthropic', model: 'claude-sonnet-4-6', reason: '3D scene code (rec: Claude Sonnet 4.5)' },
       { podRole: 'deployment',   provider: 'gemini',    model: 'gemini-2.5-flash',           reason: 'Config generation (rec: Gemini 2.5 Flash)' },
       { podRole: 'orchestrator', provider: 'anthropic', model: 'claude-opus-4-6',            reason: 'Planning & coordination (rec: Claude Opus 4.6)' },
     ],
-    fallback: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    fallback: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   },
   max: {
     id: 'max',
@@ -98,7 +98,7 @@ export function getModelTierRules(tier: ModelTier): ModelTierPreset {
 // Pricing per 1M tokens (input/output) for cost estimation
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'claude-opus-4-6':            { input: 15.0,  output: 75.0  },
-  'claude-sonnet-4-5-20250929': { input: 3.0,   output: 15.0  },
+  'claude-sonnet-4-6': { input: 3.0,   output: 15.0  },
   'claude-sonnet-4-20250514':   { input: 3.0,   output: 15.0  },
   'claude-haiku-4-5-20251001':  { input: 0.80,  output: 4.0   },
   'gpt-5':                      { input: 1.25,  output: 10.0  },
@@ -194,7 +194,7 @@ function buildFallbackChain(primary: { provider: string; model: string }): Array
   }
 
   // Cross-provider fallbacks as last resort
-  const sonnet = { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' };
+  const sonnet = { provider: 'anthropic', model: 'claude-sonnet-4-6' };
   const haiku = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' };
   if (primary.model !== sonnet.model) chain.push(sonnet);
   if (primary.model !== haiku.model) chain.push(haiku);
@@ -262,7 +262,7 @@ export function estimateTBWOCost(podRoles: PodRole[]): {
 
   for (const role of podRoles) {
     const route = resolveModelForPod(role);
-    const pricing = MODEL_PRICING[route.model] || MODEL_PRICING['claude-sonnet-4-5-20250929']!;
+    const pricing = MODEL_PRICING[route.model] || MODEL_PRICING['claude-sonnet-4-6']!;
     const avgTokens = AVG_TOKENS_PER_ROLE[role] || { input: 20_000, output: 10_000 };
 
     const cost = (avgTokens.input / 1_000_000) * pricing.input +
@@ -329,7 +329,7 @@ const MODEL_TIERS: Record<string, number> = {
   'gpt-5-mini': 1,
   'o3-mini': 1,
   'o4-mini': 1,
-  'claude-sonnet-4-5-20250929': 2,
+  'claude-sonnet-4-6': 2,
   'claude-sonnet-4-20250514': 2,
   'gpt-4o': 2,
   'gpt-4-turbo': 2,
@@ -362,7 +362,7 @@ function getEscalationModel(current: string): { provider: string; model: string 
     return { provider: 'deepseek', model: 'deepseek-reasoner' };
   }
   // Default: Anthropic
-  if (tier === 1) return { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' };
+  if (tier === 1) return { provider: 'anthropic', model: 'claude-sonnet-4-6' };
   return { provider: 'anthropic', model: 'claude-opus-4-6' };
 }
 
@@ -378,7 +378,7 @@ function getDowngradeModel(current: string): { provider: string; model: string }
   if (current.startsWith('deepseek')) {
     return { provider: 'deepseek', model: 'deepseek-chat' };
   }
-  if (tier === 3) return { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' };
+  if (tier === 3) return { provider: 'anthropic', model: 'claude-sonnet-4-6' };
   return { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' };
 }
 

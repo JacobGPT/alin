@@ -1475,7 +1475,7 @@ export function registerCodingRoutes(ctx) {
       const { rawResponse } = await pollVeoOperation(operationName, 300000, 3000);
 
       if (!rawResponse) {
-        return { success: false, error: 'Veo completed but returned no response' };
+        return { success: false, result: JSON.stringify({ error: 'Veo completed but returned no response' }), error: 'Veo completed but returned no response' };
       }
 
       // Try all known response formats to find video data

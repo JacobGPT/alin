@@ -162,7 +162,7 @@ export class AIService {
   constructor(config: AIServiceConfig) {
     this.config = {
       provider: config.provider || 'anthropic',
-      model: config.model || 'claude-sonnet-4-5-20250929',
+      model: config.model || 'claude-sonnet-4-6',
       temperature: config.temperature ?? 0.7,
       maxTokens: config.maxTokens ?? 8192,
       systemPrompt: config.systemPrompt || '',
@@ -869,9 +869,9 @@ export class AIService {
       if (mode === 'gpt') return versions.gpt || 'gpt-4o';
       if (mode === 'gemini') return versions.gemini || 'gemini-2.5-flash';
       if (mode === 'deepseek') return versions.deepseek || 'deepseek-chat';
-      return versions.claude || 'claude-sonnet-4-5-20250929';
+      return versions.claude || 'claude-sonnet-4-6';
     } catch {
-      return 'claude-sonnet-4-5-20250929';
+      return 'claude-sonnet-4-6';
     }
   }
 

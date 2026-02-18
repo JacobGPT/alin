@@ -27,6 +27,10 @@ export function categorizeError(error: any): string {
     return 'Message too large. Try shortening your message or reducing attachments.';
   if (msg.includes('timeout') || msg.includes('Timeout'))
     return 'Request timed out. The server may be busy — try again.';
+  if (msg === 'terminated' || msg.includes('terminated'))
+    return 'The connection to the AI provider was interrupted. Please try again.';
+  if (msg === 'fetch failed' || msg.includes('fetch failed'))
+    return 'Could not reach the AI provider. This is usually a transient network issue — please try again.';
 
   return `Error: ${msg}`;
 }

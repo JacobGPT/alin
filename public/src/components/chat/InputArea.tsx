@@ -253,6 +253,7 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
   const getModelLabel = (modelId: string | undefined): string => {
     if (!modelId) return 'Unknown Model';
     if (modelId.includes('opus')) return 'Claude Opus 4.6';
+    if (modelId === 'claude-sonnet-4-6') return 'Claude Sonnet 4.6';
     if (modelId.includes('sonnet-4-5')) return 'Claude Sonnet 4.5';
     if (modelId.includes('sonnet-4-2')) return 'Claude Sonnet 4';
     if (modelId.includes('haiku')) return 'Claude Haiku 4.5';
@@ -874,15 +875,29 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
             console.error('[ALIN] Stream error:', error);
             telemetry.error('stream', error.message || 'Unknown stream error');
             const errorMsg = categorizeError(error);
-            chatStore.updateMessage(assistantMessageId, {
-              content: [
-                {
-                  type: 'text',
-                  text: errorMsg,
-                },
-              ],
-              isStreaming: false,
-            });
+            // If content was already streamed, preserve it and append the error
+            const existingContent = buildContentBlocks();
+            const hasExistingContent = existingContent.some(b =>
+              (b.type === 'text' && (b as any).text?.trim()) ||
+              b.type === 'tool_activity' || b.type === 'thinking' || b.type === 'image'
+            );
+            if (hasExistingContent) {
+              existingContent.push({ type: 'text', text: `\n\n${errorMsg}` } as any);
+              chatStore.updateMessage(assistantMessageId, {
+                content: existingContent,
+                isStreaming: false,
+              });
+            } else {
+              chatStore.updateMessage(assistantMessageId, {
+                content: [
+                  {
+                    type: 'text',
+                    text: errorMsg,
+                  },
+                ],
+                isStreaming: false,
+              });
+            }
             if (!isStale) {
               chatStore.completeStreaming();
               statusStore.setPhase('error', error.message);

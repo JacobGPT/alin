@@ -25,6 +25,8 @@ export enum RightPanelContent {
   ARTIFACT = 'artifact',
   VISION = 'vision',
   TIME_TRAVEL = 'time_travel',
+  CONSEQUENCE = 'consequence',
+  PROACTIVE = 'proactive',
 }
 
 export interface ThemeColors {

@@ -181,7 +181,7 @@ export function MemoryDashboard() {
       list = list.filter(
         (m) =>
           m.content.toLowerCase().includes(query) ||
-          m.tags.some((t) => t.toLowerCase().includes(query))
+          (m.tags || []).some((t) => t.toLowerCase().includes(query))
       );
     }
 
@@ -471,7 +471,7 @@ function MemoryCard({ memory, isSelected, onSelect, onPin, onDelete }: MemoryCar
       </div>
 
       {/* Tags */}
-      {memory.tags.length > 0 && (
+      {(memory.tags?.length ?? 0) > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {memory.tags.slice(0, 3).map((tag) => (
             <span

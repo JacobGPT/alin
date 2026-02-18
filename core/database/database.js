@@ -252,12 +252,196 @@ export function initDatabase(dbPath) {
   CREATE INDEX IF NOT EXISTS idx_memlayer_layer ON memory_layers(layer);
   CREATE INDEX IF NOT EXISTS idx_memlayer_expires ON memory_layers(expires_at);
   CREATE INDEX IF NOT EXISTS idx_memlayer_salience ON memory_layers(salience DESC);
+
+  -- Consequence Engine: Predictions (Layer 1 — Prediction Cortex)
+  CREATE TABLE IF NOT EXISTS predictions (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    message_id TEXT,
+    prediction_text TEXT NOT NULL,
+    prediction_type TEXT DEFAULT 'implicit',
+    domain TEXT NOT NULL DEFAULT 'general',
+    confidence REAL DEFAULT 0.5,
+    context_summary TEXT DEFAULT '',
+    source_model TEXT DEFAULT '',
+    extraction_method TEXT DEFAULT 'regex',
+    status TEXT DEFAULT 'pending',
+    outcome_id TEXT,
+    verification_attempts INTEGER DEFAULT 0,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER,
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_pred_status ON predictions(status);
+  CREATE INDEX IF NOT EXISTS idx_pred_domain ON predictions(domain);
+  CREATE INDEX IF NOT EXISTS idx_pred_created ON predictions(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_pred_conv ON predictions(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_pred_msg ON predictions(message_id);
+  CREATE INDEX IF NOT EXISTS idx_pred_expires ON predictions(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_pred_type ON predictions(prediction_type);
+
+  -- Consequence Engine: Outcomes (Layer 2 — Outcome Cortex)
+  CREATE TABLE IF NOT EXISTS outcomes (
+    id TEXT PRIMARY KEY,
+    prediction_id TEXT,
+    trigger_type TEXT NOT NULL,
+    trigger_source TEXT DEFAULT '',
+    trigger_data TEXT DEFAULT '{}',
+    result TEXT NOT NULL,
+    confidence_delta REAL DEFAULT 0,
+    pain_delta REAL DEFAULT 0,
+    satisfaction_delta REAL DEFAULT 0,
+    lesson_learned TEXT DEFAULT '',
+    corrective_action TEXT DEFAULT '',
+    domain TEXT NOT NULL DEFAULT 'general',
+    severity TEXT DEFAULT 'normal',
+    cascade_effects TEXT DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_outcome_pred ON outcomes(prediction_id);
+  CREATE INDEX IF NOT EXISTS idx_outcome_domain ON outcomes(domain);
+  CREATE INDEX IF NOT EXISTS idx_outcome_created ON outcomes(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_outcome_trigger ON outcomes(trigger_type);
+  CREATE INDEX IF NOT EXISTS idx_outcome_result ON outcomes(result);
+  CREATE INDEX IF NOT EXISTS idx_outcome_severity ON outcomes(severity);
+
+  -- Consequence Engine: Domain States (Layer 3 — Emotional Weightmap)
+  CREATE TABLE IF NOT EXISTS domain_states (
+    domain TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    pain_score REAL DEFAULT 0,
+    satisfaction_score REAL DEFAULT 0,
+    prediction_accuracy REAL DEFAULT 0.5,
+    calibration_offset REAL DEFAULT 0,
+    total_predictions INTEGER DEFAULT 0,
+    correct_predictions INTEGER DEFAULT 0,
+    wrong_predictions INTEGER DEFAULT 0,
+    partial_predictions INTEGER DEFAULT 0,
+    streak_type TEXT DEFAULT 'none',
+    streak_count INTEGER DEFAULT 0,
+    best_streak INTEGER DEFAULT 0,
+    worst_streak INTEGER DEFAULT 0,
+    last_pain_event TEXT DEFAULT '',
+    last_satisfaction_event TEXT DEFAULT '',
+    last_outcome_at INTEGER,
+    decay_rate REAL DEFAULT 0.9,
+    volatility REAL DEFAULT 0.5,
+    trend TEXT DEFAULT 'stable',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (domain, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_domain_state_updated ON domain_states(updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_domain_state_pain ON domain_states(pain_score DESC);
+  CREATE INDEX IF NOT EXISTS idx_domain_state_accuracy ON domain_states(prediction_accuracy DESC);
+
+  -- Consequence Engine: Domain History (Layer 3b — Temporal Emotional Tracking)
+  CREATE TABLE IF NOT EXISTS domain_history (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    pain_score REAL DEFAULT 0,
+    satisfaction_score REAL DEFAULT 0,
+    prediction_accuracy REAL DEFAULT 0.5,
+    event_type TEXT NOT NULL,
+    event_summary TEXT DEFAULT '',
+    snapshot_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_domain_hist_domain ON domain_history(domain, user_id);
+  CREATE INDEX IF NOT EXISTS idx_domain_hist_time ON domain_history(snapshot_at DESC);
+
+  -- Consequence Engine: Pattern Library (Layer 4 — Pattern Cortex)
+  CREATE TABLE IF NOT EXISTS consequence_patterns (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL DEFAULT 'general',
+    pattern_type TEXT NOT NULL,
+    pattern_signature TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    frequency INTEGER DEFAULT 1,
+    confidence REAL DEFAULT 0.5,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    contributing_outcomes TEXT DEFAULT '[]',
+    suggested_gene TEXT DEFAULT '',
+    status TEXT DEFAULT 'emerging',
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_pattern_domain ON consequence_patterns(domain);
+  CREATE INDEX IF NOT EXISTS idx_pattern_type ON consequence_patterns(pattern_type);
+  CREATE INDEX IF NOT EXISTS idx_pattern_freq ON consequence_patterns(frequency DESC);
+  CREATE INDEX IF NOT EXISTS idx_pattern_status ON consequence_patterns(status);
+
+  -- Consequence Engine: Behavioral Genome (Layer 5 — Behavioral Genome)
+  CREATE TABLE IF NOT EXISTS behavioral_genome (
+    id TEXT PRIMARY KEY,
+    gene_text TEXT NOT NULL,
+    gene_type TEXT DEFAULT 'behavioral',
+    domain TEXT NOT NULL DEFAULT 'general',
+    source_pattern TEXT DEFAULT '',
+    source_pattern_id TEXT,
+    trigger_condition TEXT DEFAULT '',
+    action_directive TEXT DEFAULT '',
+    strength REAL DEFAULT 0.5,
+    status TEXT DEFAULT 'pending_review',
+    confirmations INTEGER DEFAULT 0,
+    contradictions INTEGER DEFAULT 0,
+    applications INTEGER DEFAULT 0,
+    last_applied_at INTEGER,
+    requires_review INTEGER DEFAULT 0,
+    review_notes TEXT DEFAULT '',
+    regression_risk TEXT DEFAULT 'none',
+    parent_gene_id TEXT,
+    mutation_history TEXT DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_gene_domain ON behavioral_genome(domain);
+  CREATE INDEX IF NOT EXISTS idx_gene_strength ON behavioral_genome(strength DESC);
+  CREATE INDEX IF NOT EXISTS idx_gene_status ON behavioral_genome(status);
+  CREATE INDEX IF NOT EXISTS idx_gene_type ON behavioral_genome(gene_type);
+  CREATE INDEX IF NOT EXISTS idx_gene_parent ON behavioral_genome(parent_gene_id);
+  CREATE INDEX IF NOT EXISTS idx_gene_regression ON behavioral_genome(regression_risk);
+
+  -- Consequence Engine: Gene Audit Log (Layer 5b — Genome Mutation Tracking)
+  CREATE TABLE IF NOT EXISTS gene_audit_log (
+    id TEXT PRIMARY KEY,
+    gene_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    previous_state TEXT DEFAULT '{}',
+    new_state TEXT DEFAULT '{}',
+    reason TEXT DEFAULT '',
+    actor TEXT DEFAULT 'system',
+    created_at INTEGER NOT NULL,
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_gene_audit_gene ON gene_audit_log(gene_id);
+  CREATE INDEX IF NOT EXISTS idx_gene_audit_action ON gene_audit_log(action);
+  CREATE INDEX IF NOT EXISTS idx_gene_audit_time ON gene_audit_log(created_at DESC);
+
+  -- Consequence Engine: Calibration Snapshots (Layer 4b — Calibration Curve Data)
+  CREATE TABLE IF NOT EXISTS calibration_snapshots (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL DEFAULT 'all',
+    bucket_index INTEGER NOT NULL,
+    bucket_min REAL NOT NULL,
+    bucket_max REAL NOT NULL,
+    total_predictions INTEGER DEFAULT 0,
+    correct_predictions INTEGER DEFAULT 0,
+    actual_accuracy REAL DEFAULT 0,
+    overconfidence_delta REAL DEFAULT 0,
+    snapshot_at INTEGER NOT NULL,
+    user_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_calibration_domain ON calibration_snapshots(domain);
+  CREATE INDEX IF NOT EXISTS idx_calibration_time ON calibration_snapshots(snapshot_at DESC);
 `);
 
   // ── Migrations ──
 
   // Add user_id columns to ALL user-scoped tables
-  const userIdTables = ['conversations', 'messages', 'tbwo_orders', 'artifacts', 'memory_entries', 'audit_entries', 'images', 'tbwo_receipts', 'execution_outcomes', 'user_corrections', 'decision_log', 'thinking_traces', 'memory_layers'];
+  const userIdTables = ['conversations', 'messages', 'tbwo_orders', 'artifacts', 'memory_entries', 'audit_entries', 'images', 'tbwo_receipts', 'execution_outcomes', 'user_corrections', 'decision_log', 'thinking_traces', 'memory_layers', 'predictions', 'outcomes', 'domain_history', 'consequence_patterns', 'behavioral_genome', 'gene_audit_log', 'calibration_snapshots', 'product_metrics', 'product_alerts', 'user_rhythm', 'self_awareness_log', 'scheduler_jobs', 'scheduler_history'];
   for (const table of userIdTables) {
     try { db.exec(`ALTER TABLE ${table} ADD COLUMN user_id TEXT`); } catch { /* column already exists */ }
   }
@@ -499,6 +683,93 @@ export function initDatabase(dbPath) {
       count INTEGER DEFAULT 0,
       PRIMARY KEY (user_id, quota_type, period)
     );
+
+    -- Proactive Intelligence: Product Metrics (Product Pulse)
+    CREATE TABLE IF NOT EXISTS product_metrics (
+      id TEXT PRIMARY KEY,
+      metric_type TEXT NOT NULL,
+      value REAL NOT NULL,
+      metadata TEXT DEFAULT '{}',
+      recorded_at INTEGER NOT NULL,
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pm_type ON product_metrics(metric_type, recorded_at DESC);
+
+    -- Proactive Intelligence: Product Alerts (Alert Engine)
+    CREATE TABLE IF NOT EXISTS product_alerts (
+      id TEXT PRIMARY KEY,
+      alert_type TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      metric_type TEXT,
+      metric_value REAL,
+      threshold_value REAL,
+      acknowledged INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pa_sev ON product_alerts(severity, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pa_ack ON product_alerts(acknowledged, created_at DESC);
+
+    -- Proactive Intelligence: User Rhythm Engine
+    CREATE TABLE IF NOT EXISTS user_rhythm (
+      id TEXT PRIMARY KEY,
+      rhythm_type TEXT NOT NULL,
+      value TEXT NOT NULL,
+      day_of_week INTEGER,
+      hour_of_day INTEGER,
+      recorded_at INTEGER NOT NULL,
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ur_type ON user_rhythm(rhythm_type, recorded_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ur_hour ON user_rhythm(hour_of_day, day_of_week);
+
+    -- Proactive Intelligence: Self-Awareness Monitor
+    CREATE TABLE IF NOT EXISTS self_awareness_log (
+      id TEXT PRIMARY KEY,
+      awareness_type TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      summary TEXT NOT NULL,
+      details TEXT DEFAULT '{}',
+      related_domain TEXT,
+      recorded_at INTEGER NOT NULL,
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sa_type ON self_awareness_log(awareness_type, recorded_at DESC);
+
+    -- Proactive Intelligence: Scheduler Jobs
+    CREATE TABLE IF NOT EXISTS scheduler_jobs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT DEFAULT '',
+      interval_ms INTEGER NOT NULL,
+      handler TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      last_run_at INTEGER DEFAULT 0,
+      next_run_at INTEGER DEFAULT 0,
+      run_count INTEGER DEFAULT 0,
+      error_count INTEGER DEFAULT 0,
+      last_error TEXT DEFAULT '',
+      created_at INTEGER NOT NULL,
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sj_next ON scheduler_jobs(enabled, next_run_at);
+
+    -- Proactive Intelligence: Scheduler Run History
+    CREATE TABLE IF NOT EXISTS scheduler_history (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      job_name TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      duration_ms INTEGER,
+      status TEXT DEFAULT 'running',
+      result TEXT DEFAULT '',
+      error TEXT DEFAULT '',
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sh_job ON scheduler_history(job_id, started_at DESC);
   `);
 
   console.log('[DB] SQLite database initialized at', dbPath);

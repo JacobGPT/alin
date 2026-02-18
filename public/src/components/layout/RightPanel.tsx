@@ -16,6 +16,8 @@ import { TBWODashboard } from '../tbwo/TBWODashboard';
 import { HardwareDashboard } from '../hardware/HardwareDashboard';
 import { VisionPanel } from '@components/modes/VisionPanel';
 import { TimeTravelPanel } from '@components/modes/TimeTravelPanel';
+import { ConsequenceDashboard } from '../consequence/ConsequenceDashboard';
+import { ProactiveDashboard } from '../proactive/ProactiveDashboard';
 
 export function RightPanel() {
   const content = useUIStore((state) => state.layout.rightPanelContent);
@@ -36,6 +38,8 @@ export function RightPanel() {
       case RightPanelContent.HARDWARE: return 'Hardware';
       case RightPanelContent.VISION: return 'Vision';
       case RightPanelContent.TIME_TRAVEL: return 'Timeline';
+      case RightPanelContent.CONSEQUENCE: return 'Consequence Engine';
+      case RightPanelContent.PROACTIVE: return 'Intelligence';
       case RightPanelContent.SETTINGS: return 'Settings';
       default: return '';
     }
@@ -61,6 +65,10 @@ export function RightPanel() {
         return <VisionPanel />;
       case RightPanelContent.TIME_TRAVEL:
         return <TimeTravelPanel />;
+      case RightPanelContent.CONSEQUENCE:
+        return <ConsequenceDashboard />;
+      case RightPanelContent.PROACTIVE:
+        return <ProactiveDashboard />;
       case RightPanelContent.SETTINGS:
         return (
           <div className="flex-1 flex items-center justify-center p-4">

@@ -47,6 +47,7 @@ import { registerFileWatcherRoutes } from '@alin/core/routes/fileWatcher';
 import { registerSelfModelRoutes } from '@alin/core/routes/selfModel';
 import { registerAssetRoutes } from '@alin/core/routes/assets';
 import { registerCloudflareRoutes } from '@alin/core/routes/cloudflare';
+import { registerConsequenceEngineRoutes } from '@alin/core/routes/consequenceEngine';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -136,6 +137,14 @@ registerSystemRoutes(ctx);
 registerFileWatcherRoutes(ctx);
 registerSelfModelRoutes(ctx);
 
+// Consequence Engine — public mode (silent, observation-only during bootstrap)
+ctx.consequenceConfig = {
+  isPrivate: false,
+  bootstrapUntil: parseInt(process.env.CONSEQUENCE_BOOTSTRAP_UNTIL || '0') || (Date.now() + 30 * 24 * 60 * 60 * 1000),
+  domains: ['model_routing', 'tool_reliability', 'time_estimation', 'response_quality', 'error_avoidance'],
+};
+registerConsequenceEngineRoutes(ctx);
+
 registerAssetRoutes(ctx);
 
 registerCloudflareRoutes(ctx);
@@ -149,7 +158,7 @@ app.listen(PORT, () => {
   console.log(`  Running on: http://localhost:${PORT}`);
   console.log(`  Database:   ${dbPath}`);
   console.log(`  API Keys:   Anthropic=${!!process.env.ANTHROPIC_API_KEY ? 'Y' : 'N'} OpenAI=${!!process.env.OPENAI_API_KEY ? 'Y' : 'N'} Brave=${!!(process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY) ? 'Y' : 'N'}`);
-  console.log(`  Routes:     27 modules loaded`);
+  console.log(`  Routes:     28 modules loaded`);
   console.log('  Health:     GET /api/health');
   console.log('========================================================');
   console.log('');

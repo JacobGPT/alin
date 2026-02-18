@@ -240,7 +240,7 @@ function pooledPodToAgentPod(pp: PooledPod, tbwoId: string): AgentPod {
     name: pp.name,
     status: (r?.podStatus || PodStatus.INITIALIZING) as any,
     health: (r?.health || { status: 'healthy', lastHeartbeat: Date.now(), errorCount: 0, consecutiveFailures: 0, warnings: [] }) as any,
-    modelConfig: r?.modelConfig || { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    modelConfig: r?.modelConfig || { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     toolWhitelist: r?.toolWhitelist || [],
     memoryScope: [],
     taskQueue: [],

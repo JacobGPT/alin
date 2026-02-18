@@ -246,7 +246,7 @@ const DEFAULT_MODEL_PREFERENCES: ModelPreferences = {
   defaultProvider: ModelProvider.ANTHROPIC,
   defaultModel: {
     provider: ModelProvider.ANTHROPIC,
-    modelId: 'claude-sonnet-4-5-20250929',
+    modelId: 'claude-sonnet-4-6',
     name: 'Claude Sonnet 4.5',
     maxContextTokens: 200000,
     supportsVision: true,
@@ -297,16 +297,16 @@ const DEFAULT_TBWO_PREFERENCES: TBWOPreferences = {
   modelRouting: {
     enabled: true,
     rules: [
-      { podRole: 'design' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Creative design' },
-      { podRole: 'frontend' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Code generation' },
+      { podRole: 'design' as any, provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Creative design' },
+      { podRole: 'frontend' as any, provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Code generation' },
       { podRole: 'copy' as any, provider: 'openai', model: 'gpt-4o', reason: 'Natural language copy' },
       { podRole: 'qa' as any, provider: 'anthropic', model: 'claude-haiku-4-5-20251001', reason: 'Fast validation' },
-      { podRole: 'animation' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Animation code' },
-      { podRole: 'three_d' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: '3D scene code' },
+      { podRole: 'animation' as any, provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Animation code' },
+      { podRole: 'three_d' as any, provider: 'anthropic', model: 'claude-sonnet-4-6', reason: '3D scene code' },
       { podRole: 'deployment' as any, provider: 'anthropic', model: 'claude-haiku-4-5-20251001', reason: 'Config generation' },
-      { podRole: 'orchestrator' as any, provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', reason: 'Good reasoning, cost-effective' },
+      { podRole: 'orchestrator' as any, provider: 'anthropic', model: 'claude-sonnet-4-6', reason: 'Good reasoning, cost-effective' },
     ],
-    fallback: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    fallback: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   },
 };
 
@@ -359,13 +359,13 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()(
       apiKeys: DEFAULT_API_KEYS,
       modelMode: 'claude' as ModelMode,
       selectedModelVersions: {
-        claude: 'claude-sonnet-4-5-20250929',
+        claude: 'claude-sonnet-4-6',
         gpt: 'gpt-5',
         gemini: 'gemini-2.5-flash',
         deepseek: 'deepseek-chat',
-        bothClaude: 'claude-sonnet-4-5-20250929',
+        bothClaude: 'claude-sonnet-4-6',
         bothGPT: 'gpt-5',
-        hybridPlanner: 'claude-sonnet-4-5-20250929',
+        hybridPlanner: 'claude-sonnet-4-6',
         hybridExecutor: 'gpt-5',
       },
       enableThinking: true,

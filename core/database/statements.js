@@ -165,5 +165,182 @@ export function createStatements(db) {
     // User Quotas
     getQuota: db.prepare('SELECT count FROM user_quotas WHERE user_id=? AND quota_type=? AND period=?'),
     incrementQuota: db.prepare(`INSERT INTO user_quotas (user_id, quota_type, period, count) VALUES (?, ?, ?, 1) ON CONFLICT(user_id, quota_type, period) DO UPDATE SET count = count + 1`),
+
+    // ========================================================================
+    // CONSEQUENCE ENGINE
+    // ========================================================================
+
+    // Predictions (Layer 1 — Prediction Cortex)
+    insertPrediction: db.prepare(`INSERT INTO predictions (id,conversation_id,message_id,prediction_text,prediction_type,domain,confidence,context_summary,source_model,extraction_method,status,expires_at,created_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+    getPrediction: db.prepare('SELECT * FROM predictions WHERE id=? AND user_id=?'),
+    listPredictions: db.prepare('SELECT * FROM predictions WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+    listPendingPredictions: db.prepare('SELECT * FROM predictions WHERE user_id=? AND status=? ORDER BY created_at DESC LIMIT ?'),
+    listPredictionsByDomain: db.prepare('SELECT * FROM predictions WHERE user_id=? AND domain=? ORDER BY created_at DESC LIMIT ?'),
+    listPredictionsByConversation: db.prepare('SELECT * FROM predictions WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC LIMIT ?'),
+    listPredictionsByMessage: db.prepare('SELECT * FROM predictions WHERE user_id=? AND message_id=? ORDER BY created_at DESC'),
+    listPredictionsByType: db.prepare('SELECT * FROM predictions WHERE user_id=? AND prediction_type=? ORDER BY created_at DESC LIMIT ?'),
+    listPredictionsByStatus: db.prepare('SELECT * FROM predictions WHERE user_id=? AND status=? AND domain=? ORDER BY created_at DESC LIMIT ?'),
+    resolvePrediction: db.prepare('UPDATE predictions SET status=?,outcome_id=?,resolved_at=?,verification_attempts=verification_attempts+1 WHERE id=? AND user_id=?'),
+    expireOldPredictions: db.prepare('UPDATE predictions SET status=? WHERE user_id=? AND status=? AND created_at<?'),
+    expireByTimestamp: db.prepare('UPDATE predictions SET status=? WHERE user_id=? AND status=? AND expires_at IS NOT NULL AND expires_at<?'),
+    countPredictions: db.prepare('SELECT COUNT(*) as count FROM predictions WHERE user_id=?'),
+    countPredictionsByStatus: db.prepare('SELECT status, COUNT(*) as count FROM predictions WHERE user_id=? GROUP BY status'),
+    findDuplicatePrediction: db.prepare('SELECT * FROM predictions WHERE user_id=? AND message_id=? AND prediction_text=? LIMIT 1'),
+    getRecentPendingByConversation: db.prepare('SELECT * FROM predictions WHERE user_id=? AND conversation_id=? AND status=? ORDER BY created_at DESC LIMIT 1'),
+
+    // Outcomes (Layer 2 — Outcome Cortex)
+    insertOutcomeResult: db.prepare(`INSERT INTO outcomes (id,prediction_id,trigger_type,trigger_source,trigger_data,result,confidence_delta,pain_delta,satisfaction_delta,lesson_learned,corrective_action,domain,severity,cascade_effects,created_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+    getOutcomeResult: db.prepare('SELECT * FROM outcomes WHERE id=? AND user_id=?'),
+    listOutcomeResults: db.prepare('SELECT * FROM outcomes WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+    listOutcomesByDomain: db.prepare('SELECT * FROM outcomes WHERE user_id=? AND domain=? ORDER BY created_at DESC LIMIT ?'),
+    listOutcomesByTrigger: db.prepare('SELECT * FROM outcomes WHERE user_id=? AND trigger_type=? ORDER BY created_at DESC LIMIT ?'),
+    listOutcomesBySeverity: db.prepare('SELECT * FROM outcomes WHERE user_id=? AND severity=? ORDER BY created_at DESC LIMIT ?'),
+    getOutcomeByPrediction: db.prepare('SELECT * FROM outcomes WHERE prediction_id=? AND user_id=?'),
+    countOutcomes: db.prepare('SELECT COUNT(*) as count FROM outcomes WHERE user_id=?'),
+    countOutcomesByResult: db.prepare('SELECT result, COUNT(*) as count FROM outcomes WHERE user_id=? GROUP BY result'),
+    listRecentOutcomesByDomain: db.prepare('SELECT * FROM outcomes WHERE user_id=? AND domain=? AND created_at>? ORDER BY created_at DESC LIMIT ?'),
+
+    // Domain States (Layer 3 — Emotional Weightmap)
+    getDomainState: db.prepare('SELECT * FROM domain_states WHERE domain=? AND user_id=?'),
+    listDomainStates: db.prepare('SELECT * FROM domain_states WHERE user_id=? ORDER BY updated_at DESC'),
+    listDomainStatesByPain: db.prepare('SELECT * FROM domain_states WHERE user_id=? ORDER BY pain_score DESC'),
+    listDomainStatesByAccuracy: db.prepare('SELECT * FROM domain_states WHERE user_id=? ORDER BY prediction_accuracy DESC'),
+    upsertDomainState: db.prepare(`INSERT INTO domain_states (domain,user_id,pain_score,satisfaction_score,prediction_accuracy,calibration_offset,total_predictions,correct_predictions,wrong_predictions,partial_predictions,streak_type,streak_count,best_streak,worst_streak,last_pain_event,last_satisfaction_event,last_outcome_at,decay_rate,volatility,trend,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(domain,user_id) DO UPDATE SET
+        pain_score=excluded.pain_score, satisfaction_score=excluded.satisfaction_score,
+        prediction_accuracy=excluded.prediction_accuracy, calibration_offset=excluded.calibration_offset,
+        total_predictions=excluded.total_predictions, correct_predictions=excluded.correct_predictions,
+        wrong_predictions=excluded.wrong_predictions, partial_predictions=excluded.partial_predictions,
+        streak_type=excluded.streak_type, streak_count=excluded.streak_count,
+        best_streak=CASE WHEN excluded.best_streak>domain_states.best_streak THEN excluded.best_streak ELSE domain_states.best_streak END,
+        worst_streak=CASE WHEN excluded.worst_streak>domain_states.worst_streak THEN excluded.worst_streak ELSE domain_states.worst_streak END,
+        last_pain_event=CASE WHEN excluded.last_pain_event!='' THEN excluded.last_pain_event ELSE domain_states.last_pain_event END,
+        last_satisfaction_event=CASE WHEN excluded.last_satisfaction_event!='' THEN excluded.last_satisfaction_event ELSE domain_states.last_satisfaction_event END,
+        last_outcome_at=excluded.last_outcome_at,
+        decay_rate=excluded.decay_rate, volatility=excluded.volatility, trend=excluded.trend,
+        updated_at=excluded.updated_at`),
+    deleteDomainState: db.prepare('DELETE FROM domain_states WHERE domain=? AND user_id=?'),
+
+    // Domain History (Layer 3b — Temporal Tracking)
+    insertDomainHistory: db.prepare(`INSERT INTO domain_history (id,domain,user_id,pain_score,satisfaction_score,prediction_accuracy,event_type,event_summary,snapshot_at) VALUES (?,?,?,?,?,?,?,?,?)`),
+    listDomainHistory: db.prepare('SELECT * FROM domain_history WHERE domain=? AND user_id=? ORDER BY snapshot_at DESC LIMIT ?'),
+    listDomainHistorySince: db.prepare('SELECT * FROM domain_history WHERE domain=? AND user_id=? AND snapshot_at>? ORDER BY snapshot_at ASC'),
+    pruneDomainHistory: db.prepare('DELETE FROM domain_history WHERE user_id=? AND snapshot_at<?'),
+
+    // Patterns (Layer 4 — Pattern Cortex)
+    insertPattern: db.prepare(`INSERT INTO consequence_patterns (id,domain,pattern_type,pattern_signature,description,frequency,confidence,first_seen_at,last_seen_at,contributing_outcomes,suggested_gene,status,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+    getPattern: db.prepare('SELECT * FROM consequence_patterns WHERE id=? AND user_id=?'),
+    listPatterns: db.prepare('SELECT * FROM consequence_patterns WHERE user_id=? ORDER BY frequency DESC LIMIT ?'),
+    listPatternsByDomain: db.prepare('SELECT * FROM consequence_patterns WHERE user_id=? AND domain=? ORDER BY frequency DESC LIMIT ?'),
+    listPatternsByType: db.prepare('SELECT * FROM consequence_patterns WHERE user_id=? AND pattern_type=? ORDER BY frequency DESC LIMIT ?'),
+    listEmergingPatterns: db.prepare('SELECT * FROM consequence_patterns WHERE user_id=? AND status=? ORDER BY frequency DESC LIMIT ?'),
+    findPatternBySignature: db.prepare('SELECT * FROM consequence_patterns WHERE user_id=? AND domain=? AND pattern_signature=? LIMIT 1'),
+    updatePatternFrequency: db.prepare('UPDATE consequence_patterns SET frequency=frequency+1, last_seen_at=?, contributing_outcomes=?, confidence=? WHERE id=? AND user_id=?'),
+    updatePatternStatus: db.prepare('UPDATE consequence_patterns SET status=?, suggested_gene=? WHERE id=? AND user_id=?'),
+    pruneWeakPatterns: db.prepare('DELETE FROM consequence_patterns WHERE user_id=? AND frequency<? AND status=?'),
+
+    // Behavioral Genome (Layer 5)
+    insertGene: db.prepare(`INSERT INTO behavioral_genome (id,gene_text,gene_type,domain,source_pattern,source_pattern_id,trigger_condition,action_directive,strength,status,confirmations,contradictions,applications,requires_review,regression_risk,parent_gene_id,mutation_history,created_at,updated_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+    getGene: db.prepare('SELECT * FROM behavioral_genome WHERE id=? AND user_id=?'),
+    listActiveGenes: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND status=? AND strength>=? ORDER BY strength DESC LIMIT ?'),
+    listGenesByDomain: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND domain=? AND status!=? ORDER BY strength DESC LIMIT ?'),
+    listGenesByType: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND gene_type=? AND status!=? ORDER BY strength DESC LIMIT ?'),
+    listPendingReviewGenes: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND status=? ORDER BY created_at DESC LIMIT ?'),
+    listAllGenes: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND status!=? ORDER BY strength DESC LIMIT ?'),
+    findGeneByText: db.prepare('SELECT * FROM behavioral_genome WHERE user_id=? AND domain=? AND gene_text=? LIMIT 1'),
+    confirmGene: db.prepare('UPDATE behavioral_genome SET confirmations=confirmations+1, strength=MIN(1.0,strength+0.1), applications=applications+1, last_applied_at=?, updated_at=? WHERE id=? AND user_id=?'),
+    contradictGene: db.prepare('UPDATE behavioral_genome SET contradictions=contradictions+1, strength=MAX(0.0,strength-0.15), status=CASE WHEN strength-0.15<0.2 THEN ? ELSE status END, updated_at=? WHERE id=? AND user_id=?'),
+    applyGene: db.prepare('UPDATE behavioral_genome SET applications=applications+1, last_applied_at=?, updated_at=? WHERE id=? AND user_id=?'),
+    deleteWeakGenes: db.prepare('DELETE FROM behavioral_genome WHERE user_id=? AND strength<? AND status=?'),
+    updateGeneStatus: db.prepare('UPDATE behavioral_genome SET status=?,updated_at=? WHERE id=? AND user_id=?'),
+    updateGeneStrength: db.prepare('UPDATE behavioral_genome SET strength=?,updated_at=? WHERE id=? AND user_id=?'),
+    approveGene: db.prepare('UPDATE behavioral_genome SET status=?,requires_review=0,review_notes=?,updated_at=? WHERE id=? AND user_id=?'),
+    mutateGene: db.prepare('UPDATE behavioral_genome SET gene_text=?,trigger_condition=?,action_directive=?,mutation_history=?,updated_at=? WHERE id=? AND user_id=?'),
+    countGenes: db.prepare('SELECT COUNT(*) as count FROM behavioral_genome WHERE user_id=? AND status!=?'),
+    countGenesByDomain: db.prepare('SELECT domain, COUNT(*) as count FROM behavioral_genome WHERE user_id=? AND status!=? GROUP BY domain'),
+    countActiveGenesByDomain: db.prepare('SELECT domain, COUNT(*) as count FROM behavioral_genome WHERE user_id=? AND status=? GROUP BY domain'),
+
+    // Gene Audit Log (Layer 5b)
+    insertGeneAudit: db.prepare(`INSERT INTO gene_audit_log (id,gene_id,action,previous_state,new_state,reason,actor,created_at,user_id) VALUES (?,?,?,?,?,?,?,?,?)`),
+    listGeneAudit: db.prepare('SELECT * FROM gene_audit_log WHERE gene_id=? AND user_id=? ORDER BY created_at DESC LIMIT ?'),
+    listRecentGeneAudits: db.prepare('SELECT * FROM gene_audit_log WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+
+    // Calibration Snapshots (Layer 4b)
+    insertCalibrationSnapshot: db.prepare(`INSERT INTO calibration_snapshots (id,domain,bucket_index,bucket_min,bucket_max,total_predictions,correct_predictions,actual_accuracy,overconfidence_delta,snapshot_at,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`),
+    listCalibrationSnapshots: db.prepare('SELECT * FROM calibration_snapshots WHERE user_id=? AND domain=? ORDER BY snapshot_at DESC, bucket_index ASC LIMIT ?'),
+    getLatestCalibration: db.prepare('SELECT * FROM calibration_snapshots WHERE user_id=? AND domain=? AND snapshot_at=(SELECT MAX(snapshot_at) FROM calibration_snapshots WHERE user_id=? AND domain=?) ORDER BY bucket_index ASC'),
+    pruneOldCalibrations: db.prepare('DELETE FROM calibration_snapshots WHERE user_id=? AND snapshot_at<?'),
+
+    // Consequence Engine: Aggregate Queries (Pattern Cortex)
+    countPredictionsByDomain: db.prepare('SELECT domain, COUNT(*) as total, SUM(CASE WHEN status=? THEN 1 ELSE 0 END) as correct, SUM(CASE WHEN status=? THEN 1 ELSE 0 END) as wrong, SUM(CASE WHEN status=? THEN 1 ELSE 0 END) as partial FROM predictions WHERE user_id=? GROUP BY domain'),
+    recentOutcomesWithPredictions: db.prepare(`SELECT o.*, p.prediction_text, p.confidence as pred_confidence, p.domain as pred_domain, p.prediction_type FROM outcomes o LEFT JOIN predictions p ON o.prediction_id=p.id WHERE o.user_id=? ORDER BY o.created_at DESC LIMIT ?`),
+    predictionAccuracyByConfidenceBucket: db.prepare(`SELECT
+      CASE WHEN confidence < 0.2 THEN 0
+           WHEN confidence < 0.4 THEN 1
+           WHEN confidence < 0.6 THEN 2
+           WHEN confidence < 0.8 THEN 3
+           ELSE 4 END as bucket,
+      COUNT(*) as total,
+      SUM(CASE WHEN status='verified_correct' THEN 1 ELSE 0 END) as correct
+      FROM predictions WHERE user_id=? AND status IN ('verified_correct','verified_wrong','verified_partial') GROUP BY bucket ORDER BY bucket`),
+    domainAccuracyTrend: db.prepare(`SELECT domain,
+      SUM(CASE WHEN status='verified_correct' AND created_at>? THEN 1 ELSE 0 END) as recent_correct,
+      SUM(CASE WHEN status IN ('verified_correct','verified_wrong','verified_partial') AND created_at>? THEN 1 ELSE 0 END) as recent_total,
+      SUM(CASE WHEN status='verified_correct' THEN 1 ELSE 0 END) as all_correct,
+      SUM(CASE WHEN status IN ('verified_correct','verified_wrong','verified_partial') THEN 1 ELSE 0 END) as all_total
+      FROM predictions WHERE user_id=? GROUP BY domain`),
+    geneEffectiveness: db.prepare(`SELECT id, gene_text, domain, strength, confirmations, contradictions, applications,
+      CASE WHEN (confirmations+contradictions)>0 THEN CAST(confirmations AS REAL)/(confirmations+contradictions) ELSE 0.5 END as effectiveness
+      FROM behavioral_genome WHERE user_id=? AND status!=? ORDER BY effectiveness DESC LIMIT ?`),
+
+    // ========================================================================
+    // PROACTIVE INTELLIGENCE
+    // ========================================================================
+
+    // Product Metrics
+    insertProductMetric: db.prepare('INSERT INTO product_metrics (id,metric_type,value,metadata,recorded_at,user_id) VALUES (?,?,?,?,?,?)'),
+    listProductMetrics: db.prepare('SELECT * FROM product_metrics WHERE user_id=? AND metric_type=? AND recorded_at>? ORDER BY recorded_at DESC LIMIT ?'),
+    latestProductMetric: db.prepare('SELECT * FROM product_metrics WHERE user_id=? AND metric_type=? ORDER BY recorded_at DESC LIMIT 1'),
+    listLatestProductMetrics: db.prepare('SELECT pm.* FROM product_metrics pm INNER JOIN (SELECT metric_type, MAX(recorded_at) as max_ts FROM product_metrics WHERE user_id=? GROUP BY metric_type) latest ON pm.metric_type=latest.metric_type AND pm.recorded_at=latest.max_ts WHERE pm.user_id=?'),
+    pruneOldMetrics: db.prepare('DELETE FROM product_metrics WHERE user_id=? AND recorded_at<?'),
+
+    // Product Alerts
+    insertProductAlert: db.prepare('INSERT INTO product_alerts (id,alert_type,severity,title,description,metric_type,metric_value,threshold_value,acknowledged,created_at,user_id) VALUES (?,?,?,?,?,?,?,?,0,?,?)'),
+    listProductAlerts: db.prepare('SELECT * FROM product_alerts WHERE user_id=? ORDER BY created_at DESC LIMIT ?'),
+    listUnacknowledgedAlerts: db.prepare('SELECT * FROM product_alerts WHERE user_id=? AND acknowledged=0 ORDER BY created_at DESC LIMIT ?'),
+    acknowledgeAlert: db.prepare('UPDATE product_alerts SET acknowledged=1 WHERE id=? AND user_id=?'),
+    acknowledgeAllAlerts: db.prepare('UPDATE product_alerts SET acknowledged=1 WHERE user_id=? AND acknowledged=0'),
+    pruneOldAlerts: db.prepare('DELETE FROM product_alerts WHERE user_id=? AND created_at<? AND acknowledged=1'),
+
+    // User Rhythm
+    insertUserRhythm: db.prepare('INSERT INTO user_rhythm (id,rhythm_type,value,day_of_week,hour_of_day,recorded_at,user_id) VALUES (?,?,?,?,?,?,?)'),
+    listUserRhythm: db.prepare('SELECT * FROM user_rhythm WHERE user_id=? AND rhythm_type=? ORDER BY recorded_at DESC LIMIT ?'),
+    getUserRhythmHeatmap: db.prepare('SELECT hour_of_day, day_of_week, COUNT(*) as count FROM user_rhythm WHERE user_id=? AND rhythm_type=? AND recorded_at>? GROUP BY hour_of_day, day_of_week'),
+    getUserRhythmPreferences: db.prepare('SELECT value, COUNT(*) as count FROM user_rhythm WHERE user_id=? AND rhythm_type=? AND recorded_at>? GROUP BY value ORDER BY count DESC LIMIT ?'),
+    pruneOldRhythm: db.prepare('DELETE FROM user_rhythm WHERE user_id=? AND recorded_at<?'),
+
+    // Self-Awareness
+    insertSelfAwareness: db.prepare('INSERT INTO self_awareness_log (id,awareness_type,severity,summary,details,related_domain,recorded_at,user_id) VALUES (?,?,?,?,?,?,?,?)'),
+    listSelfAwareness: db.prepare('SELECT * FROM self_awareness_log WHERE user_id=? ORDER BY recorded_at DESC LIMIT ?'),
+    listSelfAwarenessByType: db.prepare('SELECT * FROM self_awareness_log WHERE user_id=? AND awareness_type=? ORDER BY recorded_at DESC LIMIT ?'),
+    countSelfAwarenessBySeverity: db.prepare('SELECT severity, COUNT(*) as count FROM self_awareness_log WHERE user_id=? AND recorded_at>? GROUP BY severity'),
+    recentSelfAwarenessBySeverity: db.prepare('SELECT * FROM self_awareness_log WHERE user_id=? AND severity=? AND recorded_at>? ORDER BY recorded_at DESC LIMIT ?'),
+    pruneOldSelfAwareness: db.prepare('DELETE FROM self_awareness_log WHERE user_id=? AND recorded_at<?'),
+
+    // Scheduler Jobs
+    insertSchedulerJob: db.prepare('INSERT OR IGNORE INTO scheduler_jobs (id,name,description,interval_ms,handler,enabled,last_run_at,next_run_at,run_count,error_count,last_error,created_at,user_id) VALUES (?,?,?,?,?,1,0,0,0,0,\'\',?,?)'),
+    listSchedulerJobs: db.prepare('SELECT * FROM scheduler_jobs WHERE user_id=? ORDER BY name'),
+    getSchedulerJob: db.prepare('SELECT * FROM scheduler_jobs WHERE id=? AND user_id=?'),
+    getSchedulerJobByName: db.prepare('SELECT * FROM scheduler_jobs WHERE name=? AND user_id=?'),
+    updateJobAfterRun: db.prepare('UPDATE scheduler_jobs SET last_run_at=?, next_run_at=?, run_count=run_count+1, last_error=? WHERE id=? AND user_id=?'),
+    updateJobError: db.prepare('UPDATE scheduler_jobs SET error_count=error_count+1, last_error=? WHERE id=? AND user_id=?'),
+    toggleSchedulerJob: db.prepare('UPDATE scheduler_jobs SET enabled=? WHERE id=? AND user_id=?'),
+
+    // Scheduler History
+    insertSchedulerHistory: db.prepare('INSERT INTO scheduler_history (id,job_id,job_name,started_at,completed_at,duration_ms,status,result,error,user_id) VALUES (?,?,?,?,?,?,?,?,?,?)'),
+    updateSchedulerHistory: db.prepare('UPDATE scheduler_history SET completed_at=?, duration_ms=?, status=?, result=?, error=? WHERE id=? AND user_id=?'),
+    listSchedulerHistory: db.prepare('SELECT * FROM scheduler_history WHERE user_id=? ORDER BY started_at DESC LIMIT ?'),
+    listSchedulerHistoryByJob: db.prepare('SELECT * FROM scheduler_history WHERE user_id=? AND job_id=? ORDER BY started_at DESC LIMIT ?'),
   };
 }

@@ -1169,7 +1169,7 @@ export class ExecutionEngine {
       name: podName,
       status: (runtime?.podStatus || PodStatus.WORKING) as any,
       health: runtime?.health as any || { status: 'healthy', lastHeartbeat: Date.now(), errorCount: 0, consecutiveFailures: 0, warnings: [] },
-      modelConfig: runtime?.modelConfig || { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+      modelConfig: runtime?.modelConfig || { provider: 'anthropic', model: 'claude-sonnet-4-6' },
       toolWhitelist: runtime?.toolWhitelist || [],
       memoryScope: [],
       taskQueue: [],
@@ -1791,7 +1791,7 @@ export class ExecutionEngine {
       const routedModel = resolveModelForPod(role);
       const modelConfig = {
         provider: routedModel.provider || definition?.modelConfig?.provider || 'anthropic',
-        model: routedModel.model || definition?.modelConfig?.model || 'claude-sonnet-4-5-20250929',
+        model: routedModel.model || definition?.modelConfig?.model || 'claude-sonnet-4-6',
         temperature: definition?.modelConfig?.temperature,
         maxTokens: definition?.modelConfig?.maxTokens,
       };
@@ -1864,7 +1864,7 @@ export class ExecutionEngine {
       // Create an AIService for this pod
       const aiService = new AIService({
         provider: modelConfig.provider || 'anthropic',
-        model: modelConfig.model || 'claude-sonnet-4-5-20250929',
+        model: modelConfig.model || 'claude-sonnet-4-6',
         temperature: modelConfig.temperature,
         maxTokens: modelConfig.maxTokens,
         systemPrompt,
@@ -2477,6 +2477,26 @@ export class ExecutionEngine {
 
     tbwoUpdateService.executionComplete(state.tbwoId, true);
 
+    // Consequence Engine: resolve all pending predictions for this TBWO's conversation (fire-and-forget)
+    try {
+      const tbwo = useTBWOStore.getState().getTBWOById(state.tbwoId);
+      const chatConvId = tbwo?.chatConversationId;
+      if (chatConvId) {
+        import('../consequenceService').then(({ resolveRecentPrediction, recordOutcome }) => {
+          // Estimate quality: artifact count > 0 and completed = likely correct
+          const qualityResult = state.artifacts.size > 0 ? 'correct' : 'partial';
+          resolveRecentPrediction(chatConvId, qualityResult, 'tbwo_completion', `TBWO ${state.tbwoId} completed`).catch(() => {});
+
+          // Also record a standalone outcome for the TBWO domain
+          recordOutcome('tbwo_completion', qualityResult, {
+            triggerSource: `TBWO ${state.tbwoId}: ${state.artifacts.size} artifacts`,
+            domain: 'execution_strategy',
+            lessonLearned: `TBWO completed with ${state.artifacts.size} artifacts in ${Math.round((Date.now() - state.startTime) / 60000)} minutes`,
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+    } catch {}
+
     // Post completion summary to TBWO chat
     const totalTime = Math.round((Date.now() - state.startTime - state.totalPauseDuration) / 60000);
     const artifactCount = state.artifacts.size;
@@ -2598,6 +2618,24 @@ export class ExecutionEngine {
 
     tbwoUpdateService.executionError(state.tbwoId, errorMessage);
     tbwoUpdateService.executionComplete(state.tbwoId, false);
+
+    // Consequence Engine: record TBWO failure as negative outcome (fire-and-forget)
+    try {
+      const failedTBWOForConsequence = useTBWOStore.getState().getTBWOById(state.tbwoId);
+      const failedChatConvId = failedTBWOForConsequence?.chatConversationId;
+      if (failedChatConvId) {
+        import('../consequenceService').then(({ resolveRecentPrediction, recordOutcome }) => {
+          resolveRecentPrediction(failedChatConvId, 'wrong', 'tbwo_completion', `TBWO ${state.tbwoId} failed: ${errorMessage.slice(0, 100)}`).catch(() => {});
+          recordOutcome('tbwo_completion', 'wrong', {
+            triggerSource: `TBWO ${state.tbwoId} failed`,
+            domain: 'execution_strategy',
+            severity: 'high',
+            lessonLearned: `TBWO failed: ${errorMessage.slice(0, 200)}`,
+            correctiveAction: `Review error: ${state.errors.slice(-1).map(e => e.error).join('; ').slice(0, 200)}`,
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+    } catch {}
 
     // Post failure to chat with partial deliverables
     let failMsg = `**Execution failed.**\n\n**Error:** ${errorMessage}`;

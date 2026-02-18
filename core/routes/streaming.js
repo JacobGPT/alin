@@ -70,54 +70,69 @@ export function registerStreamingRoutes(ctx) {
 
     sendSSE(res, 'start', { model, provider: 'anthropic' });
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const raw = line.slice(6).trim();
-        if (raw === '[DONE]') continue;
-        try {
-          const ev = JSON.parse(raw);
-          if (ev.type === 'message_start' && ev.message?.usage) {
-            inputTokens = ev.message.usage.input_tokens || 0;
-          } else if (ev.type === 'content_block_start') {
-            if (ev.content_block?.type === 'thinking') {
-              sendSSE(res, 'thinking_start', {});
-            } else if (ev.content_block?.type === 'tool_use') {
-              currentToolId = ev.content_block.id || '';
-              currentToolName = ev.content_block.name || '';
-              currentToolInput = '';
+    let streamedAnyText = false;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(raw);
+            if (ev.type === 'message_start' && ev.message?.usage) {
+              inputTokens = ev.message.usage.input_tokens || 0;
+            } else if (ev.type === 'content_block_start') {
+              if (ev.content_block?.type === 'thinking') {
+                sendSSE(res, 'thinking_start', {});
+              } else if (ev.content_block?.type === 'tool_use') {
+                currentToolId = ev.content_block.id || '';
+                currentToolName = ev.content_block.name || '';
+                currentToolInput = '';
+              }
+            } else if (ev.type === 'content_block_delta') {
+              if (ev.delta?.type === 'thinking_delta') {
+                sendSSE(res, 'thinking_delta', { thinking: ev.delta.thinking });
+              } else if (ev.delta?.type === 'text_delta') {
+                streamedAnyText = true;
+                sendSSE(res, 'text_delta', { text: ev.delta.text });
+              } else if (ev.delta?.type === 'input_json_delta') {
+                currentToolInput += ev.delta.partial_json || '';
+              } else if (ev.delta?.type === 'signature_delta') {
+                // Signature for thinking block — pass through for API round-trips
+                sendSSE(res, 'signature_delta', { signature: ev.delta.signature });
+              }
+            } else if (ev.type === 'content_block_stop') {
+              if (currentToolId) {
+                let parsedInput = {};
+                try { parsedInput = JSON.parse(currentToolInput || '{}'); } catch {}
+                sendSSE(res, 'tool_use', { id: currentToolId, name: currentToolName, input: parsedInput });
+                currentToolId = '';
+                currentToolName = '';
+                currentToolInput = '';
+              }
+            } else if (ev.type === 'message_delta') {
+              if (ev.usage) outputTokens = ev.usage.output_tokens || 0;
+              if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
             }
-          } else if (ev.type === 'content_block_delta') {
-            if (ev.delta?.type === 'thinking_delta') {
-              sendSSE(res, 'thinking_delta', { thinking: ev.delta.thinking });
-            } else if (ev.delta?.type === 'text_delta') {
-              sendSSE(res, 'text_delta', { text: ev.delta.text });
-            } else if (ev.delta?.type === 'input_json_delta') {
-              currentToolInput += ev.delta.partial_json || '';
-            } else if (ev.delta?.type === 'signature_delta') {
-              // Signature for thinking block — pass through for API round-trips
-              sendSSE(res, 'signature_delta', { signature: ev.delta.signature });
-            }
-          } else if (ev.type === 'content_block_stop') {
-            if (currentToolId) {
-              let parsedInput = {};
-              try { parsedInput = JSON.parse(currentToolInput || '{}'); } catch {}
-              sendSSE(res, 'tool_use', { id: currentToolId, name: currentToolName, input: parsedInput });
-              currentToolId = '';
-              currentToolName = '';
-              currentToolInput = '';
-            }
-          } else if (ev.type === 'message_delta') {
-            if (ev.usage) outputTokens = ev.usage.output_tokens || 0;
-            if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
-          }
-        } catch {}
+          } catch {}
+        }
       }
+    } catch (streamErr) {
+      // Stream terminated mid-response (connection dropped, provider closed, etc.)
+      console.warn('[Anthropic] Stream terminated mid-response:', streamErr.message);
+      if (streamedAnyText) {
+        // Already sent partial text — send a note + done event so client preserves content
+        sendSSE(res, 'text_delta', { text: '\n\n*(Connection to AI provider was interrupted. The response above may be incomplete.)*' });
+        sendSSE(res, 'done', { inputTokens, outputTokens, model, stopReason: 'interrupted' });
+        return res.end();
+      }
+      // No text was streamed yet — propagate as error
+      throw streamErr;
     }
     sendSSE(res, 'done', { inputTokens, outputTokens, model, stopReason });
     res.end();
@@ -892,11 +907,59 @@ export function registerStreamingRoutes(ctx) {
     res.end();
   }
 
+  // ── Consequence Engine: intercept streamed text for post-stream prediction extraction ──
+  // We monkey-patch res.write to capture text_delta events, then run extraction on res.end.
+  function attachConsequenceExtractor(res, userId, conversationId, model) {
+    if (!ctx.consequenceEngine) return;
+
+    let accumulatedText = '';
+    const originalWrite = res.write.bind(res);
+    const originalEnd = res.end.bind(res);
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    res.write = function (chunk, ...rest) {
+      // Capture text from SSE text_delta events
+      // Format: "event: text_delta\ndata: {"type":"text_delta","text":"..."}\n\n"
+      if (typeof chunk === 'string' && chunk.includes('text_delta')) {
+        try {
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            const parsed = JSON.parse(raw);
+            if (parsed.type === 'text_delta' && parsed.text) {
+              accumulatedText += parsed.text;
+            }
+          }
+        } catch { /* ignore parse errors in hot path */ }
+      }
+      return originalWrite(chunk, ...rest);
+    };
+
+    res.end = function (...args) {
+      // Fire-and-forget: extract predictions from accumulated text after stream completes
+      if (accumulatedText.length > 80) {
+        try {
+          ctx.consequenceEngine.recordPredictionsFromStream(
+            userId, conversationId || '', messageId, accumulatedText, model || ''
+          );
+        } catch (e) {
+          console.warn('[ConsequenceEngine] Post-stream extraction error:', e.message);
+        }
+      }
+      return originalEnd(...args);
+    };
+  }
+
   app.post('/api/chat/stream', requireAuth, checkPlanLimits, async (req, res) => {
     const { messages, model, provider, system, systemPrompt, tools, thinking, thinkingBudget, maxTokens, temperature } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
 
     setupSSE(res);
+
+    // Attach consequence engine prediction extraction (intercepts res.write/res.end)
+    attachConsequenceExtractor(res, req.userId, req.body.conversationId, model);
 
     try {
       const isAnthropic = provider === 'anthropic' || model?.startsWith('claude');
@@ -1026,6 +1089,8 @@ export function registerStreamingRoutes(ctx) {
     const { messages, model, provider, system, systemPrompt, tools, thinking, thinkingBudget, maxTokens, temperature } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
 
+    // Note: No consequence extraction on continuations — predictions extracted on initial stream only
+
     setupSSE(res);
 
     try {
@@ -1056,7 +1121,10 @@ export function registerStreamingRoutes(ctx) {
       }
     } catch (error) {
       console.error('[Continue] Error:', error.message);
-      try { sendSSE(res, 'error', { error: error.message }); } catch {}
+      const errMsg = error.message === 'fetch failed'
+        ? 'AI provider unreachable — the continuation request to the AI provider failed. This is usually a transient network issue. Please try again.'
+        : error.message;
+      try { sendSSE(res, 'error', { error: errMsg, details: error.message }); } catch {}
       try { res.end(); } catch {}
     }
   });

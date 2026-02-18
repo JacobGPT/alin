@@ -159,15 +159,16 @@ export default defineConfig(({ command }) => ({
     open: true,
     cors: true,
     // Proxy API requests to backend during development
+    // Set API_PORT env var to override (e.g. API_PORT=3001 for private backend)
     proxy: {
       '/api': {
-        target: 'http://localhost:3002',
+        target: `http://localhost:${process.env.API_PORT || 3002}`,
         changeOrigin: true,
         secure: false,
         ws: true // WebSocket support
       },
       '/ws': {
-        target: 'ws://localhost:3002',
+        target: `ws://localhost:${process.env.API_PORT || 3002}`,
         ws: true
       }
     }

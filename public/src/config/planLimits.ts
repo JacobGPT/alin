@@ -42,7 +42,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
     messagesPerHour: 25,
     allowedModels: [
-      'claude-sonnet-4-5-20250929',
+      'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929',
       'gpt-5-mini', 'gpt-5-nano',
       'gpt-4.1-mini', 'gpt-4.1-nano',
       'gpt-4o', 'gpt-4o-mini',
@@ -77,7 +77,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
   pro: {
     messagesPerHour: -1,
     allowedModels: [
-      'claude-opus-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
+      'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
       'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
       'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
       'gpt-4o', 'gpt-4o-mini',
@@ -113,7 +113,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
   elite: {
     messagesPerHour: -1,
     allowedModels: [
-      'claude-opus-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
+      'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
       'gpt-5.2', 'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
       'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
       'gpt-4o', 'gpt-4o-mini',
