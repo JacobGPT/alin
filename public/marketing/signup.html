@@ -122,7 +122,7 @@ async function handleSignup(){
     localStorage.setItem('alin-auth-storage',JSON.stringify({
       state:{user:data.user,token:data.token,isAuthenticated:true},version:0
     }));
-    window.location.href='/app/chat';
+    window.location.href='/app';
   }catch(err){
     showError(err.message);
     signupBtn.textContent='Create Account';

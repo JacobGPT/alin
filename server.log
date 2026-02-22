@@ -1,0 +1,19 @@
+
+⚠️  [Security] WARNING: Using default JWT_SECRET. Set JWT_SECRET env var for production.
+
+[DB] SQLite database initialized at ./data/alin.db
+[DB] Write health check passed
+[ConsequenceEngine] Routes registered (PUBLIC mode, 5 domains, bootstrap=ACTIVE)
+
+========================================================
+           ALIN Public Backend Server
+========================================================
+  Running on: http://localhost:3002
+  Database:   ./data/alin.db
+  API Keys:   Anthropic=Y OpenAI=Y Brave=Y
+  Routes:     28 modules loaded
+  Health:     GET /api/health
+========================================================
+
+Error: ENOENT: no such file or directory, stat 'C:\Users\jacob\Downloads\ALIN\public\dist\index.html'
+Error: ENOENT: no such file or directory, stat 'C:\Users\jacob\Downloads\ALIN\public\dist\index.html'

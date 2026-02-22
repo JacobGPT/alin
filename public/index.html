@@ -139,6 +139,34 @@
     <!-- Main Application Script -->
     <script type="module" src="/src/main.tsx"></script>
     
+    <!-- Catch fatal JS errors and display them instead of black screen -->
+    <script>
+      window.addEventListener('error', function(e) {
+        var root = document.getElementById('root');
+        if (root && !root.hasChildNodes()) {
+          var loader = document.getElementById('app-loader');
+          if (loader) loader.remove();
+          root.innerHTML = '<div style="padding:2rem;color:#f5f5f7;font-family:monospace;background:#0a0a0f;min-height:100vh">'
+            + '<h2 style="color:#ef4444;margin-bottom:1rem">ALIN failed to load</h2>'
+            + '<pre style="white-space:pre-wrap;color:#a1a1aa;font-size:13px">' + (e.message || 'Unknown error') + '\n' + (e.filename || '') + ':' + (e.lineno || '') + '</pre>'
+            + '<button onclick="location.reload()" style="margin-top:1rem;padding:.5rem 1rem;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer">Reload</button>'
+            + '</div>';
+        }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var root = document.getElementById('root');
+        if (root && !root.hasChildNodes()) {
+          var loader = document.getElementById('app-loader');
+          if (loader) loader.remove();
+          root.innerHTML = '<div style="padding:2rem;color:#f5f5f7;font-family:monospace;background:#0a0a0f;min-height:100vh">'
+            + '<h2 style="color:#ef4444;margin-bottom:1rem">ALIN failed to load</h2>'
+            + '<pre style="white-space:pre-wrap;color:#a1a1aa;font-size:13px">' + (e.reason && e.reason.message || e.reason || 'Unhandled promise rejection') + '</pre>'
+            + '<button onclick="location.reload()" style="margin-top:1rem;padding:.5rem 1rem;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer">Reload</button>'
+            + '</div>';
+        }
+      });
+    </script>
+
     <!-- Remove loader once app is ready -->
     <script>
       window.addEventListener('load', () => {

@@ -87,7 +87,7 @@ async function handleLogin(){
     var data=await res.json();
     if(!res.ok)throw new Error(data.error||'Login failed');
     localStorage.setItem('alin-auth-storage',JSON.stringify({state:{user:data.user,token:data.token,isAuthenticated:true},version:0}));
-    window.location.href='/app/chat';
+    window.location.href='/app';
   }catch(err){
     showError(err.message);
     loginBtn.textContent='Sign In';loginBtn.disabled=false;

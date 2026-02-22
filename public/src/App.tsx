@@ -9,7 +9,7 @@
  */
 
 import { useEffect, Suspense, lazy } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
 // Stores
@@ -59,7 +59,7 @@ function App() {
   const location = useLocation();
 
   // Determine if we're on the home dashboard (no sidebar needed)
-  const isHomeDashboard = location.pathname === '/home';
+  const isHomeDashboard = location.pathname === '/';
   
   // ========================================================================
   // INITIALIZATION
@@ -229,9 +229,6 @@ function App() {
           <AppShell>
             <Suspense fallback={<LoadingScreen message="Loading..." />}>
               <Routes>
-                {/* Root redirect — send users to chat by default */}
-                <Route path="/" element={<Navigate to="/chat" replace />} />
-
                 {/* Chat routes */}
                 <Route path="/chat" element={<ChatView />} />
                 <Route path="/chat/:conversationId" element={<ChatView />} />
@@ -285,10 +282,10 @@ function NotFound() {
           The page you're looking for doesn't exist or has been moved.
         </p>
         <a
-          href="/app/chat"
+          href="/"
           className="inline-block rounded-lg bg-brand-primary px-6 py-3 font-medium text-white transition-colors hover:bg-brand-primary-hover"
         >
-          Back to Chat
+          Back to Home
         </a>
       </div>
     </div>
