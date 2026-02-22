@@ -133,6 +133,7 @@ export default defineConfig(({ command }) => ({
   
   // Path resolution - Absolute imports
   resolve: {
+    dedupe: ['react', 'react-dom', 'react-router-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@components': path.resolve(__dirname, './src/components'),
@@ -201,52 +202,28 @@ export default defineConfig(({ command }) => ({
       }
     },
     
-    // Code splitting strategy for optimal loading
+    // Code splitting: use function-based manualChunks to avoid circular
+    // chunk dependencies (object form caused react-vendor ↔ ui-vendor cycle)
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Core React
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          
-          // State management
-          'state-vendor': ['zustand', 'immer', '@tanstack/react-query'],
-          
-          // UI components
-          'ui-vendor': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-tooltip',
-            '@radix-ui/react-select',
-            '@radix-ui/react-tabs',
-            'framer-motion'
-          ],
-          
-          // 3D visualization
-          '3d-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
-          
-          // Charts and graphs
-          'charts-vendor': ['recharts', 'cytoscape', 'react-cytoscapejs'],
-          
-          // Markdown and code
-          'markdown-vendor': [
-            'react-markdown',
-            'remark-gfm',
-            'rehype-katex',
-            'highlight.js'
-          ],
-          
-          // Monaco editor (code editor)
-          'monaco-vendor': ['monaco-editor', '@monaco-editor/react'],
-          
-          // Utils
-          'utils-vendor': [
-            'date-fns',
-            'lodash-es',
-            'uuid',
-            'nanoid',
-            'zod'
-          ]
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          // React core — must be isolated to prevent circular imports
+          if (id.includes('/react-dom/') || id.includes('/react-dom@'))
+            return 'react-vendor';
+          if (id.includes('/react/') || id.includes('/react@'))
+            return 'react-vendor';
+          if (id.includes('/react-router'))
+            return 'react-vendor';
+          if (id.includes('/scheduler/') || id.includes('/scheduler@'))
+            return 'react-vendor';
+          // Heavy libs that are lazy-loaded get their own chunks
+          if (id.includes('monaco-editor'))
+            return 'monaco-vendor';
+          if (id.includes('/three/') || id.includes('@react-three'))
+            return '3d-vendor';
+          if (id.includes('mermaid'))
+            return 'mermaid-vendor';
         }
       }
     },
