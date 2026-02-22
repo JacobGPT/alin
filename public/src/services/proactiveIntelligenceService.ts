@@ -121,18 +121,26 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+// After the first 404 we know the proactive routes aren't registered (public mode).
+// Stop all subsequent requests to avoid console 404 spam.
+let _unavailable = false;
+
 async function get<T>(path: string): Promise<T> {
+  if (_unavailable) throw new Error('Proactive API unavailable');
   const res = await fetch(`${API}${path}`, { headers: getAuthHeaders() });
+  if (res.status === 404) { _unavailable = true; }
   if (!res.ok) throw new Error(`Proactive API ${path} -> ${res.status}`);
   return res.json();
 }
 
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
+  if (_unavailable) throw new Error('Proactive API unavailable');
   const res = await fetch(`${API}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
   });
+  if (res.status === 404) { _unavailable = true; }
   if (!res.ok) throw new Error(`Proactive API ${path} -> ${res.status}`);
   return res.json();
 }

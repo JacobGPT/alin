@@ -2,14 +2,14 @@
   "name": "ALIN - AI Operating System",
   "short_name": "ALIN",
   "description": "Advanced Linguistic Intelligence Network - Production AI OS",
-  "start_url": "/",
+  "start_url": "/app/",
   "display": "standalone",
   "background_color": "#0a0a0f",
   "theme_color": "#6366f1",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icons/icon.svg",
+      "src": "/app/icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
