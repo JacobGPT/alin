@@ -114,6 +114,30 @@ const ACTIVITY_COLORS: Record<ToolActivityType, string> = {
 // HELPERS
 // ============================================================================
 
+function isEmptyCompletedActivity(activity: ActivityData): boolean {
+  // Always show running or errored activities
+  if (activity.status === 'running' || activity.status === 'error') return false;
+  if (activity.status !== 'completed') return false;
+
+  // web_search with no results = useless "No results found" expander
+  if (activity.type === 'web_search' || activity.type === 'image_search') {
+    const hasResults = activity.results && (activity.results as any[]).length > 0;
+    if (!hasResults && !activity.error) return true;
+  }
+
+  // For other tool types: hide if completely empty (no output, no results, no error)
+  if (!activity.output && (!activity.results || (activity.results as any[]).length === 0) && !activity.error) {
+    // But keep activities that have input (file_write, code_execute, etc.)
+    // because the input IS the interesting part
+    const hasInterestingInput = activity.input && Object.keys(activity.input).some(
+      k => k === 'content' || k === 'code' || k === 'path' || k === 'old_text' || k === 'new_text' || k === 'command'
+    );
+    if (!hasInterestingInput) return true;
+  }
+
+  return false;
+}
+
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen) + '\n... (' + (str.length - maxLen) + ' more characters)';
@@ -131,10 +155,12 @@ function ActivityItem({ activity }: { activity: ActivityData }) {
 
   const hasContent =
     activity.output ||
-    (activity.results && activity.results.length > 0) ||
+    (activity.results && (activity.results as any[]).length > 0) ||
     activity.error ||
     activity.query ||
-    activity.input;
+    (activity.input && Object.keys(activity.input).some(
+      k => ['content', 'code', 'path', 'old_text', 'new_text', 'command', 'url', 'query', 'operation'].includes(k)
+    ));
 
   const duration = activity.startTime && activity.endTime
     ? ((activity.endTime - activity.startTime) / 1000).toFixed(1) + 's'
@@ -414,39 +440,48 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
     // ------------------------------------------------------------------
     // WEB SEARCH — show results with links
     // ------------------------------------------------------------------
-    case 'web_search': {
+    case 'web_search':
+    case 'image_search': {
+      const resultsList = activity.results as any[] | undefined;
+      const hasResults = resultsList && resultsList.length > 0;
       return (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {activity.query && (
-            <div className="text-xs text-text-quaternary">
-              Query: <span className="text-text-tertiary">"{activity.query}"</span>
+            <div className="text-xs text-text-quaternary flex items-center gap-1.5">
+              <MagnifyingGlassIcon className="h-3 w-3 flex-shrink-0" />
+              <span className="text-text-tertiary font-medium">"{activity.query}"</span>
+              {hasResults && (
+                <span className="text-text-quaternary">
+                  — {resultsList.length} result{resultsList.length !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           )}
-          {activity.results && (activity.results as any[]).length > 0 ? (
-            <div className="space-y-1">
-              {(activity.results as any[]).slice(0, 5).map((result, i) => (
+          {hasResults ? (
+            <div className="space-y-0.5">
+              {resultsList.slice(0, 5).map((result, i) => (
                 <a
                   key={i}
                   href={result.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs text-text-tertiary hover:text-brand-primary transition-colors"
+                  className="flex items-center gap-2 text-xs text-text-tertiary hover:text-brand-primary transition-colors py-0.5"
                 >
-                  <GlobeAltIcon className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{result.title || result.url}</span>
-                  <span className="text-text-quaternary truncate max-w-[200px]">
+                  <GlobeAltIcon className="h-3 w-3 flex-shrink-0 text-text-quaternary" />
+                  <span className="truncate font-medium">{result.title || result.url}</span>
+                  <span className="text-text-quaternary truncate max-w-[200px] text-[10px]">
                     {(() => { try { return new URL(result.url).hostname; } catch { return ''; } })()}
                   </span>
                 </a>
               ))}
-              {(activity.results as any[]).length > 5 && (
-                <div className="text-xs text-text-quaternary">
-                  +{(activity.results as any[]).length - 5} more results
+              {resultsList.length > 5 && (
+                <div className="text-xs text-text-quaternary pl-5">
+                  +{resultsList.length - 5} more results
                 </div>
               )}
             </div>
           ) : (
-            <div className="text-xs text-text-quaternary">No results found</div>
+            <div className="text-xs text-text-quaternary italic">No results found</div>
           )}
         </div>
       );
@@ -477,6 +512,32 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
     }
 
     // ------------------------------------------------------------------
+    // WEB FETCH — show URL + fetched content preview
+    // ------------------------------------------------------------------
+    case 'web_fetch': {
+      const url = (input.url as string) || '';
+      let hostname = '';
+      try { hostname = new URL(url).hostname; } catch { /* ignore */ }
+      return (
+        <div className="space-y-1">
+          {url && (
+            <div className="text-xs text-text-quaternary flex items-center gap-1.5">
+              <ArrowDownOnSquareIcon className="h-3 w-3 flex-shrink-0" />
+              <a href={url} target="_blank" rel="noopener noreferrer" className="text-text-tertiary hover:text-brand-primary transition-colors truncate">
+                {hostname || url}
+              </a>
+            </div>
+          )}
+          {output && (
+            <pre className="text-xs font-mono text-text-tertiary bg-background-elevated rounded-md px-3 py-2 overflow-x-auto max-h-48 overflow-y-auto border border-border-primary leading-relaxed">
+              {truncate(output, 2000)}
+            </pre>
+          )}
+        </div>
+      );
+    }
+
+    // ------------------------------------------------------------------
     // DEFAULT — show raw output
     // ------------------------------------------------------------------
     default: {
@@ -501,26 +562,25 @@ function ActivityContent({ activity }: { activity: ActivityData }) {
 // ============================================================================
 
 export function ToolActivityPanel({ activities, isProcessing }: ToolActivityPanelProps) {
-  // Don't render if no activities
-  if (activities.length === 0) {
+  // Filter out completed activities that have no meaningful content
+  const visibleActivities = activities.filter((a) => !isEmptyCompletedActivity(a));
+
+  // Don't render if no visible activities
+  if (visibleActivities.length === 0) {
     return null;
   }
-
-  const completedCount = activities.filter((a) => a.status === 'completed').length;
-  const runningCount = activities.filter((a) => a.status === 'running').length;
-  const errorCount = activities.filter((a) => a.status === 'error').length;
 
   return (
     <div className="mb-3">
       {/* Activities - always visible, no outer collapse */}
       <div className="space-y-1">
-        {activities.map((activity) => (
+        {visibleActivities.map((activity) => (
           <ActivityItem key={activity.id} activity={activity} />
         ))}
       </div>
 
       {/* Error always shown */}
-      {activities.map((a) =>
+      {visibleActivities.map((a) =>
         a.error ? (
           <div key={a.id + '-err'} className="mt-1 ml-5 text-xs text-red-400 bg-red-400/10 rounded px-2 py-1">
             {a.error}

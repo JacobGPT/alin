@@ -751,7 +751,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
               return {
                 ...m,
                 content: m.content
-                  .filter((b: any) => b.type !== 'tool_activity' && b.type !== 'video_embed')
+                  .filter((b: any) => b.type !== 'tool_activity')
                   .map((b: any) => {
                     if (b.type === 'image' && b.url?.startsWith('data:')) {
                       return { ...b, url: '[base64-stripped]' };

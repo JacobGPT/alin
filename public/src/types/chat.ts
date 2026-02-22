@@ -259,6 +259,14 @@ export interface Conversation {
   
   // Memory context
   memoryContext?: MemoryContext;
+
+  // Video analysis context (Gemini File API)
+  videoContext?: {
+    fileUri: string;
+    mimeType: string;
+    geminiFileName: string;
+    displayName?: string;
+  };
 }
 
 export interface ConversationBranch {

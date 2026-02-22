@@ -32,19 +32,8 @@ export interface ServerStreamCallbacks {
 }
 
 export interface ServerStreamParams {
-  endpoint: '/api/chat/stream' | '/api/chat/continue';
-  body: {
-    provider: string;
-    model: string;
-    messages: any[];
-    system?: string;
-    mode?: string;
-    additionalContext?: string;
-    tools?: any[];
-    thinking?: boolean;
-    thinkingBudget?: number;
-    maxTokens?: number;
-  };
+  endpoint: '/api/chat/stream' | '/api/chat/continue' | '/api/video/analyze';
+  body: Record<string, unknown>;
   callbacks: ServerStreamCallbacks;
   signal?: AbortSignal;
 }

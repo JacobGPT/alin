@@ -459,7 +459,8 @@ export const MessageComponent = memo(function MessageComponent({
   };
 
   // Convert LaTeX delimiters \[...\] and \(...\) to $$...$$ and $...$
-  // so remark-math can parse them for KaTeX rendering
+  // so remark-math can parse them for KaTeX rendering.
+  // Also escape currency $signs so remark-math doesn't treat "$50" as math.
   const convertLatexDelimiters = (text: string): string => {
     // Don't convert inside code blocks
     const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
@@ -470,6 +471,9 @@ export const MessageComponent = memo(function MessageComponent({
       let converted = part.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `$$${inner}$$`);
       // Convert inline math: \(...\) → $...$
       converted = converted.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => `$${inner}$`);
+      // Escape currency $ signs — "$" followed by a digit is money, not math.
+      // Replace "$123" with "\$123" so remark-math ignores it.
+      converted = converted.replace(/\$(\d)/g, '\\$$1');
       return converted;
     }).join('');
   };

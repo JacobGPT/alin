@@ -6,6 +6,9 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
+import multer from 'multer';
+import JSZip from 'jszip';
 
 const SCAN_DEFAULTS = {
   maxDepth: 10,
@@ -226,6 +229,73 @@ export function registerFileRoutes(ctx) {
     } catch (error) {
       console.error('[Scan] Error:', error.message);
       sendError(res, 500, error.message);
+    }
+  });
+
+  /**
+   * POST /api/files/extract-zip — Extract and return contents of a ZIP file
+   */
+  const zipUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  app.post('/api/files/extract-zip', requireAuth, zipUpload.single('file'), async (req, res) => {
+    const tmpPath = req.file?.path;
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const MAX_PER_FILE = 500 * 1024;   // 500KB per file
+      const MAX_TOTAL = 10 * 1024 * 1024; // 10MB total extracted text
+
+      const buffer = await fs.readFile(tmpPath);
+      const zip = await JSZip.loadAsync(buffer);
+
+      const TEXT_EXTS = new Set([
+        'txt', 'md', 'py', 'js', 'ts', 'jsx', 'tsx', 'json', 'csv', 'html', 'css',
+        'xml', 'yaml', 'yml', 'toml', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb',
+        'php', 'sh', 'bat', 'sql', 'r', 'swift', 'kt', 'scala', 'lua', 'zig',
+        'env', 'cfg', 'ini', 'conf', 'log', 'gitignore', 'dockerfile', 'svg',
+      ]);
+
+      const files = [];
+      let totalExtracted = 0;
+
+      for (const [zipPath, zipEntry] of Object.entries(zip.files)) {
+        if (zipEntry.dir) continue;
+        // Skip macOS resource forks and hidden entries
+        if (zipPath.startsWith('__MACOSX/') || zipPath.includes('/.')) continue;
+
+        const name = path.basename(zipPath);
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        const isText = TEXT_EXTS.has(ext);
+        const size = zipEntry._data?.uncompressedSize || 0;
+
+        const fileInfo = { name, path: zipPath, size, isText, content: null };
+
+        if (isText && totalExtracted < MAX_TOTAL) {
+          try {
+            let content = await zipEntry.async('string');
+            if (content.length > MAX_PER_FILE) {
+              content = content.slice(0, MAX_PER_FILE) + `\n... (truncated, ${content.length - MAX_PER_FILE} more chars)`;
+            }
+            fileInfo.content = content;
+            totalExtracted += content.length;
+          } catch {
+            // Binary disguised as text, skip content
+          }
+        }
+
+        files.push(fileInfo);
+      }
+
+      console.log(`[ZIP] Extracted ${req.file.originalname}: ${files.length} files, ${Math.round(totalExtracted / 1024)}KB text`);
+      res.json({ success: true, files });
+    } catch (error) {
+      console.error('[ZIP] Extract error:', error.message);
+      sendError(res, 500, error.message);
+    } finally {
+      // Clean up temp file
+      if (tmpPath) {
+        fs.unlink(tmpPath).catch(() => {});
+      }
     }
   });
 

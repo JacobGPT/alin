@@ -29,6 +29,7 @@ import { getProjectContextForPrompt } from '../store/projectStore';
 import { CLAUDE_PRICING } from './claudeClient';
 import { getCapabilitiesSnapshot } from '../hooks/useCapabilities';
 import { buildAddendum as buildSelfModelAddendum, onThinkingBlock, onToolCall as recordToolCall } from '../services/selfModelService';
+import { useChatStore } from '../store/chatStore';
 
 // Auto-continuation instruction sent when response is truncated
 const CONTINUATION_INSTRUCTION = `Your previous response was cut off due to length limits. Continue EXACTLY where you left off. Do not repeat any content. Do not add introductory text like "Continuing from where I left off..." — just continue the output seamlessly. If you were inside a code block, resume the code immediately.`;
@@ -284,7 +285,8 @@ function getToolActivityType(toolName: string): ToolActivityType {
   if (toolName === 'run_command') return 'terminal_command';
   if (toolName === 'git') return 'git_operation';
   if (toolName === 'edit_file') return 'file_edit';
-  if (toolName.includes('search') || toolName.includes('web')) return 'web_search';
+  if (toolName === 'web_fetch') return 'web_fetch';
+  if (toolName === 'web_search' || toolName === 'image_search') return 'web_search';
   if (toolName.includes('memory') && toolName.includes('recall')) return 'memory_recall';
   if (toolName.includes('memory') && toolName.includes('store')) return 'memory_store';
   if (toolName.includes('code') || toolName.includes('execute')) return 'code_execute';
@@ -296,7 +298,22 @@ function getToolActivityType(toolName: string): ToolActivityType {
 }
 
 function getToolLabel(toolName: string, input?: Record<string, unknown>): string {
-  if (toolName.includes('search') || toolName.includes('web')) {
+  // web_fetch must be checked BEFORE the generic includes('web') to avoid mislabeling
+  if (toolName === 'web_fetch') {
+    const url = input?.['url'] as string;
+    if (url) {
+      try {
+        const hostname = new URL(url).hostname;
+        const pathname = new URL(url).pathname;
+        const shortPath = pathname.length > 20 ? pathname.slice(0, 20) + '...' : pathname;
+        return `Fetching: ${hostname}${shortPath !== '/' ? shortPath : ''}`;
+      } catch {
+        return `Fetching: ${url.slice(0, 50)}${url.length > 50 ? '...' : ''}`;
+      }
+    }
+    return 'Fetching URL';
+  }
+  if (toolName === 'web_search' || toolName === 'image_search') {
     const query = input?.['query'] as string;
     return query ? `Searching: "${query.slice(0, 50)}${query.length > 50 ? '...' : ''}"` : 'Searching the web';
   }
@@ -368,10 +385,6 @@ function getToolLabel(toolName: string, input?: Record<string, unknown>): string
   if (toolName === 'webcam_capture') return 'Capturing webcam frame';
   if (toolName === 'blender_execute') return 'Executing Blender script';
   if (toolName === 'blender_render') return 'Rendering in Blender';
-  if (toolName === 'web_fetch') {
-    const url = input?.['url'] as string;
-    return url ? `Fetching: ${url.slice(0, 50)}${url.length > 50 ? '...' : ''}` : 'Fetching URL';
-  }
   return `Using ${toolName}`;
 }
 
@@ -485,6 +498,74 @@ export class APIService {
       // Convert to server format
       const serverMessages = convertMessagesForServer(contextMessages);
 
+      // Check for video context — route to Gemini video analysis endpoint
+      const convId = useChatStore.getState().currentConversationId;
+      const conversation = convId ? useChatStore.getState().conversations.get(convId) : null;
+      const videoCtx = conversation?.videoContext;
+
+      if (videoCtx?.fileUri) {
+        // Route through /api/video/analyze — Gemini-only, handles any provider selection
+        try {
+          const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+          const userText = lastUserMsg?.content
+            ? (Array.isArray(lastUserMsg.content)
+              ? lastUserMsg.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+              : String(lastUserMsg.content))
+            : 'Analyze this video.';
+
+          // Build conversation history for follow-up context
+          const conversationHistory = messages.slice(0, -1)
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .map(m => ({
+              role: m.role,
+              text: Array.isArray(m.content)
+                ? m.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+                : String(m.content || ''),
+            }))
+            .filter(m => m.text.trim())
+            .slice(-10); // Keep last 10 exchanges for context
+
+          this.currentAbort = new AbortController();
+          const videoResult = await streamFromServer({
+            endpoint: '/api/video/analyze',
+            signal: this.currentAbort.signal,
+            body: {
+              fileUri: videoCtx.fileUri,
+              mimeType: videoCtx.mimeType,
+              prompt: userText,
+              conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
+              geminiFileName: videoCtx.geminiFileName,
+            },
+            callbacks: {
+              onText: (text) => callbacks.onChunk?.(text),
+              onThinking: (thinking) => callbacks.onThinking?.(thinking),
+              onError: (error) => callbacks.onError?.(error),
+            },
+          });
+
+          const inTok = videoResult.usage?.inputTokens || 0;
+          const outTok = videoResult.usage?.outputTokens || 0;
+          const response: ServerResponse = {
+            id: `video-${Date.now()}`,
+            content: videoResult.content || [],
+            model: 'gemini-2.5-pro',
+            stopReason: videoResult.stopReason || 'end_turn',
+            usage: { inputTokens: inTok, outputTokens: outTok, totalTokens: inTok + outTok },
+            cost: 0,
+          };
+          callbacks.onComplete?.(response);
+          return;
+        } catch (videoErr: any) {
+          // Video analysis failed (file expired, deleted, or endpoint unavailable)
+          // Clear stale video context so the conversation isn't permanently stuck
+          console.warn('[APIService] Video analysis failed, clearing video context:', videoErr.message);
+          if (convId) {
+            useChatStore.getState().updateConversation(convId, { videoContext: undefined });
+          }
+          // Fall through to normal chat flow instead of failing
+        }
+      }
+
       // Track tool uses and thinking content
       const pendingToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
       const statusStore = useStatusStore.getState();
@@ -547,7 +628,27 @@ export class APIService {
         statusStore.setPhase('analyzing', 'Processing tool results...');
 
         // Recursive continuation for multi-turn tool use
-        const MAX_TOOL_DEPTH = 8;
+        const MAX_TOOL_DEPTH = 25;
+
+        // Circuit breaker: track failed tool calls to prevent infinite loops
+        // Seed with initial round failures
+        const toolFailureMap = new Map<string, number>(); // "toolName:inputHash" → failure count
+        let consecutiveFailures = 0;
+        const MAX_CONSECUTIVE_FAILURES = 3;
+        const MAX_SAME_TOOL_FAILURES = 2;
+
+        const getToolKey = (name: string, input: Record<string, unknown>) => {
+          const inputStr = JSON.stringify(input).slice(0, 200);
+          return `${name}:${inputStr}`;
+        };
+
+        // Seed failure map from initial round
+        for (let i = 0; i < pendingToolUses.length; i++) {
+          if (toolResults[i]?.isError) {
+            const key = getToolKey(pendingToolUses[i].name, pendingToolUses[i].input);
+            toolFailureMap.set(key, (toolFailureMap.get(key) || 0) + 1);
+          }
+        }
 
         const handleContinuation = async (
           currentContentBlocks: ContentBlock[],
@@ -556,6 +657,24 @@ export class APIService {
         ): Promise<ServerStreamResult> => {
           const newPendingToolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
           let isFirstTextInRound = true;
+
+          // Update circuit breaker state from previous round's results
+          const roundErrors = currentToolResults.filter(r => r.isError);
+          if (roundErrors.length === currentToolResults.length && currentToolResults.length > 0) {
+            consecutiveFailures += currentToolResults.length;
+          } else {
+            consecutiveFailures = 0;
+          }
+
+          // Hard stop if too many consecutive failures
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            console.warn(`[APIService] Circuit breaker: ${consecutiveFailures} consecutive tool failures, stopping loop`);
+            // Inject a stop hint into the tool results so Claude knows to stop
+            const lastResult = currentToolResults[currentToolResults.length - 1];
+            if (lastResult) {
+              lastResult.content += '\n\n[SYSTEM: Multiple consecutive tool calls have failed. Stop retrying and respond to the user with what you have. Do not call more tools.]';
+            }
+          }
 
           // Build messages for continuation: original messages + assistant content + tool results
           const continuationMessages = convertMessagesForServer(
@@ -612,37 +731,55 @@ export class APIService {
                 },
                 onThinking: (thinking) => callbacks.onThinking?.(thinking),
                 onToolUse: (tool) => {
-                  if (depth < MAX_TOOL_DEPTH) {
-                    console.log('[APIService] Continuation tool use:', tool.name, `(depth: ${depth + 1})`);
-                    newPendingToolUses.push(tool);
-
-                    const activityId = statusStore.startToolActivity(
-                      getToolActivityType(tool.name),
-                      getToolLabel(tool.name, tool.input),
-                      tool.input
-                    );
-                    callbacks.onToolStart?.(activityId, tool.name);
-                  } else {
+                  if (depth >= MAX_TOOL_DEPTH) {
                     console.warn('[APIService] Max tool depth reached, ignoring tool:', tool.name);
+                    return;
                   }
+
+                  // Circuit breaker: skip tools that have already failed with the same input
+                  const toolKey = getToolKey(tool.name, tool.input);
+                  const priorFailures = toolFailureMap.get(toolKey) || 0;
+                  if (priorFailures >= MAX_SAME_TOOL_FAILURES) {
+                    console.warn(`[APIService] Circuit breaker: ${tool.name} already failed ${priorFailures}x with same input, skipping`);
+                    return;
+                  }
+
+                  console.log('[APIService] Continuation tool use:', tool.name, `(depth: ${depth + 1})`);
+                  newPendingToolUses.push(tool);
+
+                  const activityId = statusStore.startToolActivity(
+                    getToolActivityType(tool.name),
+                    getToolLabel(tool.name, tool.input),
+                    tool.input
+                  );
+                  callbacks.onToolStart?.(activityId, tool.name);
                 },
                 onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
                 onError: (error) => callbacks.onError?.(error),
               },
             });
           } catch (contErr: any) {
-            // If continuation fetch fails (e.g. server→provider network error),
-            // emit the tool results as text so the user sees something useful
-            console.warn('[APIService] Continuation failed, emitting tool results as text:', contErr.message);
-            const fallbackText = currentToolResults.map(r =>
-              r.isError ? `Tool error: ${r.content}` : r.content
-            ).join('\n\n');
-            callbacks.onChunk?.(`\n\n${fallbackText}\n\n*(Could not get AI follow-up: ${contErr.message})*`);
+            // If user cancelled (AbortError), don't dump raw tool results into chat
+            if (this.cancelled || contErr.name === 'AbortError' || contErr.message?.includes('aborted')) {
+              console.log('[APIService] Continuation aborted by user');
+              return { content: currentContentBlocks, stopReason: 'cancelled', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [] } as ServerStreamResult;
+            }
+            // Real network/server error — emit a short error note, NOT raw tool output
+            console.warn('[APIService] Continuation failed:', contErr.message);
+            callbacks.onChunk?.(`\n\n*Could not continue — ${contErr.message}*`);
             return { content: currentContentBlocks, stopReason: 'error', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [] } as ServerStreamResult;
           }
 
           if (newPendingToolUses.length > 0 && depth < MAX_TOOL_DEPTH && !this.cancelled) {
             const newToolResults = await this.executeTools(newPendingToolUses, callbacks, statusStore);
+
+            // Track failures for circuit breaker
+            for (let i = 0; i < newPendingToolUses.length; i++) {
+              if (newToolResults[i]?.isError) {
+                const key = getToolKey(newPendingToolUses[i].name, newPendingToolUses[i].input);
+                toolFailureMap.set(key, (toolFailureMap.get(key) || 0) + 1);
+              }
+            }
 
             // Check cancelled again after tool execution
             if (this.cancelled) {
@@ -651,7 +788,7 @@ export class APIService {
 
             statusStore.setPhase('analyzing', 'Processing additional tool results...');
 
-            const delay = Math.min(2000 + depth * 500, 5000);
+            const delay = Math.min(500 + depth * 200, 3000);
             await new Promise(resolve => setTimeout(resolve, delay));
 
             return handleContinuation(continuationResult.content, newToolResults, depth + 1);
@@ -794,7 +931,20 @@ export class APIService {
               thumbnail: '',
               timestamp: 0,
             });
-            result.result = `Video generated successfully via ${parsed.provider || 'veo'}. The video is displayed inline above.`;
+            result.result = `Video generated successfully via ${parsed.provider || 'veo'}. Video URL: ${parsed.url} — The video is displayed inline above.`;
+
+            // Set videoContext on conversation so follow-up "describe the video" routes to Gemini analysis
+            const currentConvId = useChatStore.getState().currentConversationId;
+            if (currentConvId && parsed.url) {
+              useChatStore.getState().updateConversation(currentConvId, {
+                videoContext: {
+                  fileUri: parsed.url,
+                  mimeType: 'video/mp4',
+                  geminiFileName: '',
+                  displayName: (tool.input as any)?.prompt?.slice(0, 60) || 'Generated video',
+                },
+              });
+            }
           }
         } catch { /* not JSON */ }
       }
@@ -838,15 +988,35 @@ export class APIService {
         if (result.success) {
           let parsedResults: any[] | undefined;
           if (result.result && typeof result.result === 'string') {
-            const urlMatches = result.result.match(/https?:\/\/[^\s\)]+/g);
-            if (urlMatches) {
-              parsedResults = urlMatches.slice(0, 10).map((url) => ({
-                url,
-                title: url.split('/').pop() || url,
-              }));
+            // Try to parse structured search results (format: **Title**\nURL: url\nDescription)
+            if (tool.name === 'web_search') {
+              const resultBlocks = result.result.split(/\n\n/).filter(Boolean);
+              const structured = resultBlocks.map((block) => {
+                const titleMatch = block.match(/\*\*(.+?)\*\*/);
+                const urlMatch = block.match(/(?:URL: )?(https?:\/\/[^\s\)]+)/);
+                if (urlMatch) {
+                  return { url: urlMatch[1], title: titleMatch?.[1] || urlMatch[1] };
+                }
+                return null;
+              }).filter(Boolean);
+              if (structured.length > 0) {
+                parsedResults = structured.slice(0, 10) as any[];
+              }
+            }
+            // Fallback: extract raw URLs
+            if (!parsedResults) {
+              const urlMatches = result.result.match(/https?:\/\/[^\s\)]+/g);
+              if (urlMatches) {
+                parsedResults = urlMatches.slice(0, 10).map((url) => ({
+                  url,
+                  title: url.split('/').pop() || url,
+                }));
+              }
             }
           }
-          statusStore.completeToolActivity(activityId, parsedResults, parsedResults?.length, result.result);
+          // Also pass query to activity for display
+          const query = (tool.input?.['query'] as string) || undefined;
+          statusStore.completeToolActivity(activityId, parsedResults, parsedResults?.length, result.result, query);
         } else {
           statusStore.failToolActivity(activityId, result.error || 'Unknown error');
         }

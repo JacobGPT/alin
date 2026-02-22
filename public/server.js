@@ -38,6 +38,7 @@ import { registerAuditRoutes } from '@alin/core/routes/audit';
 import { registerImageRoutes } from '@alin/core/routes/images';
 import { registerVoiceRoutes } from '@alin/core/routes/voice';
 import { registerVideoRoutes } from '@alin/core/routes/video';
+import { registerVideoAnalysisRoutes } from '@alin/core/routes/videoAnalysis';
 import { registerFileRoutes } from '@alin/core/routes/files';
 import { registerCodeOpsRoutes } from '@alin/core/routes/codeOps';
 import { registerComputerUseRoutes } from '@alin/core/routes/computerUse';
@@ -127,6 +128,7 @@ registerAuditRoutes(ctx);
 registerImageRoutes(ctx);
 registerVoiceRoutes(ctx);
 registerVideoRoutes(ctx);
+registerVideoAnalysisRoutes(ctx);
 
 registerFileRoutes(ctx);
 registerCodeOpsRoutes(ctx);

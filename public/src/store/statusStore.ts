@@ -140,7 +140,7 @@ interface StatusState {
   // Tool activity actions (Claude-style)
   startToolActivity: (type: ToolActivityType, label: string, input?: Record<string, unknown>) => string;
   updateToolActivity: (id: string, updates: Partial<ToolActivity>) => void;
-  completeToolActivity: (id: string, results?: any[], resultCount?: number, output?: unknown) => void;
+  completeToolActivity: (id: string, results?: any[], resultCount?: number, output?: unknown, query?: string) => void;
   failToolActivity: (id: string, error: string) => void;
   clearToolActivities: () => void;
 }
@@ -319,7 +319,7 @@ export const useStatusStore = create<StatusState>((set, get) => ({
     }));
   },
 
-  completeToolActivity: (id, results, resultCount, output) => {
+  completeToolActivity: (id, results, resultCount, output, query) => {
     set((state) => ({
       toolActivities: state.toolActivities.map((a) =>
         a.id === id
@@ -330,6 +330,7 @@ export const useStatusStore = create<StatusState>((set, get) => ({
               results,
               resultCount: resultCount ?? results?.length ?? 0,
               output,
+              ...(query ? { query } : {}),
             }
           : a
       ),

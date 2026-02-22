@@ -77,6 +77,18 @@ const MODEL_OPTIONS: ModelOption[] = [
         recommended: true,
       },
       {
+        id: 'claude-opus-4-5-20250918',
+        name: 'Claude Opus 4.5',
+        description: 'Previous flagship — creative writing, nuanced analysis',
+        contextWindow: '200K',
+      },
+      {
+        id: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
+        description: 'Strong reasoning and coding, efficient and reliable',
+        contextWindow: '200K',
+      },
+      {
         id: 'claude-sonnet-4-5-20250929',
         name: 'Claude Sonnet 4.5',
         description: 'Previous generation all-rounder',

@@ -34,6 +34,7 @@ import { registerMemoryRoutes } from '@alin/core/routes/memories';
 import { registerImageRoutes } from '@alin/core/routes/images';
 import { registerVoiceRoutes } from '@alin/core/routes/voice';
 import { registerVideoRoutes } from '@alin/core/routes/video';
+import { registerVideoAnalysisRoutes } from '@alin/core/routes/videoAnalysis';
 import { registerWebFetchRoutes } from '@alin/core/routes/webFetch';
 import { registerSystemRoutes } from '@alin/core/routes/system';
 import { registerSelfModelRoutes } from '@alin/core/routes/selfModel';
@@ -82,6 +83,7 @@ registerArtifactRoutes(ctx);
 registerImageRoutes(ctx);
 registerVoiceRoutes(ctx);
 registerVideoRoutes(ctx);
+registerVideoAnalysisRoutes(ctx);
 
 registerFileRoutes(ctx);
 registerCodeOpsRoutes(ctx);

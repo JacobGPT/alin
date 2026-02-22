@@ -313,7 +313,154 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
       'env', 'cfg', 'ini', 'conf', 'log', 'gitignore', 'dockerfile',
     ]);
 
+    const ZIP_EXTENSIONS = new Set(['zip']);
+
     for (const file of attachedFiles) {
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+
+      // ZIP file extraction — send to server for content extraction
+      if (ZIP_EXTENSIONS.has(fileExt)) {
+        try {
+          const { useAuthStore } = await import('@store/authStore');
+          const authHeader = useAuthStore.getState().getAuthHeader();
+          const formData = new FormData();
+          formData.append('file', file);
+          const resp = await fetch('/api/files/extract-zip', {
+            method: 'POST',
+            headers: { ...authHeader },
+            body: formData,
+          });
+          if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+          const data = await resp.json();
+          if (data.success && data.files?.length > 0) {
+            // Add ZIP file block for UI display
+            content.push({
+              type: 'file',
+              fileId: crypto.randomUUID(),
+              filename: file.name,
+              mimeType: 'application/zip',
+              size: file.size,
+            });
+            // Add extracted text files as inline content
+            const textFiles = data.files.filter((f: any) => f.isText && f.content);
+            const binaryFiles = data.files.filter((f: any) => !f.isText || !f.content);
+            let zipSummary = `**ZIP: ${file.name}** (${data.files.length} files extracted)\n\n`;
+            if (binaryFiles.length > 0) {
+              zipSummary += `Binary/skipped files: ${binaryFiles.map((f: any) => f.path).join(', ')}\n\n`;
+            }
+            for (const tf of textFiles) {
+              const tfExt = tf.name.split('.').pop()?.toLowerCase() || 'text';
+              zipSummary += `\`\`\`${tfExt}\n// File: ${tf.path}\n${tf.content}\n\`\`\`\n\n`;
+            }
+            content.push({ type: 'text', text: zipSummary.trim() });
+          } else {
+            // No extractable content, add as metadata only
+            content.push({
+              type: 'file',
+              fileId: crypto.randomUUID(),
+              filename: file.name,
+              mimeType: 'application/zip',
+              size: file.size,
+            });
+          }
+        } catch (err) {
+          console.error('[ALIN] ZIP extraction failed, adding as metadata:', err);
+          content.push({
+            type: 'file',
+            fileId: crypto.randomUUID(),
+            filename: file.name,
+            mimeType: 'application/zip',
+            size: file.size,
+          });
+        }
+        continue;
+      }
+
+      // Video file — upload to Gemini File API for analysis
+      if (file.type.startsWith('video/')) {
+        try {
+          useStatusStore.getState().setPhase('executing', `Uploading video: ${file.name}...`);
+
+          const { useAuthStore } = await import('@store/authStore');
+          const authHeader = useAuthStore.getState().getAuthHeader();
+          const formData = new FormData();
+          formData.append('file', file);
+          const resp = await fetch('/api/video/upload', {
+            method: 'POST',
+            headers: { ...authHeader },
+            body: formData,
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({ error: `Upload failed: ${resp.status}` }));
+            throw new Error(errData.error || `Upload failed: ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          if (data.success) {
+            // Store video context on the conversation for follow-up questions
+            const convId = useChatStore.getState().currentConversationId;
+            if (convId) {
+              useChatStore.getState().updateConversation(convId, {
+                videoContext: {
+                  fileUri: data.fileUri,
+                  mimeType: data.mimeType,
+                  geminiFileName: data.fileName,
+                  displayName: data.displayName,
+                },
+              });
+            }
+
+            // Add as file block for UI display
+            content.push({
+              type: 'file',
+              fileId: crypto.randomUUID(),
+              filename: file.name,
+              mimeType: file.type,
+              size: file.size,
+            });
+            // Add a text hint so the AI knows a video is attached
+            content.push({
+              type: 'text',
+              text: `[Video attached: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB, ${file.type}) — uploaded to Gemini for analysis]`,
+            });
+
+            if (data.sizeWarning) {
+              console.warn('[ALIN] Video upload warning:', data.sizeWarning);
+            }
+          } else {
+            // Upload succeeded HTTP-wise but returned success: false
+            content.push({
+              type: 'file',
+              fileId: crypto.randomUUID(),
+              filename: file.name,
+              mimeType: file.type,
+              size: file.size,
+            });
+            content.push({
+              type: 'text',
+              text: `[Video attached: ${file.name} — upload returned unexpected response]`,
+            });
+          }
+        } catch (err: any) {
+          console.error('[ALIN] Video upload failed:', err);
+          content.push({
+            type: 'file',
+            fileId: crypto.randomUUID(),
+            filename: file.name,
+            mimeType: file.type,
+            size: file.size,
+          });
+          content.push({
+            type: 'text',
+            text: `[Video upload failed: ${err.message}. The video could not be analyzed.]`,
+          });
+        } finally {
+          useStatusStore.getState().completeProcessing();
+        }
+        continue;
+      }
+
       if (file.type.startsWith('image/')) {
         try {
           const base64Url = await new Promise<string>((resolve, reject) => {
@@ -1418,7 +1565,7 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
                 multiple
                 onChange={handleFileSelect}
                 className="hidden"
-                accept="image/*,video/*,.pdf,.doc,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.json,.csv,.html,.css,.xml,.yaml,.yml,.toml,.rs,.go,.java,.c,.cpp,.h,.rb,.php,.sh,.bat,.sql,.swift,.kt,.lua,.r,.cfg,.ini,.conf,.log,.env"
+                accept="image/*,video/*,.pdf,.doc,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.json,.csv,.html,.css,.xml,.yaml,.yml,.toml,.rs,.go,.java,.c,.cpp,.h,.rb,.php,.sh,.bat,.sql,.swift,.kt,.lua,.r,.cfg,.ini,.conf,.log,.env,.zip,.rar,.7z,.tar,.gz"
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -1504,7 +1651,7 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
             {/* Send/Stop Button */}
             {streamState.isStreaming ? (
               <div className="flex items-center gap-1">
-                {inputValue.trim() && (
+                {(inputValue.trim() || attachedFiles.length > 0) && (
                   <Button
                     onClick={handleSend}
                     size="sm"
