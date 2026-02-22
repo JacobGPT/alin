@@ -197,8 +197,8 @@ root.render(
         // Reset React Query cache
         queryClient.clear();
         
-        // Optionally navigate to home
-        window.location.href = '/app';
+        // Navigate to chat
+        window.location.href = '/app/chat';
       }}
     >
       <QueryClientProvider client={queryClient}>
