@@ -75,6 +75,8 @@ import {
 const BACKEND_URL = '';
 const MAX_TOOL_ITERATIONS = 10;
 const TIME_TRACKING_INTERVAL_MS = 10_000;
+const MAX_CONTINUATION_ROUNDS = 10;
+const TBWO_CONTINUATION_INSTRUCTION = `Your previous response was cut off due to length limits. Continue EXACTLY where you left off. Do not repeat any content — just continue the output seamlessly. If you were inside a code block, resume the code immediately.`;
 
 // Tool result caching — avoids redundant API calls for idempotent reads
 const CACHEABLE_TOOLS = new Set(['file_read', 'file_list', 'scan_directory', 'code_search', 'web_search', 'web_fetch']);
@@ -1243,6 +1245,7 @@ export class ExecutionEngine {
       for (const mc of modelsToTry) {
         aiService.updateConfig({ provider: mc.provider, model: mc.model });
         try {
+          let lastStopReason = 'end_turn';
           await new Promise<void>((resolve, reject) => {
             aiService.streamMessage(taskPrompt, {
               onText: (chunk: string) => {
@@ -1256,6 +1259,7 @@ export class ExecutionEngine {
               },
               onComplete: (response) => {
                 tokensUsed += (response.usage?.inputTokens || 0) + (response.usage?.outputTokens || 0);
+                lastStopReason = response.stopReason || 'end_turn';
                 this.appendPodLog(podId, `AI responded (${(response.usage?.inputTokens || 0) + (response.usage?.outputTokens || 0)} tokens)`);
                 resolve();
               },
@@ -1264,6 +1268,18 @@ export class ExecutionEngine {
               },
             }, tools).catch(reject);
           });
+
+          // Auto-continue if response was truncated and no tool calls pending
+          for (let contRound = 0; contRound < MAX_CONTINUATION_ROUNDS && lastStopReason === 'max_tokens' && pendingToolCalls.length === 0; contRound++) {
+            this.appendPodLog(podId, `Response truncated — auto-continuing (round ${contRound + 1})...`);
+            const contResponse = await aiService.sendMessage(TBWO_CONTINUATION_INSTRUCTION);
+            streamedText += contResponse.text;
+            tokensUsed += (contResponse.usage?.inputTokens || 0) + (contResponse.usage?.outputTokens || 0);
+            lastStopReason = contResponse.stopReason || 'end_turn';
+            if (streamingMsgId) {
+              this.updateStreamingMessage(streamingMsgId, `**${podLabel}** working on *${task.name}*:\n\n${streamedText}`);
+            }
+          }
           lastStreamError = null;
           modelUsed = mc.model;
           break; // Success — exit fallback loop
@@ -1612,6 +1628,7 @@ export class ExecutionEngine {
               : tr.result,
           }));
 
+          let toolContStopReason = 'end_turn';
           await new Promise<void>((resolve) => {
             aiService.streamContinueWithBatchedToolResults(batchedResults, {
               onText: (chunk: string) => {
@@ -1625,6 +1642,7 @@ export class ExecutionEngine {
               },
               onComplete: (response) => {
                 tokensUsed += (response.usage?.inputTokens || 0) + (response.usage?.outputTokens || 0);
+                toolContStopReason = response.stopReason || 'end_turn';
                 resolve();
               },
               onError: (error: Error) => {
@@ -1633,6 +1651,18 @@ export class ExecutionEngine {
               },
             }, tools).catch(() => resolve());
           });
+
+          // Auto-continue if tool continuation response was truncated
+          for (let contRound = 0; contRound < MAX_CONTINUATION_ROUNDS && toolContStopReason === 'max_tokens' && pendingToolCalls.length === 0; contRound++) {
+            this.appendPodLog(podId, `Tool continuation truncated — auto-continuing (round ${contRound + 1})...`);
+            const contResponse = await aiService.sendMessage(TBWO_CONTINUATION_INSTRUCTION);
+            streamedText += contResponse.text;
+            tokensUsed += (contResponse.usage?.inputTokens || 0) + (contResponse.usage?.outputTokens || 0);
+            toolContStopReason = contResponse.stopReason || 'end_turn';
+            if (streamingMsgId) {
+              this.updateStreamingMessage(streamingMsgId, `**${podLabel}** working on *${task.name}*:\n\n${streamedText}`);
+            }
+          }
         }
       }
 

@@ -1387,7 +1387,23 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
       window.removeEventListener('drop', handleWindowDrop);
     };
   }, []);
-  
+
+  // Listen for "Continue" button clicks from truncated messages
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  useEffect(() => {
+    const handleContinue = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const currentConvId = useChatStore.getState().currentConversationId;
+      if (detail?.conversationId && detail.conversationId !== currentConvId) return;
+      if (useChatStore.getState().streamState.isStreaming) return;
+      useChatStore.getState().setInputValue('Continue from where you left off. Do not repeat any content.');
+      setTimeout(() => handleSendRef.current(), 50);
+    };
+    window.addEventListener('alin-continue', handleContinue);
+    return () => window.removeEventListener('alin-continue', handleContinue);
+  }, []);
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items);
     items.forEach((item) => {

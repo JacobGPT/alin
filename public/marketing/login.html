@@ -86,7 +86,12 @@ async function handleLogin(){
     var res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
     var data=await res.json();
     if(!res.ok)throw new Error(data.error||'Login failed');
-    localStorage.setItem('alin-auth-storage',JSON.stringify({state:{user:data.user,token:data.token,isAuthenticated:true},version:0}));
+    if(data.needsVerification){
+      localStorage.setItem('alin-auth-storage',JSON.stringify({state:{user:null,token:null,isAuthenticated:false,needsVerification:true,verificationEmail:email},version:0}));
+      window.location.href='/app';
+      return;
+    }
+    localStorage.setItem('alin-auth-storage',JSON.stringify({state:{user:data.user,token:data.token,isAuthenticated:true,needsVerification:false,verificationEmail:null},version:0}));
     window.location.href='/app';
   }catch(err){
     showError(err.message);

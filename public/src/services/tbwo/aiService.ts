@@ -164,7 +164,7 @@ export class AIService {
       provider: config.provider || 'anthropic',
       model: config.model || 'claude-sonnet-4-6',
       temperature: config.temperature ?? 0.7,
-      maxTokens: config.maxTokens ?? 8192,
+      maxTokens: config.maxTokens ?? 16384,
       systemPrompt: config.systemPrompt || '',
     };
   }
@@ -844,7 +844,7 @@ export class AIService {
       provider: pod.modelConfig.provider || 'anthropic',
       model: pod.modelConfig.model || AIService.getDefaultModel(),
       temperature: pod.modelConfig.temperature ?? 0.7,
-      maxTokens: pod.modelConfig.maxTokens ?? 8192,
+      maxTokens: pod.modelConfig.maxTokens ?? 16384,
       systemPrompt,
     });
   }
@@ -856,7 +856,7 @@ export class AIService {
       provider: overrides?.provider || 'anthropic',
       model: overrides?.model || AIService.getDefaultModel(),
       temperature: overrides?.temperature ?? 0.7,
-      maxTokens: overrides?.maxTokens ?? 8192,
+      maxTokens: overrides?.maxTokens ?? 16384,
       systemPrompt: rolePrompt + (overrides?.systemPrompt ? '\n\n' + overrides.systemPrompt : ''),
     });
   }

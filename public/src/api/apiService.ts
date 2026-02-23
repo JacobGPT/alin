@@ -34,6 +34,19 @@ import { useChatStore } from '../store/chatStore';
 // Auto-continuation instruction sent when response is truncated
 const CONTINUATION_INSTRUCTION = `Your previous response was cut off due to length limits. Continue EXACTLY where you left off. Do not repeat any content. Do not add introductory text like "Continuing from where I left off..." — just continue the output seamlessly. If you were inside a code block, resume the code immediately.`;
 
+/** Return max output tokens appropriate for the model. */
+function getModelMaxTokens(model: string): number {
+  if (model.includes('opus')) return 32768;
+  if (model.includes('gpt-4o-mini')) return 16384;
+  if (model.includes('gpt-4o')) return 16384;
+  if (model.includes('o1') || model.includes('o3')) return 32768;
+  if (model.includes('haiku')) return 8192;
+  if (model.includes('deepseek-reasoner')) return 16384;
+  if (model.includes('deepseek')) return 8192;
+  if (model.includes('gemini')) return 8192;
+  return 16384; // Sonnet and others
+}
+
 // Claude specialized tool definitions (passed to server as tool configs)
 const COMPUTER_USE_TOOL = {
   type: 'computer_20250124' as const,
@@ -586,7 +599,7 @@ export class APIService {
           tools,
           thinking: enableThinking,
           thinkingBudget,
-          maxTokens: settings.model?.maxTokens || 16384,
+          maxTokens: settings.model?.maxTokens || getModelMaxTokens(model),
         },
         callbacks: {
           onText: (text) => callbacks.onChunk?.(text),
@@ -617,7 +630,7 @@ export class APIService {
           result, contextMessages, providerStr, model,
           currentMode, additionalContext,
           tools, enableThinking, thinkingBudget,
-          settings.model?.maxTokens || 16384, callbacks,
+          settings.model?.maxTokens || getModelMaxTokens(model), callbacks,
         );
       }
 
@@ -719,7 +732,7 @@ export class APIService {
                 tools,
                 thinking: enableThinking,
                 thinkingBudget,
-                maxTokens: settings.model?.maxTokens || 16384,
+                maxTokens: settings.model?.maxTokens || getModelMaxTokens(model),
               },
               callbacks: {
                 onText: (text) => {
@@ -804,7 +817,7 @@ export class APIService {
           result, contextMessages, providerStr, model,
           currentMode, additionalContext,
           tools, enableThinking, thinkingBudget,
-          settings.model?.maxTokens || 16384, callbacks,
+          settings.model?.maxTokens || getModelMaxTokens(model), callbacks,
         );
       }
 
@@ -1056,10 +1069,11 @@ export class APIService {
     callbacks: StreamCallback,
     round: number = 0,
   ): Promise<ServerStreamResult> {
-    const settings = useSettingsStore.getState();
-    const maxRounds = settings.maxContinuationRounds || 3;
+    // Auto-continuation is ALWAYS on — responses should never be truncated.
+    // Cap at 10 rounds to prevent infinite loops (10 × 16K = 160K tokens max).
+    const maxRounds = 10;
 
-    if (result.stopReason !== 'max_tokens' || !settings.enableAutoContinuation || round >= maxRounds) {
+    if (result.stopReason !== 'max_tokens' || round >= maxRounds) {
       return result;
     }
 

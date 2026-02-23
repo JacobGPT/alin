@@ -877,13 +877,22 @@ export const MessageComponent = memo(function MessageComponent({
         </div>
       )}
 
-      {/* Truncation Indicator — shown when response was cut off and no auto-continuation */}
+      {/* Truncation Indicator — shown when response was cut off after auto-continuation exhausted */}
       {!message.isStreaming && message.stopReason === 'max_tokens' && (
         <div className="flex items-center gap-2 px-4 pb-3 text-amber-400/80">
           <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
           </svg>
-          <span className="text-xs">Response was truncated due to length limits. Try increasing Max Tokens in Settings.</span>
+          <span className="text-xs">Response was truncated.</span>
+          <button
+            onClick={() => {
+              // Dispatch event for InputArea to pick up and send a continuation message
+              window.dispatchEvent(new CustomEvent('alin-continue', { detail: { conversationId } }));
+            }}
+            className="ml-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors"
+          >
+            Continue
+          </button>
         </div>
       )}
 
