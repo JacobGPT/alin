@@ -318,53 +318,45 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
     for (const file of attachedFiles) {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
 
-      // ZIP file extraction — send to server for content extraction
+      // ZIP files — always upload as attachment reference (never inline full content)
       if (ZIP_EXTENSIONS.has(fileExt)) {
         try {
           const { useAuthStore } = await import('@store/authStore');
           const authHeader = useAuthStore.getState().getAuthHeader();
           const formData = new FormData();
           formData.append('file', file);
-          const resp = await fetch('/api/files/extract-zip', {
+          const resp = await fetch('/api/files/upload-attachment', {
             method: 'POST',
             headers: { ...authHeader },
             body: formData,
           });
           if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
           const data = await resp.json();
-          if (data.success && data.files?.length > 0) {
-            // Add ZIP file block for UI display
-            content.push({
-              type: 'file',
-              fileId: crypto.randomUUID(),
-              filename: file.name,
-              mimeType: 'application/zip',
-              size: file.size,
-            });
-            // Add extracted text files as inline content
-            const textFiles = data.files.filter((f: any) => f.isText && f.content);
-            const binaryFiles = data.files.filter((f: any) => !f.isText || !f.content);
-            let zipSummary = `**ZIP: ${file.name}** (${data.files.length} files extracted)\n\n`;
-            if (binaryFiles.length > 0) {
-              zipSummary += `Binary/skipped files: ${binaryFiles.map((f: any) => f.path).join(', ')}\n\n`;
-            }
-            for (const tf of textFiles) {
-              const tfExt = tf.name.split('.').pop()?.toLowerCase() || 'text';
-              zipSummary += `\`\`\`${tfExt}\n// File: ${tf.path}\n${tf.content}\n\`\`\`\n\n`;
-            }
-            content.push({ type: 'text', text: zipSummary.trim() });
-          } else {
-            // No extractable content, add as metadata only
-            content.push({
-              type: 'file',
-              fileId: crypto.randomUUID(),
-              filename: file.name,
-              mimeType: 'application/zip',
-              size: file.size,
-            });
-          }
+
+          // Add compact FileBlock with preview metadata
+          content.push({
+            type: 'file',
+            fileId: data.fileId,
+            filename: data.filename,
+            mimeType: data.mimeType || 'application/zip',
+            size: data.size,
+            preview: data.preview,
+            isZip: true,
+            zipFiles: data.zipFiles,
+          });
+
+          // Add compact reference text so the AI knows how to read the file
+          const sizeStr = file.size > 1024 * 1024
+            ? `${(file.size / 1024 / 1024).toFixed(1)}MB`
+            : `${(file.size / 1024).toFixed(1)}KB`;
+          const fileListing = data.zipFiles?.slice(0, 20)
+            ?.map((f: any) => f.path).join(', ') || 'unknown files';
+          content.push({
+            type: 'text',
+            text: `[Attached ZIP: ${file.name} (${sizeStr}, ${data.zipFiles?.length || '?'} files). Contents: ${fileListing}${(data.zipFiles?.length || 0) > 20 ? '...' : ''}. Use read_attachment tool with fileId "${data.fileId}" and specify path to read specific files.]`,
+          });
         } catch (err) {
-          console.error('[ALIN] ZIP extraction failed, adding as metadata:', err);
+          console.error('[ALIN] ZIP upload failed, adding as metadata:', err);
           content.push({
             type: 'file',
             fileId: crypto.randomUUID(),
@@ -482,7 +474,11 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
         const ext = file.name.split('.').pop()?.toLowerCase() || '';
         const isTextFile = TEXT_FILE_EXTENSIONS.has(ext) || file.type.startsWith('text/');
 
-        if (isTextFile) {
+        // Small text files (<= 16KB): inline as before. Large files: upload as attachment reference.
+        const INLINE_THRESHOLD = 16 * 1024;
+        const HARD_CAP = 256 * 1024; // Never inline files above 256KB
+
+        if (isTextFile && file.size <= INLINE_THRESHOLD) {
           try {
             const fileContent = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
@@ -490,7 +486,6 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
               reader.onerror = reject;
               reader.readAsText(file);
             });
-            // Add as file block for UI display
             content.push({
               type: 'file',
               fileId: crypto.randomUUID(),
@@ -498,7 +493,6 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
               mimeType: file.type || 'text/plain',
               size: file.size,
             });
-            // Add file content as text so the AI can read it
             content.push({
               type: 'text',
               text: `\`\`\`${ext || 'text'}\n// File: ${file.name}\n${fileContent}\n\`\`\``,
@@ -512,6 +506,74 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
               mimeType: file.type,
               size: file.size,
             });
+          }
+        } else if (isTextFile && file.size > INLINE_THRESHOLD) {
+          // Large text file — upload as attachment reference
+          try {
+            const { useAuthStore } = await import('@store/authStore');
+            const authHeader = useAuthStore.getState().getAuthHeader();
+            const formData = new FormData();
+            formData.append('file', file);
+            const resp = await fetch('/api/files/upload-attachment', {
+              method: 'POST',
+              headers: { ...authHeader },
+              body: formData,
+            });
+            if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+            const data = await resp.json();
+
+            content.push({
+              type: 'file',
+              fileId: data.fileId,
+              filename: data.filename,
+              mimeType: data.mimeType || file.type || 'text/plain',
+              size: data.size,
+              preview: data.preview,
+            });
+
+            const sizeStr = file.size > 1024 * 1024
+              ? `${(file.size / 1024 / 1024).toFixed(1)}MB`
+              : `${(file.size / 1024).toFixed(1)}KB`;
+            // Include preview in the message so the AI has context
+            const previewSnippet = data.preview ? `\nPreview (first 4KB):\n\`\`\`${ext}\n${data.preview.slice(0, 2000)}\n\`\`\`` : '';
+            content.push({
+              type: 'text',
+              text: `[Attached: ${file.name} (${sizeStr}). Use read_attachment tool with fileId "${data.fileId}" to read more content. offset/limit params available for pagination.]${previewSnippet}`,
+            });
+          } catch (err) {
+            console.error('[ALIN] Attachment upload failed, falling back to inline:', err);
+            // Fallback: try to inline (may be large but better than nothing)
+            try {
+              const fileContent = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsText(file);
+              });
+              content.push({
+                type: 'file',
+                fileId: crypto.randomUUID(),
+                filename: file.name,
+                mimeType: file.type || 'text/plain',
+                size: file.size,
+              });
+              // Truncate if above hard cap
+              const truncated = file.size > HARD_CAP
+                ? fileContent.slice(0, HARD_CAP) + `\n... (truncated, ${fileContent.length} total chars)`
+                : fileContent;
+              content.push({
+                type: 'text',
+                text: `\`\`\`${ext || 'text'}\n// File: ${file.name}\n${truncated}\n\`\`\``,
+              });
+            } catch {
+              content.push({
+                type: 'file',
+                fileId: crypto.randomUUID(),
+                filename: file.name,
+                mimeType: file.type,
+                size: file.size,
+              });
+            }
           }
         } else {
           content.push({
@@ -666,7 +728,7 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
       interface ContentSegment {
         type: 'text' | 'tool_activity' | 'thinking' | 'image' | 'file' | 'video_embed';
         text?: string;
-        activityIds?: string[];
+        activities?: import('../../types/chat').ToolActivitySummary[];
         thinkingContent?: string;
         imageUrl?: string;
         imageAlt?: string;
@@ -704,11 +766,20 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
       }
 
       function addToolActivitySegment(activityId: string) {
+        // Snapshot the full activity payload so it survives statusStore clearing
+        const activity = useStatusStore.getState().toolActivities.find(a => a.id === activityId);
+        if (!activity) return;
+        const snapshot: import('../../types/chat').ToolActivitySummary = {
+          id: activity.id, type: activity.type, label: activity.label, status: activity.status,
+          query: activity.query, resultCount: activity.resultCount, results: activity.results,
+          error: activity.error, input: activity.input, output: activity.output,
+          startTime: activity.startTime, endTime: activity.endTime,
+        };
         const lastSegment = segments[segments.length - 1];
         if (lastSegment?.type === 'tool_activity') {
-          lastSegment.activityIds!.push(activityId);
+          lastSegment.activities!.push(snapshot);
         } else {
-          segments.push({ type: 'tool_activity', activityIds: [activityId] });
+          segments.push({ type: 'tool_activity', activities: [snapshot] });
         }
         currentTextSegment = null;
         currentThinkingSegment = null;
@@ -732,33 +803,32 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
         currentThinkingSegment = null;
       }
 
+      /** Refresh embedded activity snapshots with latest status from statusStore */
+      function refreshToolActivities() {
+        const liveActivities = useStatusStore.getState().toolActivities;
+        for (const seg of segments) {
+          if (seg.type !== 'tool_activity' || !seg.activities) continue;
+          for (let i = 0; i < seg.activities.length; i++) {
+            const live = liveActivities.find(a => a.id === seg.activities![i].id);
+            if (live) {
+              seg.activities![i] = {
+                id: live.id, type: live.type, label: live.label, status: live.status,
+                query: live.query, resultCount: live.resultCount, results: live.results,
+                error: live.error, input: live.input, output: live.output,
+                startTime: live.startTime, endTime: live.endTime,
+              };
+            }
+          }
+        }
+      }
+
       function buildContentBlocks(): ContentBlock[] {
         const blocks: ContentBlock[] = [];
-        const activities = useStatusStore.getState().toolActivities;
         for (const segment of segments) {
           if (segment.type === 'text' && segment.text) {
             blocks.push({ type: 'text', text: segment.text });
-          } else if (segment.type === 'tool_activity' && segment.activityIds) {
-            const segActivities = segment.activityIds
-              .map(id => activities.find(a => a.id === id))
-              .filter(Boolean)
-              .map(a => ({
-                id: a!.id,
-                type: a!.type,
-                label: a!.label,
-                status: a!.status,
-                query: a!.query,
-                resultCount: a!.resultCount,
-                results: a!.results,
-                error: a!.error,
-                input: a!.input,
-                output: a!.output,
-                startTime: a!.startTime,
-                endTime: a!.endTime,
-              }));
-            if (segActivities.length > 0) {
-              blocks.push({ type: 'tool_activity', activities: segActivities } as any);
-            }
+          } else if (segment.type === 'tool_activity' && segment.activities && segment.activities.length > 0) {
+            blocks.push({ type: 'tool_activity', activities: segment.activities } as any);
           } else if (segment.type === 'thinking' && segment.thinkingContent) {
             blocks.push({ type: 'thinking', content: segment.thinkingContent } as any);
           } else if (segment.type === 'image' && segment.imageUrl) {
@@ -857,6 +927,9 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
               }
             }
 
+            // Refresh activity statuses (completed/error) before rebuilding content
+            refreshToolActivities();
+
             // Build interleaved content blocks for live update
             chatStore.updateMessage(assistantMessageId, {
               content: buildContentBlocks(),
@@ -915,7 +988,8 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
               }
             }
 
-            // Build final interleaved content blocks with completed activity data
+            // Final refresh of activity statuses before building content blocks
+            refreshToolActivities();
             const finalContent = buildContentBlocks();
 
             chatStore.updateMessage(assistantMessageId, {
@@ -1000,6 +1074,8 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
 
             const isCancellation = error.message === 'Request cancelled' || error.message?.includes('aborted');
             if (isCancellation) {
+              // Refresh activity states before statusStore gets cleared
+              refreshToolActivities();
               // Preserve whatever was already streamed
               const finalContent = buildContentBlocks();
               const hasContent = finalContent.some(b =>
@@ -1022,6 +1098,8 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
             console.error('[ALIN] Stream error:', error);
             telemetry.error('stream', error.message || 'Unknown stream error');
             const errorMsg = categorizeError(error);
+            // Refresh activity states before building content
+            refreshToolActivities();
             // If content was already streamed, preserve it and append the error
             const existingContent = buildContentBlocks();
             const hasExistingContent = existingContent.some(b =>
@@ -1417,7 +1495,8 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
   };
 
   const handleStop = () => {
-    // Abort the in-flight fetch/SSE stream
+    // Abort the in-flight fetch/SSE stream — this triggers the onError callback
+    // which refreshes tool activities and builds final content blocks BEFORE clearing.
     try {
       getAPIService().cancel();
     } catch (_) { /* service may not be initialized */ }
@@ -1431,7 +1510,13 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
     }
 
     chatStore.completeStreaming();
-    useStatusStore.getState().completeProcessing();
+
+    // Delay completeProcessing to give onError handler time to snapshot tool activities
+    // before they get cleared. The onError handler fires synchronously via AbortController
+    // in most cases, but use a microtask as safety margin.
+    Promise.resolve().then(() => {
+      useStatusStore.getState().completeProcessing();
+    });
 
     // Also force-clear any stale isStreaming flags on recent messages
     const convId = chatStore.currentConversationId;

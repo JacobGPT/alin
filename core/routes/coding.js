@@ -613,7 +613,7 @@ export function registerCodingRoutes(ctx) {
     { name: 'execute_code', description: 'Execute Python or JavaScript code', input_schema: { type: 'object', properties: { language: { type: 'string', enum: ['python', 'javascript'] }, code: { type: 'string' } }, required: ['language', 'code'] } },
     { name: 'git', description: 'Execute git operations (status, diff, log, add, commit, etc.)', input_schema: { type: 'object', properties: { operation: { type: 'string' }, args: { type: 'array', items: { type: 'string' } } }, required: ['operation'] } },
     { name: 'web_search', description: 'Search the web for information', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-    { name: 'web_fetch', description: 'Fetch the contents of a URL directly. Returns the text/HTML content of any publicly accessible web page.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'Full URL to fetch (must start with http:// or https://)' } }, required: ['url'] } },
+    { name: 'web_fetch', description: 'Fetch the contents of a URL directly. Returns the text/HTML content of any publicly accessible web page. If this fails with 403/404/429, switch to web_search or the GitHub API. Do NOT retry the same failing URL.', input_schema: { type: 'object', properties: { url: { type: 'string', description: 'Full URL to fetch (must start with http:// or https://)' } }, required: ['url'] } },
     { name: 'memory_store', description: 'Store information for later recall', input_schema: { type: 'object', properties: { content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, category: { type: 'string' } }, required: ['content'] } },
     { name: 'memory_recall', description: 'Search stored memories', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
     { name: 'spawn_scan_agent', description: 'Spawn a fast read-only subagent (Haiku) to explore and analyze the codebase. Returns a summary. Use for large-scale code understanding without consuming main context.', input_schema: { type: 'object', properties: { task: { type: 'string', description: 'What to explore/analyze (e.g., "Find all React components that use useState")' } }, required: ['task'] } },
@@ -1066,7 +1066,24 @@ export function registerCodingRoutes(ctx) {
         signal: AbortSignal.timeout(15000),
         redirect: 'follow',
       });
-      if (!resp.ok) return { success: false, error: `HTTP ${resp.status}: ${resp.statusText}` };
+      if (!resp.ok) {
+        const status = resp.status;
+        let host;
+        try { host = new URL(url).hostname; } catch { host = 'unknown'; }
+        let hint;
+        if (status === 404) {
+          hint = host.includes('github')
+            ? 'Path not found. Use api.github.com/repos/OWNER/REPO/contents/ to list actual file paths first.'
+            : 'Page not found. Verify the URL or use web_search.';
+        } else if (status === 403 || status === 429) {
+          hint = 'Site blocks automated access. Use web_search instead.';
+        } else if (status >= 500) {
+          hint = 'Server error. Try again later or use web_search.';
+        } else {
+          hint = 'Try web_search as alternative.';
+        }
+        return { success: false, error: `HTTP ${status} on ${host}: ${hint}` };
+      }
       const contentType = resp.headers.get('content-type') || '';
       if (contentType.includes('image') || contentType.includes('audio') || contentType.includes('video')) {
         return { success: true, result: `[Binary content: ${contentType}]` };

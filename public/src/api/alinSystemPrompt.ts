@@ -61,7 +61,7 @@ export const ALIN_TOOLS: ClaudeTool[] = [
   // Web Fetch — fetch any URL directly
   {
     name: 'web_fetch',
-    description: 'Fetch the full contents of a web page by URL. Use this when you need to read a specific webpage, not just search. Returns the text/HTML content.',
+    description: 'Fetch the full contents of a web page by URL. Use this when you need to read a specific webpage, not just search. Returns the text/HTML content. If this fails with 403/404/429, switch to web_search or the GitHub API. Do NOT retry the same failing URL.',
     input_schema: {
       type: 'object',
       properties: {
@@ -643,6 +643,34 @@ export const ALIN_TOOLS: ClaudeTool[] = [
     },
   },
 
+  // Read attachment — on-demand reading of user-uploaded files
+  {
+    name: 'read_attachment',
+    description: 'Read content from a file the user attached to the conversation. For ZIP files, specify path to read a specific file inside. Use this when the user attaches a large file — the message will contain a fileId reference instead of full content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        fileId: {
+          type: 'string',
+          description: 'The attachment file ID from the message (starts with att_)',
+        },
+        path: {
+          type: 'string',
+          description: 'For ZIPs: file path inside the archive to read',
+        },
+        offset: {
+          type: 'number',
+          description: 'Byte offset to start reading from (default: 0)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max bytes to read (default: 16384, max: 65536)',
+        },
+      },
+      required: ['fileId'],
+    },
+  },
+
   // Str Replace Editor (precise text editing)
   {
     name: 'str_replace_editor',
@@ -836,6 +864,25 @@ export async function executeAlinTool(
       case 'generate_video':
         // Route to server for Veo 3.1 handling
         return await executeServerTool('generate_video', toolInput);
+
+      case 'read_attachment': {
+        try {
+          const { useAuthStore } = await import('../store/authStore');
+          const authHeader = useAuthStore.getState().getAuthHeader();
+          const resp = await fetch('/api/files/read-attachment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeader },
+            body: JSON.stringify(toolInput),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+            return { success: false, error: err.error || `HTTP ${resp.status}` };
+          }
+          return await resp.json();
+        } catch (error: any) {
+          return { success: false, error: error.message };
+        }
+      }
 
       default:
         return {

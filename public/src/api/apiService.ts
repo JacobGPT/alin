@@ -648,11 +648,18 @@ export class APIService {
         const toolFailureMap = new Map<string, number>(); // "toolName:inputHash" → failure count
         let consecutiveFailures = 0;
         const MAX_CONSECUTIVE_FAILURES = 3;
-        const MAX_SAME_TOOL_FAILURES = 2;
+        const MAX_SAME_TOOL_FAILURES = 3;
 
         const getToolKey = (name: string, input: Record<string, unknown>) => {
-          const inputStr = JSON.stringify(input).slice(0, 200);
-          return `${name}:${inputStr}`;
+          // Group web_fetch by domain+path-prefix so different URLs on the same domain share a circuit breaker
+          if (name === 'web_fetch' && typeof input.url === 'string') {
+            try {
+              const u = new URL(input.url as string);
+              const pathParts = u.pathname.split('/').filter(Boolean).slice(0, 2).join('/');
+              return `web_fetch:${u.hostname}/${pathParts}`;
+            } catch { /* fall through */ }
+          }
+          return `${name}:${JSON.stringify(input).slice(0, 200)}`;
         };
 
         // Seed failure map from initial round
@@ -753,7 +760,7 @@ export class APIService {
                   const toolKey = getToolKey(tool.name, tool.input);
                   const priorFailures = toolFailureMap.get(toolKey) || 0;
                   if (priorFailures >= MAX_SAME_TOOL_FAILURES) {
-                    console.warn(`[APIService] Circuit breaker: ${tool.name} already failed ${priorFailures}x with same input, skipping`);
+                    console.warn(`[APIService] Circuit breaker: ${tool.name} already failed ${priorFailures}x for this target, blocking`);
                     return;
                   }
 

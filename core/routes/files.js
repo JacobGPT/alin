@@ -299,6 +299,146 @@ export function registerFileRoutes(ctx) {
     }
   });
 
+  // ── Attachment storage for large file references ──
+  const ATTACHMENTS_DIR = path.join(process.cwd(), 'data', 'attachments');
+  const attachmentUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 256 * 1024 * 1024 } });
+
+  const TEXT_EXTS_ATTACH = new Set([
+    'txt', 'md', 'py', 'js', 'ts', 'jsx', 'tsx', 'json', 'csv', 'html', 'css',
+    'xml', 'yaml', 'yml', 'toml', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb',
+    'php', 'sh', 'bat', 'sql', 'r', 'swift', 'kt', 'scala', 'lua', 'zig',
+    'env', 'cfg', 'ini', 'conf', 'log', 'gitignore', 'dockerfile', 'svg',
+  ]);
+
+  /**
+   * POST /api/files/upload-attachment — Store file for on-demand reading
+   * Returns { fileId, filename, size, mimeType, preview, isZip, zipFiles? }
+   */
+  app.post('/api/files/upload-attachment', requireAuth, attachmentUpload.single('file'), async (req, res) => {
+    const tmpPath = req.file?.path;
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const fileId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const destDir = path.join(ATTACHMENTS_DIR, fileId);
+      await fs.mkdir(destDir, { recursive: true });
+
+      const filename = req.file.originalname;
+      const destPath = path.join(destDir, filename);
+      await fs.rename(tmpPath, destPath);
+
+      const ext = filename.split('.').pop()?.toLowerCase() || '';
+      const isZip = ext === 'zip';
+      const size = req.file.size;
+      const mimeType = req.file.mimetype || 'application/octet-stream';
+      let preview = '';
+      let zipFiles = undefined;
+
+      if (isZip) {
+        // Extract file listing (names + sizes) without full content
+        try {
+          const buffer = await fs.readFile(destPath);
+          const zip = await JSZip.loadAsync(buffer);
+          zipFiles = [];
+          for (const [zipPath, zipEntry] of Object.entries(zip.files)) {
+            if (zipEntry.dir) continue;
+            if (zipPath.startsWith('__MACOSX/') || zipPath.includes('/.')) continue;
+            zipFiles.push({
+              name: path.basename(zipPath),
+              path: zipPath,
+              size: zipEntry._data?.uncompressedSize || 0,
+            });
+          }
+          preview = `ZIP archive with ${zipFiles.length} files:\n` +
+            zipFiles.slice(0, 50).map(f => `  ${f.path} (${f.size} bytes)`).join('\n') +
+            (zipFiles.length > 50 ? `\n  ... and ${zipFiles.length - 50} more files` : '');
+        } catch (e) {
+          preview = `ZIP archive (could not read listing: ${e.message})`;
+        }
+      } else if (TEXT_EXTS_ATTACH.has(ext)) {
+        // Generate text preview (first 4KB)
+        try {
+          const content = await fs.readFile(destPath, 'utf-8');
+          preview = content.slice(0, 4096);
+          if (content.length > 4096) preview += `\n... (${content.length} total chars)`;
+        } catch {
+          preview = '(could not read preview)';
+        }
+      }
+
+      console.log(`[Attachment] Stored ${filename} (${(size / 1024).toFixed(1)}KB) as ${fileId}`);
+      res.json({ fileId, filename, size, mimeType, preview, isZip, zipFiles });
+    } catch (error) {
+      console.error('[Attachment] Upload error:', error.message);
+      sendError(res, 500, error.message);
+    } finally {
+      // Clean up tmp file if rename failed
+      if (tmpPath) fs.unlink(tmpPath).catch(() => {});
+    }
+  });
+
+  /**
+   * POST /api/files/read-attachment — Read content from a stored attachment
+   * Input: { fileId, path?, offset?, limit? }
+   * For ZIPs: path specifies a file inside the archive
+   */
+  app.post('/api/files/read-attachment', requireAuth, async (req, res) => {
+    try {
+      const { fileId, path: innerPath, offset = 0, limit = 16384 } = req.body;
+      if (!fileId) return res.status(400).json({ error: 'fileId is required' });
+
+      const cappedLimit = Math.min(limit, 65536);
+      const attachDir = path.join(ATTACHMENTS_DIR, fileId);
+
+      // Check attachment exists
+      try {
+        await fs.access(attachDir);
+      } catch {
+        return res.status(404).json({ error: 'Attachment not found or expired' });
+      }
+
+      // Find the stored file
+      const entries = await fs.readdir(attachDir);
+      if (entries.length === 0) return res.status(404).json({ error: 'Attachment file missing' });
+      const storedFile = entries[0];
+      const filePath = path.join(attachDir, storedFile);
+      const ext = storedFile.split('.').pop()?.toLowerCase() || '';
+
+      if (ext === 'zip' && innerPath) {
+        // Read specific file from ZIP
+        const buffer = await fs.readFile(filePath);
+        const zip = await JSZip.loadAsync(buffer);
+        const entry = zip.file(innerPath);
+        if (!entry) return res.status(404).json({ error: `File not found in ZIP: ${innerPath}` });
+        const content = await entry.async('string');
+        const sliced = content.slice(offset, offset + cappedLimit);
+        res.json({
+          success: true,
+          content: sliced,
+          totalSize: content.length,
+          truncated: content.length > offset + cappedLimit,
+        });
+      } else {
+        // Read regular file
+        const stat = await fs.stat(filePath);
+        const fd = await fs.open(filePath, 'r');
+        const buf = Buffer.alloc(cappedLimit);
+        const { bytesRead } = await fd.read(buf, 0, cappedLimit, offset);
+        await fd.close();
+        const content = buf.slice(0, bytesRead).toString('utf-8');
+        res.json({
+          success: true,
+          content,
+          totalSize: stat.size,
+          truncated: stat.size > offset + cappedLimit,
+        });
+      }
+    } catch (error) {
+      console.error('[Attachment] Read error:', error.message);
+      sendError(res, 500, error.message);
+    }
+  });
+
   /**
    * POST /api/files/search — Search for text/regex patterns across files
    */

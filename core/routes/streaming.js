@@ -952,9 +952,64 @@ export function registerStreamingRoutes(ctx) {
     };
   }
 
+  /**
+   * Sanitize tool_use / tool_result pairing in message history.
+   * If an assistant message contains tool_use blocks without matching tool_result
+   * blocks in the following user message, inject synthetic error results so the
+   * API doesn't reject the conversation.
+   */
+  function sanitizeToolPairing(messages) {
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== 'assistant') continue;
+      if (!Array.isArray(msg.content)) continue;
+
+      const toolUseIds = msg.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => b.id);
+
+      if (toolUseIds.length === 0) continue;
+
+      // Check next message for matching tool_results
+      const nextMsg = messages[i + 1];
+      const existingResultIds = new Set();
+
+      if (nextMsg?.role === 'user' && Array.isArray(nextMsg.content)) {
+        for (const b of nextMsg.content) {
+          if (b.type === 'tool_result') existingResultIds.add(b.tool_use_id);
+        }
+      }
+
+      const orphanIds = toolUseIds.filter(id => !existingResultIds.has(id));
+      if (orphanIds.length === 0) continue;
+
+      // Inject synthetic tool_results for orphans
+      const syntheticResults = orphanIds.map(id => ({
+        type: 'tool_result',
+        tool_use_id: id,
+        content: 'Tool execution was interrupted.',
+        is_error: true,
+      }));
+
+      if (nextMsg?.role === 'user' && Array.isArray(nextMsg.content)) {
+        nextMsg.content.push(...syntheticResults);
+      } else {
+        // Insert a new user message with tool results
+        messages.splice(i + 1, 0, {
+          role: 'user',
+          content: syntheticResults,
+        });
+      }
+    }
+    return messages;
+  }
+
   app.post('/api/chat/stream', requireAuth, checkPlanLimits, async (req, res) => {
     const { messages, model, provider, system, systemPrompt, tools, thinking, thinkingBudget, maxTokens, temperature } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
+
+    // Sanitize orphaned tool_use blocks before sending to any provider
+    if (messages) sanitizeToolPairing(messages);
 
     setupSSE(res);
 
@@ -1088,6 +1143,9 @@ export function registerStreamingRoutes(ctx) {
   app.post('/api/chat/continue', requireAuth, checkPlanLimits, async (req, res) => {
     const { messages, model, provider, system, systemPrompt, tools, thinking, thinkingBudget, maxTokens, temperature } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
+
+    // Sanitize orphaned tool_use blocks before sending to any provider
+    if (messages) sanitizeToolPairing(messages);
 
     // Note: No consequence extraction on continuations — predictions extracted on initial stream only
 

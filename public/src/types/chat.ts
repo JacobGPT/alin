@@ -67,6 +67,9 @@ export interface FileBlock {
   mimeType: string;
   size: number;
   url?: string;
+  preview?: string;         // First N bytes for text, file listing for ZIPs
+  isZip?: boolean;
+  zipFiles?: Array<{ name: string; path: string; size: number }>;
 }
 
 export interface ThinkingBlock {
