@@ -803,22 +803,23 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
         currentThinkingSegment = null;
       }
 
-      /** Refresh embedded activity snapshots with latest status from statusStore */
+      /** Refresh embedded activity snapshots with latest status from statusStore.
+       *  Replaces the entire activities array (never mutates in-place) because
+       *  immer/Zustand may have frozen the previous array reference. */
       function refreshToolActivities() {
         const liveActivities = useStatusStore.getState().toolActivities;
         for (const seg of segments) {
           if (seg.type !== 'tool_activity' || !seg.activities) continue;
-          for (let i = 0; i < seg.activities.length; i++) {
-            const live = liveActivities.find(a => a.id === seg.activities![i].id);
-            if (live) {
-              seg.activities![i] = {
-                id: live.id, type: live.type, label: live.label, status: live.status,
-                query: live.query, resultCount: live.resultCount, results: live.results,
-                error: live.error, input: live.input, output: live.output,
-                startTime: live.startTime, endTime: live.endTime,
-              };
-            }
-          }
+          seg.activities = seg.activities.map(a => {
+            const live = liveActivities.find(l => l.id === a.id);
+            if (!live) return a;
+            return {
+              id: live.id, type: live.type, label: live.label, status: live.status,
+              query: live.query, resultCount: live.resultCount, results: live.results,
+              error: live.error, input: live.input, output: live.output,
+              startTime: live.startTime, endTime: live.endTime,
+            };
+          });
         }
       }
 
@@ -828,7 +829,9 @@ export function InputArea({ conversationId, onOpenVoiceConversation, sendRef }: 
           if (segment.type === 'text' && segment.text) {
             blocks.push({ type: 'text', text: segment.text });
           } else if (segment.type === 'tool_activity' && segment.activities && segment.activities.length > 0) {
-            blocks.push({ type: 'tool_activity', activities: segment.activities } as any);
+            // Spread a copy — immer freezes objects stored in Zustand, which would freeze
+            // our segment's array if we pass the same reference.
+            blocks.push({ type: 'tool_activity', activities: [...segment.activities] } as any);
           } else if (segment.type === 'thinking' && segment.thinkingContent) {
             blocks.push({ type: 'thinking', content: segment.thinkingContent } as any);
           } else if (segment.type === 'image' && segment.imageUrl) {
