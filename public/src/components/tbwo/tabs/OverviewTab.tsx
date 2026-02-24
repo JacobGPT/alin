@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ChevronRightIcon,
+  ChevronDownIcon,
   XCircleIcon,
   ArrowPathIcon,
   CpuChipIcon,
   ClockIcon,
+  BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 
@@ -15,7 +17,125 @@ import { countDownloadableArtifacts } from '../../../services/tbwo/zipService';
 import { POD_ROLE_ICONS } from '../utils/tbwoDashboardConstants';
 import type { TabId } from '../utils/tbwoDashboardHelpers';
 import type { TBWO } from '../../../types/tbwo';
-import { QualityTarget, QUALITY_DISPLAY_NAMES, getPodRoleDisplayName } from '../../../types/tbwo';
+import { QualityTarget, QUALITY_DISPLAY_NAMES, getPodRoleDisplayName, isReportType } from '../../../types/tbwo';
+
+// ── Report Quality Metrics (only for completed reports) ──
+interface ReportResult {
+  qualityScore?: number;
+  analysisConfidence?: string;
+  issuesFound?: number;
+  issuesFixed?: number;
+  costEstimate?: string;
+  pods?: Array<{ phase: string; model: string; provider: string; durationMs: number; tokenEstimate?: number }>;
+  scope?: { primaryQuestions?: string[] };
+  sourceCount?: number;
+}
+
+const CONFIDENCE_BADGE: Record<string, string> = {
+  high: 'bg-semantic-success/20 text-semantic-success',
+  medium: 'bg-semantic-warning/20 text-semantic-warning',
+  low: 'bg-semantic-error/20 text-semantic-error',
+};
+
+function ReportQualityDashboard({ result }: { result: ReportResult }) {
+  const [showPods, setShowPods] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-border-primary bg-background-secondary p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <BeakerIcon className="h-5 w-5 text-text-tertiary" />
+        <h3 className="font-semibold text-text-primary">Report Quality</h3>
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
+        {result.qualityScore != null && (
+          <div className="rounded-lg bg-background-tertiary p-3 text-center">
+            <p className="text-2xl font-bold text-brand-primary">{result.qualityScore}<span className="text-sm text-text-tertiary">/10</span></p>
+            <p className="text-xs text-text-tertiary">Quality Score</p>
+          </div>
+        )}
+        {result.analysisConfidence && (
+          <div className="rounded-lg bg-background-tertiary p-3 text-center">
+            <span className={`inline-block rounded-full px-2.5 py-1 text-sm font-semibold capitalize ${CONFIDENCE_BADGE[result.analysisConfidence] || CONFIDENCE_BADGE.medium}`}>
+              {result.analysisConfidence}
+            </span>
+            <p className="text-xs text-text-tertiary mt-1">Confidence</p>
+          </div>
+        )}
+        {(result.issuesFound != null || result.issuesFixed != null) && (
+          <div className="rounded-lg bg-background-tertiary p-3 text-center">
+            <p className="text-xl font-bold text-text-primary">
+              {result.issuesFound ?? 0}
+              {result.issuesFixed != null && <span className="text-sm text-semantic-success"> / {result.issuesFixed} fixed</span>}
+            </p>
+            <p className="text-xs text-text-tertiary">Issues</p>
+          </div>
+        )}
+        {result.costEstimate && (
+          <div className="rounded-lg bg-background-tertiary p-3 text-center">
+            <p className="text-xl font-bold text-text-primary">{result.costEstimate}</p>
+            <p className="text-xs text-text-tertiary">Est. Cost</p>
+          </div>
+        )}
+      </div>
+
+      {/* Research Questions */}
+      {result.scope?.primaryQuestions && result.scope.primaryQuestions.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">Research Questions</h4>
+          <ul className="space-y-1">
+            {result.scope.primaryQuestions.map((q, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
+                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-brand-primary flex-shrink-0" />
+                {q}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Pod Breakdown Table */}
+      {result.pods && result.pods.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowPods(!showPods)}
+            className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            {showPods ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <ChevronRightIcon className="h-3.5 w-3.5" />}
+            Phase Breakdown ({result.pods.length} phases)
+          </button>
+          {showPods && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border-primary text-text-tertiary">
+                    <th className="py-2 pr-4 text-left font-medium">Phase</th>
+                    <th className="py-2 pr-4 text-left font-medium">Model</th>
+                    <th className="py-2 pr-4 text-left font-medium">Provider</th>
+                    <th className="py-2 pr-4 text-right font-medium">Duration</th>
+                    <th className="py-2 text-right font-medium">Tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.pods.map((pod, i) => (
+                    <tr key={i} className="border-b border-border-primary/50">
+                      <td className="py-1.5 pr-4 text-text-primary capitalize">{pod.phase}</td>
+                      <td className="py-1.5 pr-4 text-text-secondary font-mono">{pod.model}</td>
+                      <td className="py-1.5 pr-4 text-text-secondary capitalize">{pod.provider}</td>
+                      <td className="py-1.5 pr-4 text-right text-text-secondary">{pod.durationMs ? `${(pod.durationMs / 1000).toFixed(1)}s` : '\u2014'}</td>
+                      <td className="py-1.5 text-right text-text-secondary">{pod.tokenEstimate ? `~${(pod.tokenEstimate / 1000).toFixed(1)}k` : '\u2014'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (tab: TabId) => void }) {
   // Use runtime pods from pool during execution, fall back to definition pods
@@ -58,6 +178,11 @@ export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (ta
       steps.push({
         label: 'Deploy',
         status: 'not_started',
+      });
+    } else if (isReportType(tbwo.type as any)) {
+      steps.push({
+        label: 'Download',
+        status: ['completed', 'completing'].includes(tbwo.status) ? 'done' : 'not_started',
       });
     }
     return steps;
@@ -111,11 +236,13 @@ export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (ta
       {/* Metrics Grid */}
       <TBWOMetrics tbwo={tbwo} />
 
-      {/* Build Summary — always visible once execution has started */}
+      {/* Build/Report Summary — always visible once execution has started */}
       {(artifactCount > 0 || fileCount > 0 || completedTasks > 0) && (
         <div className="rounded-xl border border-border-primary bg-background-secondary p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-text-primary">Build Summary</h3>
+            <h3 className="font-semibold text-text-primary">
+              {isReportType(tbwo.type as any) ? 'Report Summary' : 'Build Summary'}
+            </h3>
             <span className="rounded-full bg-brand-primary/10 px-2.5 py-1 text-xs font-medium text-brand-primary">
               {qualityLabel} Quality
             </span>
@@ -123,7 +250,7 @@ export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (ta
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg bg-background-tertiary p-3 text-center">
               <p className="text-xl font-bold text-text-primary">{fileCount || artifactCount}</p>
-              <p className="text-xs text-text-tertiary">Files Created</p>
+              <p className="text-xs text-text-tertiary">{isReportType(tbwo.type as any) ? 'Documents' : 'Files Created'}</p>
             </div>
             <div className="rounded-lg bg-background-tertiary p-3 text-center">
               <p className="text-xl font-bold text-text-primary">{completedTasks}/{totalTasks}</p>
@@ -149,11 +276,16 @@ export function OverviewTab({ tbwo, onNavigate }: { tbwo: TBWO; onNavigate?: (ta
           {onNavigate && fileCount > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               <button onClick={() => onNavigate('artifacts')} className="rounded-lg border border-border-primary px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-background-tertiary transition-colors">
-                View Build
+                {isReportType(tbwo.type as any) ? 'View Documents' : 'View Build'}
               </button>
             </div>
           )}
         </div>
+      )}
+
+      {/* Report Quality Metrics — only for completed report types */}
+      {isReportType(tbwo.type as any) && isCompleted && (tbwo.metadata as any)?.result && (
+        <ReportQualityDashboard result={(tbwo.metadata as any).result as ReportResult} />
       )}
 
       {/* Duration — shows how long the TBWO took or is taking */}

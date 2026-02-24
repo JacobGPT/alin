@@ -7,9 +7,11 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
 import { runTBWOPipeline, VALID_TBWO_TYPES, getTBWOTypeConfig } from '../services/tbwoOrchestrator.js';
+import { CREDIT_COSTS } from '../config/index.js';
+import { deductCredits, checkCredits } from '../services/creditService.js';
 
 export function registerTBWORoutes(ctx) {
-  const { app, stmts, requireAuth, sendError, safeJsonParse, PLAN_LIMITS, getQuotaCount, incrementQuota, tbwoWorkspaces } = ctx;
+  const { app, db, stmts, requireAuth, sendError, safeJsonParse, PLAN_LIMITS, getQuotaCount, incrementQuota, tbwoWorkspaces } = ctx;
 
   const toolGenerateImage = ctx.toolGenerateImage || (async () => ({ success: false, error: 'Image generation not available' }));
 
@@ -175,6 +177,151 @@ export function registerTBWORoutes(ctx) {
     catch (error) { sendError(res, 500, error.message); }
   });
 
+  // ============================================================================
+  // PUBLISH REPORT AS SITE
+  // ============================================================================
+
+  app.post('/api/tbwo/:id/publish-report', requireAuth, async (req, res) => {
+    try {
+      const tbwo = stmts.getTBWO.get(req.params.id, req.user.id);
+      if (!tbwo) return res.status(404).json({ error: 'TBWO not found' });
+      if (tbwo.status !== 'completed') return res.status(400).json({ error: 'TBWO must be completed before publishing' });
+
+      // Read artifacts from TBWO
+      const artifacts = safeJsonParse(tbwo.artifacts, []);
+      const reportArtifact = artifacts.find(a => (a.path || a.name || '').endsWith('REPORT.md'));
+      const sourcesArtifact = artifacts.find(a => (a.path || a.name || '').endsWith('SOURCES.md'));
+      const execSummaryArtifact = artifacts.find(a => (a.path || a.name || '').endsWith('EXECUTIVE_SUMMARY.md'));
+
+      if (!reportArtifact || !reportArtifact.content) {
+        return res.status(400).json({ error: 'No REPORT.md found in TBWO artifacts' });
+      }
+
+      // Simple markdown → HTML conversion
+      function mdToHtml(md) {
+        return md
+          .replace(/^### (.+)$/gm, '<h3 id="$1">$1</h3>')
+          .replace(/^## (.+)$/gm, '<h2 id="$1">$1</h2>')
+          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/`(.+?)`/g, '<code>$1</code>')
+          .replace(/^\- (.+)$/gm, '<li>$1</li>')
+          .replace(/(<li>.*<\/li>\n?)+/gm, (match) => `<ul>${match}</ul>`)
+          .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+          .replace(/^(?!<[hulo]|<li|<\/)((?!^\s*$).+)$/gm, '<p>$1</p>')
+          .replace(/\n{2,}/g, '\n');
+      }
+
+      // Generate Table of Contents from headings
+      const tocEntries = [];
+      const headingRegex = /^(#{2,3}) (.+)$/gm;
+      let match;
+      while ((match = headingRegex.exec(reportArtifact.content)) !== null) {
+        const level = match[1].length;
+        const text = match[2].trim();
+        const id = text.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+        tocEntries.push({ level, text, id });
+      }
+
+      const tocHtml = tocEntries.length > 0
+        ? `<nav class="toc"><h2>Contents</h2><ul>${tocEntries.map(e =>
+            `<li class="toc-${e.level === 2 ? 'h2' : 'h3'}"><a href="#${e.id}">${e.text}</a></li>`
+          ).join('')}</ul></nav>`
+        : '';
+
+      const reportHtml = mdToHtml(reportArtifact.content);
+      const sourcesHtml = sourcesArtifact ? mdToHtml(sourcesArtifact.content) : '';
+      const execSummaryHtml = execSummaryArtifact ? mdToHtml(execSummaryArtifact.content) : '';
+      const genDate = new Date().toISOString().split('T')[0];
+
+      const html = `<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${tbwo.objective || 'Report'}</title>
+  <style>
+    :root { --bg: #0f172a; --surface: #1e293b; --border: #334155; --text: #e2e8f0; --text-muted: #94a3b8; --accent: #6366f1; --accent-light: #818cf8; }
+    [data-theme="light"] { --bg: #f8fafc; --surface: #ffffff; --border: #e2e8f0; --text: #1e293b; --text-muted: #64748b; --accent: #4f46e5; --accent-light: #6366f1; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+    .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+    .header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 1.75rem; font-weight: 700; }
+    .theme-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; }
+    .layout { display: grid; grid-template-columns: 200px 1fr; gap: 2rem; }
+    .toc { position: sticky; top: 2rem; }
+    .toc h2 { font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem; }
+    .toc ul { list-style: none; }
+    .toc li { margin-bottom: 0.25rem; }
+    .toc a { font-size: 0.8125rem; color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
+    .toc a:hover { color: var(--accent); }
+    .toc-h3 { padding-left: 1rem; }
+    .content h1 { font-size: 1.5rem; margin: 2rem 0 1rem; }
+    .content h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .content h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+    .content p { margin-bottom: 1rem; }
+    .content ul, .content ol { margin: 0 0 1rem 1.5rem; }
+    .content li { margin-bottom: 0.25rem; }
+    .content code { background: var(--surface); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+    .content a { color: var(--accent-light); text-decoration: underline; }
+    .content strong { color: var(--text); }
+    .content table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    .content th, .content td { padding: 0.5rem; border: 1px solid var(--border); text-align: left; font-size: 0.875rem; }
+    .content th { background: var(--surface); font-weight: 600; }
+    .exec-summary { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 2rem; }
+    .exec-summary h2 { margin: 0 0 1rem; border: none; padding: 0; }
+    .sources { margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border); }
+    .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.8125rem; }
+    @media print { .toc, .theme-toggle { display: none; } .layout { grid-template-columns: 1fr; } body { background: white; color: black; } }
+    @media (max-width: 768px) { .layout { grid-template-columns: 1fr; } .toc { position: static; margin-bottom: 2rem; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>${tbwo.objective || 'Report'}</h1>
+      <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">Toggle Theme</button>
+    </div>
+    ${execSummaryHtml ? `<div class="exec-summary"><h2>Executive Summary</h2>${execSummaryHtml}</div>` : ''}
+    <div class="layout">
+      ${tocHtml}
+      <div class="content">
+        ${reportHtml}
+        ${sourcesHtml ? `<div class="sources"><h2>Sources</h2>${sourcesHtml}</div>` : ''}
+      </div>
+    </div>
+    <div class="footer">Generated by ALIN &middot; ${genDate}</div>
+  </div>
+</body>
+</html>`;
+
+      // Create site record
+      const siteId = randomUUID();
+      const now = Date.now();
+      const storagePath = path.join(os.tmpdir(), 'alin-sites', siteId);
+      await fs.mkdir(storagePath, { recursive: true });
+      await fs.writeFile(path.join(storagePath, 'index.html'), html, 'utf8');
+
+      stmts.insertSite.run(
+        siteId, req.user.id, null, tbwo.objective || 'Report',
+        req.params.id, 'preview', null, null,
+        JSON.stringify({ pages: ['index.html'], reportTbwoId: req.params.id }),
+        storagePath, 0, null, now, now
+      );
+
+      res.json({
+        success: true,
+        siteId,
+        previewUrl: `/api/preview/${siteId}/index.html`,
+      });
+    } catch (error) {
+      sendError(res, 500, error.message);
+    }
+  });
+
   /**
    * POST /api/tbwo/:id/execute — Run the full multi-model website build pipeline.
    * Accepts body: { qualityTier: 'standard' | 'premium' | 'ultra' }
@@ -197,8 +344,36 @@ export function registerTBWORoutes(ctx) {
       const qualityTier = req.body.qualityTier || tbwoMetadata.qualityTier || 'standard';
       const typeConfig = getTBWOTypeConfig(tbwo.type);
 
+      // Block execution for types without a backend pipeline config
+      if (!typeConfig && tbwo.type !== 'custom' && tbwo.type !== 'general') {
+        return res.status(400).json({
+          error: `Pipeline not yet available for type: ${tbwo.type}`,
+          code: 'TBWO_TYPE_NOT_IMPLEMENTED',
+          hint: 'This TBWO type is coming soon. Try Website Sprint, Research Report, or Market Research.',
+        });
+      }
+
       // Parse the brief from the TBWO order
       const brief = safeJsonParse(tbwo.scope, {});
+
+      // ── Unified credit check (pre-execution) ──
+      const baseCost = CREDIT_COSTS.tbwo[tbwo.type] || CREDIT_COSTS.tbwo.custom;
+      const tierMult = CREDIT_COSTS.tierMultiplier[qualityTier] || 1;
+      const estimatedCost = Math.ceil(baseCost * tierMult);
+
+      if (!req.user.isAdmin) {
+        const plan = req.user.plan || 'free';
+        const check = checkCredits(stmts, req.user.id, estimatedCost, plan);
+        if (!check.ok && !check.unlimited) {
+          return res.status(402).json({
+            error: 'Insufficient credits for this TBWO',
+            required: estimatedCost,
+            available: check.balance,
+            plan,
+            code: 'INSUFFICIENT_CREDITS',
+          });
+        }
+      }
 
       // Update status to running
       const now = Date.now();
@@ -212,9 +387,11 @@ export function registerTBWORoutes(ctx) {
         now, req.params.id, req.user.id
       );
 
-      res.json({ started: true, tbwoId: req.params.id, qualityTier });
+      res.json({ started: true, tbwoId: req.params.id, qualityTier, estimatedCost });
 
       // Run pipeline in background (non-blocking)
+      let lastBilledPct = 0;
+
       runTBWOPipeline({
         objective: tbwo.objective,
         brief,
@@ -225,6 +402,21 @@ export function registerTBWORoutes(ctx) {
         qualityTier,
         workspacePath,
         generateImage: toolGenerateImage,
+        onRecallMemories: async (query) => {
+          try {
+            const rows = stmts.listMemories.all(req.user.id);
+            const queryLower = query.slice(0, 30).toLowerCase();
+            const relevant = rows
+              .filter(r => {
+                const tags = JSON.parse(r.tags || '[]');
+                return tags.some(t => t.startsWith('report:')) ||
+                       r.content.toLowerCase().includes(queryLower);
+              })
+              .slice(0, 5);
+            if (relevant.length === 0) return null;
+            return relevant.map(m => `- ${m.content.slice(0, 300)}`).join('\n');
+          } catch { return null; }
+        },
         onProgress: (phase, pct, msg) => {
           try {
             const current = stmts.getTBWO.get(req.params.id, req.user.id);
@@ -241,11 +433,71 @@ export function registerTBWORoutes(ctx) {
               );
             }
           } catch (e) { console.error('[TBWO] Progress update failed:', e.message); }
+
+          // Per-stage credit deduction (proportional to progress delta)
+          if (!req.user.isAdmin && pct > lastBilledPct && phase !== 'complete') {
+            try {
+              const delta = pct - lastBilledPct;
+              const creditCost = Math.max(1, Math.ceil(estimatedCost * delta / 100));
+              deductCredits(db, stmts, req.user.id, creditCost,
+                `TBWO ${phase}: ${(tbwo.objective || '').substring(0, 40)}`,
+                req.params.id
+              );
+              lastBilledPct = pct;
+            } catch (e) {
+              console.error('[TBWO] Credit deduction failed:', e.message);
+            }
+          }
         },
         onFile: async (filePath, content) => {
           const fullPath = path.join(workspacePath, filePath);
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, content, 'utf8');
+
+          // Create artifact record and update TBWO artifacts column
+          try {
+            const artifactId = randomUUID();
+            const fileNow = Date.now();
+            const ext = (filePath.split('.').pop() || '').toLowerCase();
+            const artifactType = ext === 'html' ? 'html' : ext === 'css' ? 'css'
+              : ext === 'js' || ext === 'ts' ? 'code' : ext === 'json' ? 'json'
+              : ext === 'md' ? 'markdown' : ext === 'svg' ? 'svg' : 'file';
+            const lang = ext === 'js' ? 'javascript' : ext === 'ts' ? 'typescript'
+              : ext === 'html' ? 'html' : ext === 'css' ? 'css' : ext === 'json' ? 'json'
+              : ext === 'md' ? 'markdown' : ext;
+            const fileName = filePath.split('/').pop() || filePath;
+            const safeContent = content.length > 500000 ? content.substring(0, 500000) : content;
+
+            // Insert into artifacts table (cross-reference)
+            stmts.insertArtifact.run(
+              artifactId, fileName, artifactType, lang, safeContent,
+              1, null, req.params.id, '{}', fileNow, fileNow, req.user.id
+            );
+
+            // Append to TBWO artifacts JSON column
+            const current = stmts.getTBWO.get(req.params.id, req.user.id);
+            if (current) {
+              const existingArtifacts = safeJsonParse(current.artifacts, []);
+              existingArtifacts.push({
+                id: artifactId,
+                name: fileName,
+                path: filePath,
+                type: artifactType,
+                content: safeContent,
+                createdAt: fileNow,
+              });
+              stmts.updateTBWO.run(
+                current.type, current.status, current.objective, current.time_budget_total,
+                current.quality_target, current.scope, current.plan, current.pods, current.active_pods,
+                JSON.stringify(existingArtifacts), current.checkpoints, current.authority_level, current.progress,
+                current.receipts, current.chat_conversation_id, current.started_at, current.completed_at,
+                current.metadata, current.execution_state || null,
+                fileNow, req.params.id, req.user.id
+              );
+            }
+          } catch (e) {
+            console.error('[TBWO] Artifact record creation failed:', e.message);
+          }
         },
       }).then(result => {
         try {
@@ -274,6 +526,64 @@ export function registerTBWORoutes(ctx) {
               qualityTier: current.quality_target,
             });
           } catch {}
+
+          // ── Report-specific post-completion hooks ──
+          if (result.pipelineType === 'report') {
+            // 1. Store top insights as LONG_TERM memories
+            try {
+              const topFindings = (result.scope?.primaryQuestions || [])
+                .concat(result.pods?.filter(p => p.phase === 'analyze').length > 0
+                  ? ['Analysis completed with ' + (result.analysisConfidence || 'unknown') + ' confidence']
+                  : []);
+              const objectiveSlug = (current.objective || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+              const tags = JSON.stringify(['report', `report:${tbwo.type}`, `topic:${objectiveSlug}`]);
+              const meta = JSON.stringify({ tbwoId: req.params.id, reportType: tbwo.type, confidence: result.analysisConfidence, source: 'report_pipeline' });
+
+              for (const finding of topFindings.slice(0, 5)) {
+                const memId = randomUUID();
+                const now = Date.now();
+                stmts.insertMemory.run(
+                  memId, 'long_term', finding, 0.8, 0.01, 0, 0, 0, 0, 0,
+                  tags, '[]', '[]', meta, now, now, now, req.user.id
+                );
+              }
+              // Also store the scope as a SEMANTIC memory
+              const scopeMemId = randomUUID();
+              const scopeContent = `Report scope for "${current.objective}": ${JSON.stringify(result.scope || {}).slice(0, 500)}`;
+              stmts.insertMemory.run(
+                scopeMemId, 'semantic', scopeContent, 0.6, 0.02, 0, 0, 0, 0, 0,
+                tags, '[]', '[]', meta, Date.now(), Date.now(), Date.now(), req.user.id
+              );
+              console.log(`[TBWO ${req.params.id.slice(0, 8)}] Stored ${topFindings.slice(0, 5).length + 1} report memories`);
+            } catch (e) {
+              console.error('[TBWO] Memory storage failed:', e.message);
+            }
+
+            // 2. Record execution outcome in self-model
+            try {
+              const outcomeId = randomUUID();
+              stmts.insertOutcome.run(
+                outcomeId, req.params.id, current.objective, tbwo.type,
+                current.time_budget_total, 0,
+                result.pods?.length || 5, 0,
+                result.pages?.length || 0, 0,
+                result.qualityScore || 0, Date.now(), req.user.id
+              );
+            } catch (e) {
+              console.error('[TBWO] Self-model outcome recording failed:', e.message);
+            }
+
+            // 3. Record per-phase model success rates
+            try {
+              for (const pod of (result.pods || [])) {
+                stmts.upsertModelSuccessRate.run(
+                  pod.model || 'unknown', 1, 0, pod.durationMs || 0, Date.now()
+                );
+              }
+            } catch (e) {
+              console.error('[TBWO] Model success rate recording failed:', e.message);
+            }
+          }
         } catch (e) { console.error('[TBWO] Completion update failed:', e.message); }
       }).catch(err => {
         console.error(`[TBWO ${req.params.id.slice(0, 8)}] FAILED:`, err.message);

@@ -51,6 +51,7 @@ import { registerCloudflareRoutes } from '@alin/core/routes/cloudflare';
 import { registerCreditRoutes } from '@alin/core/routes/credits';
 import { registerConsequenceEngineRoutes } from '@alin/core/routes/consequenceEngine';
 import { registerTrainingDataRoutes } from '@alin/core/routes/trainingData';
+import { registerProactiveIntelligenceRoutes } from '@alin/core/routes/proactiveIntelligence';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -153,6 +154,17 @@ ctx.consequenceConfig = {
 };
 registerConsequenceEngineRoutes(ctx);
 
+// Proactive Intelligence — public mode (lightweight monitoring)
+ctx.proactiveConfig = {
+  enabled: true,
+  collectIntervalMs: 10 * 60 * 1000,
+  rhythmIntervalMs: 15 * 60 * 1000,
+  awarenessIntervalMs: 30 * 60 * 1000,
+  alertCheckIntervalMs: 10 * 60 * 1000,
+  retentionDays: 30,
+};
+registerProactiveIntelligenceRoutes(ctx);
+
 registerAssetRoutes(ctx);
 
 registerCloudflareRoutes(ctx);
@@ -167,7 +179,7 @@ app.listen(PORT, () => {
   console.log(`  Running on: http://localhost:${PORT}`);
   console.log(`  Database:   ${dbPath}`);
   console.log(`  API Keys:   Anthropic=${!!process.env.ANTHROPIC_API_KEY ? 'Y' : 'N'} OpenAI=${!!process.env.OPENAI_API_KEY ? 'Y' : 'N'} Brave=${!!(process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY) ? 'Y' : 'N'}`);
-  console.log(`  Routes:     29 modules loaded`);
+  console.log(`  Routes:     30 modules loaded`);
   console.log('  Health:     GET /api/health');
   console.log('========================================================');
   console.log('');

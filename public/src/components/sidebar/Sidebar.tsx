@@ -38,6 +38,7 @@ import { useCapabilities } from '../../hooks/useCapabilities';
 import { ChatItem } from './ChatItem';
 import { Input } from '@components/ui/Input';
 import { PlanBadge } from '@components/auth/PlanBadge';
+import { CreditMeter } from '@components/credits/CreditMeter';
 
 // ============================================================================
 // SIDEBAR COMPONENT
@@ -398,6 +399,7 @@ export function Sidebar() {
               <ArrowRightStartOnRectangleIcon className="h-3.5 w-3.5" />
             </button>
           </div>
+          <CreditMeter />
         </div>
       )}
     </div>

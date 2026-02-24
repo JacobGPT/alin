@@ -408,8 +408,15 @@ export function registerFileRoutes(ctx) {
         // Read specific file from ZIP
         const buffer = await fs.readFile(filePath);
         const zip = await JSZip.loadAsync(buffer);
-        const entry = zip.file(innerPath);
-        if (!entry) return res.status(404).json({ error: `File not found in ZIP: ${innerPath}` });
+        let entry = zip.file(innerPath);
+        // Fallback: try matching by filename if full path doesn't match
+        if (!entry) {
+          const basename = innerPath.split('/').pop();
+          const allFiles = Object.keys(zip.files).filter(p => !zip.files[p].dir);
+          const match = allFiles.find(p => p.endsWith('/' + basename) || p === basename);
+          if (match) entry = zip.file(match);
+          if (!entry) return res.status(404).json({ error: `File not found in ZIP: ${innerPath}`, availableFiles: allFiles.slice(0, 50) });
+        }
         const content = await entry.async('string');
         const sliced = content.slice(offset, offset + cappedLimit);
         res.json({
@@ -435,6 +442,37 @@ export function registerFileRoutes(ctx) {
       }
     } catch (error) {
       console.error('[Attachment] Read error:', error.message);
+      sendError(res, 500, error.message);
+    }
+  });
+
+  /**
+   * GET /api/files/attachment-info/:fileId — Get attachment metadata + ZIP listing
+   */
+  app.get('/api/files/attachment-info/:fileId', requireAuth, async (req, res) => {
+    try {
+      const attachDir = path.join(ATTACHMENTS_DIR, req.params.fileId);
+      try { await fs.access(attachDir); } catch {
+        return res.status(404).json({ error: 'Attachment not found or expired' });
+      }
+      const entries = await fs.readdir(attachDir);
+      if (entries.length === 0) return res.status(404).json({ error: 'Attachment file missing' });
+      const storedFile = entries[0];
+      const filePath = path.join(attachDir, storedFile);
+      const stat = await fs.stat(filePath);
+      const ext = storedFile.split('.').pop()?.toLowerCase() || '';
+      const result = { fileId: req.params.fileId, filename: storedFile, size: stat.size, isZip: ext === 'zip' };
+      if (ext === 'zip') {
+        const buffer = await fs.readFile(filePath);
+        const zip = await JSZip.loadAsync(buffer);
+        result.zipFiles = [];
+        for (const [zipPath, zipEntry] of Object.entries(zip.files)) {
+          if (zipEntry.dir || zipPath.startsWith('__MACOSX/') || zipPath.includes('/.')) continue;
+          result.zipFiles.push({ path: zipPath, name: path.basename(zipPath), size: zipEntry._data?.uncompressedSize || 0 });
+        }
+      }
+      res.json({ success: true, ...result });
+    } catch (error) {
       sendError(res, 500, error.message);
     }
   });

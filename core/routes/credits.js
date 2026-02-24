@@ -1,39 +1,23 @@
 /**
- * Credit system endpoints
+ * Credit system endpoints — unified single-pool credits
  * /api/credits — balance, transactions, consume, monthly-reset
  */
 import { randomUUID } from 'crypto';
 import { MONTHLY_CREDITS } from '../config/index.js';
+import { deductCredits, getCreditBalance } from '../services/creditService.js';
 
 export function registerCreditRoutes(ctx) {
   const { app, db, stmts, requireAuth, sendError } = ctx;
 
-  // ── GET /api/credits/balance — current credit balances ──
+  // ── GET /api/credits/balance — current unified credit balance ──
   app.get('/api/credits/balance', requireAuth, (req, res) => {
     try {
       const userId = req.user.id;
-      const now = Date.now();
-
-      // Clean up expired credits first
-      stmts.deleteExpiredCredits.run(now);
-
-      const rows = stmts.getCreditBalance.all(userId, now);
-      const balance = {};
-      for (const row of rows) {
-        balance[row.credit_type] = row.total;
-      }
-
-      // Fill in zeros for missing credit types
-      const allTypes = ['chat', 'tbwo_standard', 'tbwo_premium', 'tbwo_ultra', 'image', 'video', 'site_hosting', 'priority_queue'];
-      for (const t of allTypes) {
-        if (!(t in balance)) balance[t] = 0;
-      }
-
-      // Include plan allocation for reference
       const plan = req.user.isAdmin ? 'agency' : (req.user.plan || 'free');
       const allocation = MONTHLY_CREDITS[plan] || MONTHLY_CREDITS.free;
+      const balance = getCreditBalance(stmts, userId);
 
-      res.json({ success: true, balance, plan, allocation });
+      res.json({ success: true, balance, allocation: allocation.credits, plan });
     } catch (error) {
       sendError(res, 500, error.message);
     }
@@ -60,86 +44,44 @@ export function registerCreditRoutes(ctx) {
     }
   });
 
-  // ── POST /api/credits/consume — deduct credits (requireAuth + internal check) ──
+  // ── POST /api/credits/consume — deduct credits from unified pool ──
   app.post('/api/credits/consume', requireAuth, (req, res) => {
     try {
       const userId = req.user.id;
-      const { creditType, amount, description, referenceId } = req.body;
+      const { amount, description, referenceId } = req.body;
 
-      if (!creditType || !amount || amount <= 0) {
-        return res.status(400).json({ error: 'creditType and positive amount required' });
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: 'Positive amount required' });
       }
 
-      const now = Date.now();
-
-      // Check plan allocation — -1 means unlimited
       const plan = req.user.isAdmin ? 'agency' : (req.user.plan || 'free');
       const allocation = MONTHLY_CREDITS[plan] || MONTHLY_CREDITS.free;
-      if (allocation[creditType] === -1) {
-        // Unlimited — record transaction but don't deduct
+
+      // Unlimited plan — record transaction but don't deduct
+      if (allocation.credits === -1) {
+        const now = Date.now();
         stmts.insertCreditTransaction.run(
-          randomUUID(), userId, creditType, -amount, -1,
-          description || `Consumed ${amount} ${creditType}`,
+          randomUUID(), userId, 'credits', -amount, -1,
+          description || `Consumed ${amount} credits`,
           referenceId || null, now
         );
         return res.json({ success: true, remaining: -1, unlimited: true });
       }
 
-      // Check current balance
-      const balanceRow = stmts.getCreditByType.get(userId, creditType, now);
-      const currentBalance = balanceRow?.total || 0;
-
-      if (currentBalance < amount) {
+      // Check balance
+      const balance = getCreditBalance(stmts, userId);
+      if (balance < amount) {
         return res.status(402).json({
           error: 'Insufficient credits',
-          creditType,
           required: amount,
-          available: currentBalance,
+          available: balance,
           plan,
           code: 'INSUFFICIENT_CREDITS',
         });
       }
 
-      // Deduct from subscription credits first, then purchase, then bonus
-      const sources = ['subscription', 'purchase', 'bonus'];
-      let remaining = amount;
-
-      const deductTxn = db.transaction(() => {
-        for (const source of sources) {
-          if (remaining <= 0) break;
-          const result = stmts.decrementCredit.run(remaining, userId, creditType, source, remaining);
-          if (result.changes > 0) {
-            remaining = 0;
-          } else {
-            // Try partial deduction — get current amount for this source
-            const row = db.prepare(
-              'SELECT amount FROM user_credits WHERE user_id=? AND credit_type=? AND source=? AND amount > 0'
-            ).get(userId, creditType, source);
-            if (row && row.amount > 0) {
-              const deduct = Math.min(row.amount, remaining);
-              db.prepare(
-                'UPDATE user_credits SET amount = amount - ? WHERE user_id=? AND credit_type=? AND source=?'
-              ).run(deduct, userId, creditType, source);
-              remaining -= deduct;
-            }
-          }
-        }
-
-        // Get new balance
-        const newBalanceRow = stmts.getCreditByType.get(userId, creditType, now);
-        const newBalance = newBalanceRow?.total || 0;
-
-        // Record transaction
-        stmts.insertCreditTransaction.run(
-          randomUUID(), userId, creditType, -amount, newBalance,
-          description || `Consumed ${amount} ${creditType}`,
-          referenceId || null, now
-        );
-
-        return newBalance;
-      });
-
-      const newBalance = deductTxn();
+      const newBalance = deductCredits(db, stmts, userId, amount,
+        description || `Consumed ${amount} credits`, referenceId);
 
       res.json({ success: true, remaining: newBalance, consumed: amount });
     } catch (error) {
@@ -164,25 +106,25 @@ export function registerCreditRoutes(ctx) {
           const allocation = MONTHLY_CREDITS[plan];
           if (!allocation) continue;
 
+          const amount = allocation.credits;
+          if (amount === 0) continue;
+
           // Delete old subscription credits for this user
           stmts.deleteSubscriptionCredits.run(user.id, 'subscription');
 
-          // Insert fresh subscription credits
-          for (const [creditType, amount] of Object.entries(allocation)) {
-            if (amount === 0) continue; // Don't create zero-credit rows
-            stmts.upsertCredit.run(
-              user.id, creditType, amount === -1 ? 999999 : amount,
-              'subscription', null, now
-            );
+          // Insert fresh subscription credits (single type)
+          stmts.upsertCredit.run(
+            user.id, 'credits', amount === -1 ? 999999 : amount,
+            'subscription', null, now
+          );
 
-            // Record the reset transaction
-            stmts.insertCreditTransaction.run(
-              randomUUID(), user.id, creditType, amount === -1 ? 999999 : amount,
-              amount === -1 ? 999999 : amount,
-              `Monthly reset (${plan} plan)`,
-              null, now
-            );
-          }
+          // Record the reset transaction
+          stmts.insertCreditTransaction.run(
+            randomUUID(), user.id, 'credits', amount === -1 ? 999999 : amount,
+            amount === -1 ? 999999 : amount,
+            `Monthly reset (${plan} plan)`,
+            null, now
+          );
 
           resetCount++;
         }

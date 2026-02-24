@@ -21,6 +21,7 @@ import {
   RocketLaunchIcon,
   ArrowDownTrayIcon,
   SparklesIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 
 // Store
@@ -41,6 +42,7 @@ import { PlanTab } from './tabs/PlanTab';
 import { PauseAskTab } from './tabs/PauseAskTab';
 import { BuildTab } from './tabs/BuildTab';
 import { ReceiptsTab } from './tabs/ReceiptsTab';
+import { ReportViewerTab } from './tabs/ReportViewerTab';
 
 // Extracted utils
 import { STATUS_CONFIG, QUALITY_BADGES } from './utils/tbwoDashboardConstants';
@@ -49,7 +51,7 @@ import type { TabId } from './utils/tbwoDashboardHelpers';
 
 // Types
 import type { TBWO } from '../../types/tbwo';
-import { QualityTarget } from '../../types/tbwo';
+import { QualityTarget, isReportType } from '../../types/tbwo';
 
 // Services
 import { downloadTBWOZip, countDownloadableArtifacts } from '../../services/tbwo/zipService';
@@ -422,19 +424,24 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
 
   const [isPlanning, setIsPlanning] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const fileCount = countDownloadableArtifacts(tbwo);
 
   // Conditional tab visibility
   const hasPauseRequests = (tbwo.pauseRequests?.length || 0) > 0 || tbwo.status === 'paused_waiting_for_user';
   const hasStartedExecution = !['draft', 'planning', 'awaiting_approval'].includes(tbwo.status);
   const isWebsiteSprint = tbwo.type === 'website_sprint';
+  const isReport = isReportType(tbwo.type as any);
   const showPreview = isWebsiteSprint && hasStartedExecution;
   const artifactCount = tbwo.artifacts?.length || 0;
 
-  // Auto-switch to Build tab when execution starts (website sprints get live preview)
+  // Auto-switch to Build/Report tab when execution starts
   useEffect(() => {
     if (tbwo.status === 'executing' && isWebsiteSprint && activeTab === 'overview') {
       setActiveTab('artifacts');
+    }
+    if (tbwo.status === 'completed' && isReport && activeTab === 'overview') {
+      setActiveTab('report');
     }
     // Auto-switch to Pause & Ask when paused
     if (tbwo.status === 'paused_waiting_for_user') {
@@ -457,11 +464,15 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
       t.push({ id: 'pause_ask', label: 'Pause & Ask', badge: pendingCount > 0 ? pendingCount : undefined });
     }
     if (hasStartedExecution || showPreview) {
-      t.push({ id: 'artifacts', label: 'Build', badge: artifactCount > 0 ? artifactCount : undefined });
+      if (isReport) {
+        t.push({ id: 'report', label: 'Report', badge: artifactCount > 0 ? artifactCount : undefined });
+      } else {
+        t.push({ id: 'artifacts', label: 'Build', badge: artifactCount > 0 ? artifactCount : undefined });
+      }
     }
     t.push({ id: 'receipts', label: 'Receipts' });
     return t;
-  }, [tbwo.plan, hasPauseRequests, hasStartedExecution, showPreview, artifactCount, tbwo.pauseRequests, isWebsiteSprint, tbwo.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tbwo.plan, hasPauseRequests, hasStartedExecution, showPreview, artifactCount, tbwo.pauseRequests, isWebsiteSprint, isReport, tbwo.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDownloadZip = async () => {
     setIsDownloading(true);
@@ -491,6 +502,21 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
     setActiveTab('activity');
     await startExecution(tbwo.id);
     setIsStarting(false);
+  };
+
+  const handlePublishReport = async () => {
+    setIsPublishing(true);
+    try {
+      const resp = await fetch(`/api/tbwo/${tbwo.id}/publish-report`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await resp.json();
+      if (data.success && data.previewUrl) {
+        window.open(data.previewUrl, '_blank');
+      }
+    } catch (e) {
+      console.error('[TBWO] Publish report failed:', e);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   // Auto-switch to Pause & Ask tab when there are pending questions
@@ -610,26 +636,35 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
                   </Button>
                 )}
                 {isWebsiteSprint && (
-                  <>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      leftIcon={<RocketLaunchIcon className="h-4 w-4" />}
-                      onClick={async () => {
-                        try {
-                          const site = await useSitesStore.getState().createSite(
-                            tbwo.objective || 'Untitled Site',
-                            tbwo.id,
-                          );
-                          window.location.href = `/sites/${site.id}`;
-                        } catch (e) {
-                          console.error('[TBWO] Create site failed:', e);
-                        }
-                      }}
-                    >
-                      Create Site
-                    </Button>
-                  </>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<RocketLaunchIcon className="h-4 w-4" />}
+                    onClick={async () => {
+                      try {
+                        const site = await useSitesStore.getState().createSite(
+                          tbwo.objective || 'Untitled Site',
+                          tbwo.id,
+                        );
+                        window.location.href = `/sites/${site.id}`;
+                      } catch (e) {
+                        console.error('[TBWO] Create site failed:', e);
+                      }
+                    }}
+                  >
+                    Create Site
+                  </Button>
+                )}
+                {isReport && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handlePublishReport}
+                    disabled={isPublishing}
+                    leftIcon={isPublishing ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <GlobeAltIcon className="h-4 w-4" />}
+                  >
+                    {isPublishing ? 'Publishing...' : 'Publish as Site'}
+                  </Button>
                 )}
               </>
             )}
@@ -692,6 +727,11 @@ function TBWODetailView({ tbwo }: TBWODetailViewProps) {
           {activeTab === 'artifacts' && (
             <motion.div key="artifacts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <BuildTab tbwo={tbwo} isWebsiteSprint={isWebsiteSprint} />
+            </motion.div>
+          )}
+          {activeTab === 'report' && (
+            <motion.div key="report" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <ReportViewerTab tbwo={tbwo} />
             </motion.div>
           )}
           {activeTab === 'receipts' && (

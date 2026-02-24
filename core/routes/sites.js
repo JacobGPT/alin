@@ -6,6 +6,8 @@ import { randomUUID, createHash } from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
 import { buildStaticSite } from '../services/buildStaticSite.js';
+import { CREDIT_COSTS } from '../config/index.js';
+import { deductCredits, getCreditBalance } from '../services/creditService.js';
 
 export function registerSiteRoutes(ctx) {
   const {
@@ -223,19 +225,15 @@ export function registerSiteRoutes(ctx) {
       const now = Date.now();
       if (site.status === 'expired') return sendError(res, 400, 'Site has already expired and been cleaned up');
 
-      // Deduct 1 site_hosting credit
-      const creditResult = stmts.decrementCredit.run(1, userId, 'site_hosting', 'subscription', 1);
-      if (creditResult.changes === 0) {
-        return res.status(402).json({ error: 'Insufficient site_hosting credits', code: 'INSUFFICIENT_CREDITS' });
+      // Deduct site_extend credits from unified pool
+      const cost = CREDIT_COSTS.site_extend;
+      const balance = getCreditBalance(stmts, userId);
+      if (balance < cost) {
+        return res.status(402).json({ error: 'Insufficient credits', required: cost, available: balance, code: 'INSUFFICIENT_CREDITS' });
       }
-
-      // Record transaction
-      const balanceRow = stmts.getCreditByType.get(userId, 'site_hosting', now);
-      const balanceAfter = balanceRow ? balanceRow.total : 0;
-      stmts.insertCreditTransaction.run(
-        randomUUID(), userId, 'site_hosting', -1, balanceAfter,
+      deductCredits(db, stmts, userId, cost,
         `Extended ephemeral site "${site.name}" by 30 days`,
-        site.id, now
+        site.id
       );
 
       // Extend by 30 days from current expiry (or from now if past)

@@ -10,7 +10,7 @@ import { Button } from '@components/ui/Button';
 import type { TBWO } from '../../../types/tbwo';
 
 export type TabId = 'overview' | 'plan' | 'pods' | 'activity' | 'pause_ask' |
-  'artifacts' | 'preview' | 'conversion' | 'improve' | 'motion' |
+  'artifacts' | 'report' | 'preview' | 'conversion' | 'improve' | 'motion' |
   'scene3d' | 'cognitive' | 'receipts';
 
 export function EmptyDetailView({ onCreateNew }: { onCreateNew: () => void }) {

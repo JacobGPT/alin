@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   FolderIcon,
   FolderOpenIcon,
@@ -135,6 +137,12 @@ export function ArtifactsTab({ tbwo }: { tbwo: TBWO }) {
                   sandbox="allow-scripts"
                   title={selectedArtifact.name}
                 />
+              ) : (selectedArtifact.path || '').endsWith('.md') && typeof selectedArtifact.content === 'string' ? (
+                <div className="p-6 prose prose-invert prose-sm max-w-none overflow-y-auto">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {selectedArtifact.content}
+                  </ReactMarkdown>
+                </div>
               ) : (
                 <pre className="p-4 text-xs text-text-secondary whitespace-pre-wrap overflow-x-auto">
                   <code>

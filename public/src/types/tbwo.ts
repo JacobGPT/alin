@@ -1356,3 +1356,12 @@ const EPHEMERAL_TYPES = new Set([
 export function isEphemeralType(type: TBWOType): boolean {
   return EPHEMERAL_TYPES.has(type);
 }
+
+const REPORT_TYPES = new Set([
+  TBWOType.RESEARCH_REPORT, TBWOType.MARKET_RESEARCH, TBWOType.DUE_DILIGENCE,
+  TBWOType.SEO_AUDIT, TBWOType.BUSINESS_PLAN, TBWOType.CONTENT_STRATEGY,
+]);
+
+export function isReportType(type: TBWOType): boolean {
+  return REPORT_TYPES.has(type as TBWOType);
+}

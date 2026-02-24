@@ -233,46 +233,43 @@ export const PLAN_LIMITS = {
 // ============================================================================
 
 export const MONTHLY_CREDITS = {
-  free: {
-    chat: 50,
-    tbwo_standard: 1,
-    tbwo_premium: 0,
-    tbwo_ultra: 0,
-    image: 5,
-    video: 0,
-    site_hosting: 1,
-    priority_queue: 0,
+  free:   { credits: 100 },
+  spark:  { credits: 1500 },
+  pro:    { credits: 6000 },
+  agency: { credits: 20000 },
+};
+
+// ============================================================================
+// CREDIT COSTS — central cost table for all billable actions
+// ============================================================================
+
+export const CREDIT_COSTS = {
+  chat_message: 1,
+  image_generation: 10,
+  site_extend: 200,
+
+  // Per-TBWO-type total cost (standard tier)
+  tbwo: {
+    website_sprint: 1200,
+    research_report: 500,
+    market_research: 500,
+    due_diligence: 650,
+    seo_audit: 500,
+    business_plan: 650,
+    content_strategy: 450,
+    newsletter: 250,
+    roast_page: 80,
+    tribute_page: 90,
+    bet_tracker: 120,
+    debate_page: 120,
+    time_capsule: 100,
+    scoreboard: 150,
+    custom: 500,
+    general: 500,
   },
-  spark: {
-    chat: 500,
-    tbwo_standard: 5,
-    tbwo_premium: 0,
-    tbwo_ultra: 0,
-    image: 50,
-    video: 0,
-    site_hosting: 3,
-    priority_queue: 0,
-  },
-  pro: {
-    chat: -1,
-    tbwo_standard: 10,
-    tbwo_premium: 10,
-    tbwo_ultra: 0,
-    image: 200,
-    video: 5,
-    site_hosting: 10,
-    priority_queue: 10,
-  },
-  agency: {
-    chat: -1,
-    tbwo_standard: 25,
-    tbwo_premium: 20,
-    tbwo_ultra: 5,
-    image: -1,
-    video: 20,
-    site_hosting: 25,
-    priority_queue: -1,
-  },
+
+  // Quality tier multipliers
+  tierMultiplier: { standard: 1, premium: 2, ultra: 3 },
 };
 
 // ============================================================================

@@ -9,6 +9,7 @@
  */
 
 export interface PlanLimits {
+  monthlyCredits: number;            // unified credit pool (-1 = unlimited)
   messagesPerHour: number;           // -1 = unlimited
   allowedModels: string[];
   opusCreditsPerMonth: number;       // -1 = unlimited, 0 = none
@@ -42,6 +43,7 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
+    monthlyCredits: 100,
     messagesPerHour: 25,
     allowedModels: [
       'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929',
@@ -79,6 +81,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     ephemeralEnabled: false,
   },
   spark: {
+    monthlyCredits: 1500,
     messagesPerHour: 200,
     allowedModels: [
       'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
@@ -117,6 +120,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     ephemeralEnabled: true,
   },
   pro: {
+    monthlyCredits: 6000,
     messagesPerHour: -1,
     allowedModels: [
       'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
@@ -155,6 +159,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     ephemeralEnabled: true,
   },
   agency: {
+    monthlyCredits: 20000,
     messagesPerHour: -1,
     allowedModels: [
       'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
@@ -195,6 +200,7 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
   },
   // Admin virtual tier — every capability maxed out
   admin: {
+    monthlyCredits: -1,
     messagesPerHour: -1,
     allowedModels: ['*'],
     opusCreditsPerMonth: -1,
