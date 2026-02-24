@@ -38,9 +38,9 @@ export function registerAssetRoutes(ctx) {
         return res.status(400).json({ error: 'Invalid GLB file (bad magic bytes)' });
       }
 
-      // Size check (15MB pro, 50MB elite/admin)
+      // Size check (15MB pro, 50MB agency/admin)
       const user = req.user;
-      const maxSize = (user?.plan === 'elite' || user?.isAdmin) ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
+      const maxSize = (user?.plan === 'agency' || user?.isAdmin) ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
       if (req.file.size > maxSize) {
         fsSync.unlinkSync(req.file.path);
         return res.status(400).json({ error: `File too large (max ${maxSize / 1024 / 1024}MB for your plan)` });

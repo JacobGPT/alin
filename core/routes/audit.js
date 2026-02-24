@@ -38,6 +38,7 @@ export function registerAuditRoutes(ctx) {
         b.cost ?? 0,
         JSON.stringify(b.toolsUsed || []),
         b.durationMs ?? 0,
+        JSON.stringify(b.memoryInjections || []),
         b.timestamp || Date.now(), userId
       );
       // Track Opus usage for monthly quota enforcement

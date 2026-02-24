@@ -77,6 +77,45 @@ export const PLAN_LIMITS = {
     vectorizeEnabled: false,
     maxCfImages: 5,
     maxCfVideos: 0,
+    localModelEnabled: false,
+    maxSites: 1,
+    ephemeralEnabled: false,
+  },
+  spark: {
+    messagesPerHour: 200,
+    allowedModels: [
+      DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.claudeHaiku,
+      DEFAULT_MODELS.gpt5Mini, DEFAULT_MODELS.gpt5Nano,
+      DEFAULT_MODELS.gpt41, DEFAULT_MODELS.gpt41Mini, DEFAULT_MODELS.gpt41Nano,
+      DEFAULT_MODELS.gpt4o, DEFAULT_MODELS.gpt4oMini,
+      DEFAULT_MODELS.o3Mini,
+      DEFAULT_MODELS.gemini25Pro, DEFAULT_MODELS.gemini25Flash, DEFAULT_MODELS.gemini25FlashLite,
+      DEFAULT_MODELS.deepseekChat, DEFAULT_MODELS.deepseekReasoner,
+    ],
+    opusCreditsPerMonth: 0,
+    maxConversations: -1,
+    tbwoEnabled: false,
+    tbwoParallel: false,
+    directModeEnabled: true,
+    codeLabEnabled: true,
+    imageStudioEnabled: true,
+    memoryLayers: 8,
+    memoryRetentionDays: 90,
+    selfLearning: false,
+    maxTokens: 24576,
+    computerUse: false,
+    maxToolCallsPerMessage: 15,
+    thinkingBudgetCap: 10000,
+    tbwoRunsPerMonth: 0,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: false,
+    vectorizeEnabled: false,
+    maxCfImages: 25,
+    maxCfVideos: 0,
+    localModelEnabled: false,
+    maxSites: 3,
+    ephemeralEnabled: true,
   },
   pro: {
     messagesPerHour: -1,
@@ -103,15 +142,18 @@ export const PLAN_LIMITS = {
     computerUse: true,
     maxToolCallsPerMessage: -1,
     thinkingBudgetCap: 50000,
-    tbwoRunsPerMonth: 50,
+    tbwoRunsPerMonth: 20,
     sitesEnabled: true,
     cfImagesEnabled: true,
     cfStreamEnabled: true,
     vectorizeEnabled: true,
-    maxCfImages: 50,
-    maxCfVideos: 20,
+    maxCfImages: 100,
+    maxCfVideos: 5,
+    localModelEnabled: true,
+    maxSites: 10,
+    ephemeralEnabled: true,
   },
-  elite: {
+  agency: {
     messagesPerHour: -1,
     allowedModels: [
       DEFAULT_MODELS.claudeOpus, DEFAULT_MODELS.claudeSonnet, DEFAULT_MODELS.claudeHaiku,
@@ -137,13 +179,19 @@ export const PLAN_LIMITS = {
     customRouting: true,
     maxToolCallsPerMessage: -1,
     thinkingBudgetCap: 100000,
-    tbwoRunsPerMonth: -1,
+    tbwoRunsPerMonth: 50,
     sitesEnabled: true,
     cfImagesEnabled: true,
     cfStreamEnabled: true,
     vectorizeEnabled: true,
     maxCfImages: 500,
     maxCfVideos: 100,
+    localModelEnabled: true,
+    maxSites: 25,
+    ephemeralEnabled: true,
+    multiSeat: true,
+    apiAccess: true,
+    whiteLabelEnabled: true,
   },
   // Admin virtual tier — every capability maxed out
   admin: {
@@ -171,6 +219,59 @@ export const PLAN_LIMITS = {
     vectorizeEnabled: true,
     maxCfImages: -1,
     maxCfVideos: -1,
+    localModelEnabled: true,
+    maxSites: -1,
+    ephemeralEnabled: true,
+    multiSeat: true,
+    apiAccess: true,
+    whiteLabelEnabled: true,
+  },
+};
+
+// ============================================================================
+// MONTHLY CREDIT ALLOCATIONS — per plan, per credit type (-1 = unlimited)
+// ============================================================================
+
+export const MONTHLY_CREDITS = {
+  free: {
+    chat: 50,
+    tbwo_standard: 1,
+    tbwo_premium: 0,
+    tbwo_ultra: 0,
+    image: 5,
+    video: 0,
+    site_hosting: 1,
+    priority_queue: 0,
+  },
+  spark: {
+    chat: 500,
+    tbwo_standard: 5,
+    tbwo_premium: 0,
+    tbwo_ultra: 0,
+    image: 50,
+    video: 0,
+    site_hosting: 3,
+    priority_queue: 0,
+  },
+  pro: {
+    chat: -1,
+    tbwo_standard: 10,
+    tbwo_premium: 10,
+    tbwo_ultra: 0,
+    image: 200,
+    video: 5,
+    site_hosting: 10,
+    priority_queue: 10,
+  },
+  agency: {
+    chat: -1,
+    tbwo_standard: 25,
+    tbwo_premium: 20,
+    tbwo_ultra: 5,
+    image: -1,
+    video: 20,
+    site_hosting: 25,
+    priority_queue: -1,
   },
 };
 
@@ -186,7 +287,7 @@ export const MODEL_METADATA = {
   'claude-haiku-4-5-20251001':  { provider: 'anthropic', displayName: 'Claude Haiku 4.5',       category: 'Anthropic', tier: 'pro',   description: 'Fastest Claude, quick tasks and classifications',          inputCost: 0.8, outputCost: 4 },
 
   // GPT-5.x Family
-  'gpt-5.2':     { provider: 'openai', displayName: 'GPT-5.2',        category: 'GPT',  tier: 'elite', description: 'OpenAI flagship — best coding, reasoning, vision, agentic',    inputCost: 1.75, outputCost: 14 },
+  'gpt-5.2':     { provider: 'openai', displayName: 'GPT-5.2',        category: 'GPT',  tier: 'agency', description: 'OpenAI flagship — best coding, reasoning, vision, agentic',    inputCost: 1.75, outputCost: 14 },
   'gpt-5.1':     { provider: 'openai', displayName: 'GPT-5.1',        category: 'GPT',  tier: 'pro',   description: 'Previous flagship, excellent coding and reasoning',            inputCost: 1.25, outputCost: 10 },
   'gpt-5':       { provider: 'openai', displayName: 'GPT-5',          category: 'GPT',  tier: 'pro',   description: 'Strong reasoning with configurable effort',                    inputCost: 1.25, outputCost: 10 },
   'gpt-5-mini':  { provider: 'openai', displayName: 'GPT-5 Mini',     category: 'GPT',  tier: 'free',  description: 'Fast reasoning at low cost, well-defined tasks',               inputCost: 0.25, outputCost: 2 },
@@ -202,12 +303,12 @@ export const MODEL_METADATA = {
   'gpt-4o-mini': { provider: 'openai', displayName: 'GPT-4o Mini',    category: 'GPT',  tier: 'free',  description: 'Cheapest multimodal, great JSON extraction',                   inputCost: 0.15, outputCost: 0.6 },
 
   // o-Series (Reasoning)
-  'o3':      { provider: 'openai', displayName: 'o3',            category: 'GPT',  tier: 'elite', description: 'Deep multi-step reasoning for hardest problems',               inputCost: 2, outputCost: 8 },
+  'o3':      { provider: 'openai', displayName: 'o3',            category: 'GPT',  tier: 'agency', description: 'Deep multi-step reasoning for hardest problems',               inputCost: 2, outputCost: 8 },
   'o4-mini': { provider: 'openai', displayName: 'o4-mini',       category: 'GPT',  tier: 'pro',   description: 'Fast reasoning, strong math/coding/visual tasks',              inputCost: 1.1, outputCost: 4.4 },
   'o3-mini': { provider: 'openai', displayName: 'o3-mini',       category: 'GPT',  tier: 'pro',   description: 'Efficient reasoning, science/math/coding',                     inputCost: 1.1, outputCost: 4.4 },
 
   // Gemini
-  'gemini-3-pro-preview':  { provider: 'gemini', displayName: 'Gemini 3 Pro',          category: 'Gemini', tier: 'elite', description: 'Strongest reasoning, agentic coding, native multimodal',   inputCost: 2, outputCost: 12 },
+  'gemini-3-pro-preview':  { provider: 'gemini', displayName: 'Gemini 3 Pro',          category: 'Gemini', tier: 'agency', description: 'Strongest reasoning, agentic coding, native multimodal',   inputCost: 2, outputCost: 12 },
   'gemini-3-flash-preview':{ provider: 'gemini', displayName: 'Gemini 3 Flash',        category: 'Gemini', tier: 'pro',   description: 'Fast frontier model, rivals much larger models',            inputCost: 0.5, outputCost: 3 },
   'gemini-2.5-pro':        { provider: 'gemini', displayName: 'Gemini 2.5 Pro',        category: 'Gemini', tier: 'pro',   description: '1M token context, built-in Google Search grounding',        inputCost: 1.25, outputCost: 10 },
   'gemini-2.5-flash':      { provider: 'gemini', displayName: 'Gemini 2.5 Flash',      category: 'Gemini', tier: 'free',  description: 'Hybrid reasoning, excellent value and speed',               inputCost: 0.15, outputCost: 0.6 },
@@ -263,7 +364,7 @@ export function createCheckPlanLimits(db, stmts) {
       const used = getQuotaCount(stmts, req.user.id, 'opus_messages');
       if (used >= limits.opusCreditsPerMonth) {
         return res.status(429).json({
-          error: 'Monthly Opus credits exhausted. Switch to Sonnet or upgrade to Elite for unlimited Opus.',
+          error: 'Monthly Opus credits exhausted. Switch to Sonnet or upgrade to Agency for unlimited Opus.',
           used,
           limit: limits.opusCreditsPerMonth,
           code: 'OPUS_QUOTA_EXCEEDED',
@@ -292,7 +393,7 @@ export function createCheckPlanLimits(db, stmts) {
     }
 
     // Daily message cap (safety net)
-    const DAILY_CAPS = { free: 100, pro: 1000, elite: -1, admin: -1 };
+    const DAILY_CAPS = { free: 100, spark: 500, pro: 1000, agency: -1, admin: -1 };
     const dailyCap = DAILY_CAPS[plan] ?? 100;
     if (dailyCap > 0) {
       const todayStart = new Date();

@@ -2,15 +2,16 @@ import type { SceneSpec, PerformanceBudget, PerformanceCheckResult } from './typ
 
 const TIER_BUDGETS: Record<string, PerformanceBudget> = {
   free: { maxPolycount: 50000, maxTextureResolution: 1024, targetFPS: 30, enableLOD: false, mobileMode: 'simplified' },
+  spark: { maxPolycount: 75000, maxTextureResolution: 1024, targetFPS: 30, enableLOD: false, mobileMode: 'simplified' },
   pro: { maxPolycount: 100000, maxTextureResolution: 2048, targetFPS: 60, enableLOD: true, mobileMode: 'simplified' },
-  elite: { maxPolycount: 200000, maxTextureResolution: 4096, targetFPS: 60, enableLOD: true, mobileMode: 'full' },
+  agency: { maxPolycount: 200000, maxTextureResolution: 4096, targetFPS: 60, enableLOD: true, mobileMode: 'full' },
 };
 
 const MAX_CONTINUOUS_ANIMATIONS = 5;
 const MAX_SCROLL_ANIMATIONS = 3;
 const MAX_JS_SIZE = 20000; // 20KB
 
-const PARTICLE_LIMITS: Record<string, number> = { free: 500, pro: 2000, elite: 5000 };
+const PARTICLE_LIMITS: Record<string, number> = { free: 500, spark: 1000, pro: 2000, agency: 5000 };
 
 const PRIMITIVE_POLYCOUNTS: Record<string, number> = {
   'primitive-cube': 12, 'primitive-sphere': 2048, 'primitive-torus': 1536, 'primitive-torusknot': 3840,
@@ -82,7 +83,7 @@ export function estimateSceneBundleSize(spec: SceneSpec): number {
 }
 
 function getTierFromBudget(budget: PerformanceBudget): string {
-  if (budget.maxPolycount >= 200000) return 'elite';
+  if (budget.maxPolycount >= 200000) return 'agency';
   if (budget.maxPolycount >= 100000) return 'pro';
   return 'free';
 }

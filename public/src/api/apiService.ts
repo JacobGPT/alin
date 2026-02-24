@@ -182,6 +182,7 @@ export interface StreamCallback {
   onImageGenerated?: (url: string, prompt: string, revisedPrompt?: string) => void;
   onFileGenerated?: (filename: string, content: string, language: string) => void;
   onVideoEmbed?: (video: { url: string; embed_url: string; platform: string; title?: string; thumbnail?: string; timestamp?: number }) => void;
+  onMemoryInjection?: (data: { count: number; memories: Array<{ id: string; similarity: number; salience: number; score: number; layer: string; preview: string }> }) => void;
   onComplete?: (response: ServerResponse) => void;
   onError?: (error: Error) => void;
 }
@@ -619,6 +620,7 @@ export class APIService {
             callbacks.onToolStart?.(activityId, tool.name);
           },
           onModeHint: (hint) => callbacks.onModeHint?.(hint),
+          onMemoryInjection: (data) => callbacks.onMemoryInjection?.(data),
           onVideoEmbed: (video) => callbacks.onVideoEmbed?.(video),
           onError: (error) => callbacks.onError?.(error),
         },

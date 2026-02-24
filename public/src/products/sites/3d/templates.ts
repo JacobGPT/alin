@@ -40,12 +40,13 @@ export const SCENE_TEMPLATES: Record<SceneTemplateId, SceneTemplate> = {
 
 const TIER_HIERARCHY: Record<string, string[]> = {
   free: ['free'],
-  pro: ['free', 'pro'],
-  elite: ['free', 'pro', 'elite'],
-  admin: ['free', 'pro', 'elite'],
+  spark: ['free', 'spark'],
+  pro: ['free', 'spark', 'pro'],
+  agency: ['free', 'spark', 'pro', 'agency'],
+  admin: ['free', 'spark', 'pro', 'agency'],
 };
 
-export function getTemplatesForTier(tier: 'free' | 'pro' | 'elite'): SceneTemplate[] {
+export function getTemplatesForTier(tier: 'free' | 'spark' | 'pro' | 'agency'): SceneTemplate[] {
   const allowedTiers = TIER_HIERARCHY[tier];
   return Object.values(SCENE_TEMPLATES).filter((template) => allowedTiers.includes(template.tier));
 }

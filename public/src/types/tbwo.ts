@@ -117,6 +117,18 @@ export enum TBWOType {
   CONTENT_CREATION = 'content_creation',
   DESIGN_SYSTEM = 'design_system',
   API_INTEGRATION = 'api_integration',
+  MARKET_RESEARCH = 'market_research',
+  DUE_DILIGENCE = 'due_diligence',
+  SEO_AUDIT = 'seo_audit',
+  BUSINESS_PLAN = 'business_plan',
+  CONTENT_STRATEGY = 'content_strategy',
+  NEWSLETTER = 'newsletter',
+  BET_TRACKER = 'bet_tracker',
+  ROAST_PAGE = 'roast_page',
+  TRIBUTE_PAGE = 'tribute_page',
+  DEBATE_PAGE = 'debate_page',
+  TIME_CAPSULE = 'time_capsule',
+  SCOREBOARD = 'scoreboard',
   CUSTOM = 'custom',
 }
 
@@ -137,7 +149,7 @@ export interface TBWOTemplate {
   requiredTools: string[];
   
   // Pricing
-  tier: 'free' | 'pro' | 'team' | 'elite';
+  tier: 'free' | 'spark' | 'pro' | 'agency';
 }
 
 export interface TBWOInput {
@@ -1330,4 +1342,17 @@ export interface FrameAnalysis {
   issues: string[];
   suggestions: string[];
   score: number;
+}
+
+// ============================================================================
+// EPHEMERAL FUN TYPES
+// ============================================================================
+
+const EPHEMERAL_TYPES = new Set([
+  TBWOType.BET_TRACKER, TBWOType.ROAST_PAGE, TBWOType.TRIBUTE_PAGE,
+  TBWOType.DEBATE_PAGE, TBWOType.TIME_CAPSULE, TBWOType.SCOREBOARD,
+]);
+
+export function isEphemeralType(type: TBWOType): boolean {
+  return EPHEMERAL_TYPES.has(type);
 }

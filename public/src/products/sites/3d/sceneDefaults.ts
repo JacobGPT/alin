@@ -58,7 +58,7 @@ const TIER_PERFORMANCE: Record<string, PerformanceBudget> = {
     enableLOD: true,
     mobileMode: 'simplified',
   },
-  elite: {
+  agency: {
     maxPolycount: 200000,
     maxTextureResolution: 4096,
     targetFPS: 60,
@@ -88,7 +88,7 @@ export function createDefaultSceneSpec(
   if (!template) return null;
 
   // Check tier access — fall back to free-tier template if needed
-  const tierOrder = ['free', 'pro', 'elite'];
+  const tierOrder = ['free', 'spark', 'pro', 'agency'];
   const userTierIdx = tierOrder.indexOf(tier);
   const templateTierIdx = tierOrder.indexOf(template.tier);
   const effectiveTemplate = templateTierIdx <= userTierIdx
@@ -96,7 +96,7 @@ export function createDefaultSceneSpec(
     : SCENE_TEMPLATES.productSpin; // safe free fallback
 
   const assetId = mapIntentToAsset(intentKeywords);
-  const asset = isAssetAvailable(assetId, tier as 'free' | 'pro' | 'elite')
+  const asset = isAssetAvailable(assetId, tier as 'free' | 'spark' | 'pro' | 'agency')
     ? { type: 'primitive' as const, id: assetId }
     : effectiveTemplate.defaultAsset;
 

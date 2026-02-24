@@ -91,8 +91,36 @@ export function registerConversationRoutes(ctx) {
   });
 
   app.patch('/api/messages/:id', requireAuth, (req, res) => {
-    try { stmts.updateMessage.run(JSON.stringify(req.body.content), JSON.stringify(req.body.metadata || {}), req.params.id, req.user.id); res.json({ success: true }); }
-    catch (error) { sendError(res, 500, error.message); }
+    try {
+      const userId = req.user.id;
+      const messageId = req.params.id;
+
+      // Capture original content before edit for training data collection
+      let originalContent = null;
+      try {
+        const original = stmts.getMessageById.get(messageId, userId);
+        if (original && original.role === 'assistant') {
+          originalContent = original.content;
+        }
+      } catch {}
+
+      stmts.updateMessage.run(JSON.stringify(req.body.content), JSON.stringify(req.body.metadata || {}), messageId, userId);
+
+      // Silent training data collection — fire-and-forget (only for assistant message edits)
+      if (originalContent) {
+        try {
+          ctx.trainingData?.collectCorrection?.({
+            userId,
+            messageId,
+            originalContent,
+            editedContent: req.body.content,
+            model: req.body.metadata?.model || '',
+          });
+        } catch {}
+      }
+
+      res.json({ success: true });
+    } catch (error) { sendError(res, 500, error.message); }
   });
 
   app.delete('/api/messages/:id', requireAuth, (req, res) => {

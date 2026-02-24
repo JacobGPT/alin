@@ -277,9 +277,9 @@ const MODEL_OPTIONS: ModelOption[] = [
   {
     id: 'local',
     name: 'Local',
-    description: 'Use local models (Ollama, LM Studio) - Coming soon',
+    description: 'Use local models (Ollama, LM Studio)',
     icon: ServerIcon,
-    available: false,
+    available: true,
   },
 ];
 
@@ -305,6 +305,25 @@ export function ModelSelector() {
 
   const selectedOption = MODEL_OPTIONS.find((opt) => opt.id === modelMode) || MODEL_OPTIONS[0];
 
+  // Local model config from settings (lazy-loaded)
+  const [localConfig, setLocalConfig] = useState<{ endpoint: string; model: string } | null>(null);
+  const [localConfigLoaded, setLocalConfigLoaded] = useState(false);
+
+  if (modelMode === 'local' && !localConfigLoaded) {
+    setLocalConfigLoaded(true);
+    fetch('/api/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('alin-auth-token') || ''}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.settings) {
+          setLocalConfig({
+            endpoint: data.settings.local_model_endpoint || '',
+            model: data.settings.local_model_name || '',
+          });
+        }
+      })
+      .catch(() => {});
+  }
+
   // Get current model version display name
   const getCurrentVersionName = () => {
     if (modelMode === 'claude') {
@@ -327,6 +346,8 @@ export function ModelSelector() {
         (m) => m.id === selectedModelVersions.deepseek
       );
       return deepseekModel?.name || 'DeepSeek V3.2';
+    } else if (modelMode === 'local') {
+      return localConfig?.model || null;
     } else if (modelMode === 'both') {
       return null; // Dual selectors shown separately
     } else if (modelMode === 'hybrid') {
@@ -392,9 +413,14 @@ export function ModelSelector() {
                                 Soon
                               </span>
                             )}
+                            {option.id === 'local' && option.available && !caps.planLimits.localModelEnabled && (
+                              <LockClosedIcon className="h-3.5 w-3.5 text-text-quaternary" />
+                            )}
                           </div>
                           <p className="text-xs text-text-tertiary mt-0.5">
-                            {option.description}
+                            {option.id === 'local' && option.available && !caps.planLimits.localModelEnabled
+                              ? 'Available on Pro and above'
+                              : option.description}
                           </p>
                         </div>
                         {selected && (
@@ -455,6 +481,11 @@ export function ModelSelector() {
             allowedModels={caps.allowedModels}
           />
         </>
+      )}
+
+      {/* Local Model: show configured model name or inline setup prompt */}
+      {modelMode === 'local' && (
+        <LocalModelIndicator config={localConfig} />
       )}
     </div>
   );
@@ -675,6 +706,27 @@ function GroupedModelVersionSelector({
 }
 
 // ============================================================================
+// LOCAL MODEL INDICATOR (for Local mode in chat header)
+// ============================================================================
+
+function LocalModelIndicator({ config }: { config: { endpoint: string; model: string } | null }) {
+  if (config?.model && config?.endpoint) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg border border-border-primary bg-background-secondary px-2.5 py-2 text-sm">
+        <span className="text-text-secondary">{config.model}</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Configured" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-sm">
+      <span className="text-amber-500 text-xs">Configure in Settings &rarr; Models</span>
+    </div>
+  );
+}
+
+// ============================================================================
 // COMPACT VERSION (for header/toolbar)
 // ============================================================================
 
@@ -704,6 +756,8 @@ export function ModelSelectorCompact() {
         (m) => m.id === selectedModelVersions.gpt
       );
       return model?.name || selectedOption.name;
+    } else if (modelMode === 'local') {
+      return 'Local';
     }
     return selectedOption.name;
   };

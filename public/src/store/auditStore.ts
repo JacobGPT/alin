@@ -103,6 +103,7 @@ export const useAuditStore = create<AuditState>()(
           tokensTotal: entry.tokens.total,
           cost: entry.cost,
           toolsUsed: entry.toolsUsed,
+          memoryInjections: entry.memoryInjections || [],
           durationMs: entry.durationMs,
           timestamp: entry.timestamp,
         }).catch(e => console.warn('[auditStore] DB createAuditEntry failed:', e));

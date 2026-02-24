@@ -9,8 +9,9 @@ interface PlanBadgeProps {
 
 const PLAN_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   free: { bg: 'bg-zinc-700/50', text: 'text-zinc-300', label: 'FREE' },
+  spark: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'SPARK' },
   pro: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'PRO' },
-  elite: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'ELITE' },
+  agency: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'AGENCY' },
   admin: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'ADMIN' },
 };
 

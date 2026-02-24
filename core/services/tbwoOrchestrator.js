@@ -102,6 +102,284 @@ const PROVIDER_CONFIGS = {
   },
 };
 
+// ═══════════════════════════════════════════════════════════════
+// TBWO TYPE CONFIGURATIONS — Phases, models, and output for each type
+// ═══════════════════════════════════════════════════════════════
+export const TBWO_TYPE_CONFIG = {
+  website_sprint: {
+    displayName: 'Website Sprint',
+    description: 'Design and build a complete multi-page website',
+    estimatedMinutes: { standard: 45, premium: 60, ultra: 90 },
+    qualityTiers: ['standard', 'premium', 'ultra'],
+    outputFormat: 'html_site',
+    phases: [
+      { id: 'research',     name: 'Research & Discovery',   durationPercent: 10 },
+      { id: 'architecture', name: 'Architecture & Design',  durationPercent: 15 },
+      { id: 'copywriting',  name: 'Copywriting',            durationPercent: 10 },
+      { id: 'development',  name: 'Development',            durationPercent: 40 },
+      { id: 'qa',           name: 'QA & Polish',            durationPercent: 20 },
+      { id: 'delivery',     name: 'Delivery',               durationPercent: 5  },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'         },
+      planning:  { provider: 'openai',    model: 'gpt-5-mini'             },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6'      },
+      secondary: { provider: 'gemini',    model: 'gemini-3-flash-preview' },
+      review:    { provider: 'deepseek',  model: 'deepseek-chat'          },
+    },
+  },
+
+  market_research: {
+    displayName: 'Market Research',
+    description: 'Web research, competitor analysis, and synthesized market report',
+    estimatedMinutes: { standard: 30, premium: 45 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'report_markdown',
+    phases: [
+      { id: 'scope',       name: 'Define Scope',            durationPercent: 10 },
+      { id: 'web_research', name: 'Web Research',           durationPercent: 30 },
+      { id: 'competitors', name: 'Competitor Analysis',      durationPercent: 25 },
+      { id: 'synthesis',   name: 'Synthesis',                durationPercent: 25 },
+      { id: 'report',      name: 'Report Generation',        durationPercent: 10 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'    },
+      analysis:  { provider: 'deepseek',  model: 'deepseek-reasoner' },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash'  },
+      review:    { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    },
+  },
+
+  due_diligence: {
+    displayName: 'Due Diligence',
+    description: 'Subject research, public records, news analysis, and risk-scored report',
+    estimatedMinutes: { standard: 40, premium: 60 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'report_markdown',
+    phases: [
+      { id: 'subject',    name: 'Subject Research',         durationPercent: 25 },
+      { id: 'records',    name: 'Public Records',           durationPercent: 20 },
+      { id: 'news',       name: 'News Analysis',            durationPercent: 20 },
+      { id: 'risk',       name: 'Risk Assessment',          durationPercent: 20 },
+      { id: 'summary',    name: 'Summary Report',           durationPercent: 15 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'    },
+      analysis:  { provider: 'anthropic', model: 'claude-opus-4-6'   },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'deepseek',  model: 'deepseek-reasoner' },
+      review:    { provider: 'anthropic', model: 'claude-opus-4-6'   },
+    },
+  },
+
+  seo_audit: {
+    displayName: 'SEO Audit',
+    description: 'URL crawl, structure analysis, keyword gaps, and priority action plan',
+    estimatedMinutes: { standard: 30, premium: 45 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'report_markdown',
+    phases: [
+      { id: 'crawl',      name: 'URL Crawl',               durationPercent: 20 },
+      { id: 'structure',   name: 'Structure Analysis',      durationPercent: 20 },
+      { id: 'keywords',    name: 'Keyword Gap Analysis',    durationPercent: 20 },
+      { id: 'competitors', name: 'Competitor Comparison',   durationPercent: 20 },
+      { id: 'actions',     name: 'Priority Action Plan',    durationPercent: 20 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'         },
+      analysis:  { provider: 'anthropic', model: 'claude-sonnet-4-6'      },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6'      },
+      secondary: { provider: 'gemini',    model: 'gemini-3-flash-preview' },
+      review:    { provider: 'deepseek',  model: 'deepseek-chat'          },
+    },
+  },
+
+  business_plan: {
+    displayName: 'Business Plan',
+    description: 'Market research, competitive analysis, financial projections, and full plan',
+    estimatedMinutes: { standard: 45, premium: 75 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'report_markdown',
+    phases: [
+      { id: 'market',     name: 'Market Research',          durationPercent: 20 },
+      { id: 'competitive', name: 'Competitive Analysis',    durationPercent: 20 },
+      { id: 'financial',  name: 'Financial Projections',    durationPercent: 20 },
+      { id: 'drafting',   name: 'Plan Drafting',            durationPercent: 30 },
+      { id: 'review',     name: 'Review & Polish',          durationPercent: 10 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'    },
+      analysis:  { provider: 'deepseek',  model: 'deepseek-reasoner' },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'openai',    model: 'gpt-5-mini'        },
+      review:    { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    },
+  },
+
+  content_strategy: {
+    displayName: 'Content Strategy',
+    description: 'Brand analysis, audience research, strategy document, and 90-day content calendar',
+    estimatedMinutes: { standard: 35, premium: 55 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'report_markdown',
+    phases: [
+      { id: 'brand',      name: 'Brand Analysis',           durationPercent: 15 },
+      { id: 'audience',   name: 'Audience Research',         durationPercent: 20 },
+      { id: 'audit',      name: 'Competitor Content Audit',  durationPercent: 20 },
+      { id: 'strategy',   name: 'Strategy Document',         durationPercent: 25 },
+      { id: 'calendar',   name: 'Content Calendar',          durationPercent: 20 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-pro'    },
+      analysis:  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'openai',    model: 'gpt-5-mini'        },
+      review:    { provider: 'deepseek',  model: 'deepseek-chat'     },
+    },
+  },
+
+  newsletter: {
+    displayName: 'Newsletter',
+    description: 'Topic research, outline, draft, and publish-ready HTML newsletter',
+    estimatedMinutes: { standard: 15, premium: 25 },
+    qualityTiers: ['standard', 'premium'],
+    outputFormat: 'html_email',
+    phases: [
+      { id: 'research',   name: 'Topic Research',           durationPercent: 20 },
+      { id: 'outline',    name: 'Outline',                  durationPercent: 15 },
+      { id: 'draft',      name: 'Draft',                    durationPercent: 40 },
+      { id: 'polish',     name: 'Polish & Format',          durationPercent: 25 },
+    ],
+    modelRouting: {
+      research:  { provider: 'gemini',    model: 'gemini-2.5-flash'  },
+      analysis:  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'openai',    model: 'gpt-5-mini'        },
+      review:    { provider: 'deepseek',  model: 'deepseek-chat'     },
+    },
+  },
+  // ═══════════════════════════════════════════════════════════════
+  // EPHEMERAL FUN TYPES — lightweight HTML pages, 30-day auto-expiry
+  // ═══════════════════════════════════════════════════════════════
+
+  bet_tracker: {
+    displayName: 'Bet Tracker',
+    description: 'A shareable page tracking a bet between two parties with countdown and evidence',
+    estimatedMinutes: { standard: 10 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Setup & Content', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+
+  roast_page: {
+    displayName: 'Roast Page',
+    description: 'A shareable comedic roast page with escalating humor and a rebuttal section',
+    estimatedMinutes: { standard: 8 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Gather Material', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+
+  tribute_page: {
+    displayName: 'Tribute Page',
+    description: 'An elegant tribute page celebrating a person with stories and warm typography',
+    estimatedMinutes: { standard: 12 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Gather Memories', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+
+  debate_page: {
+    displayName: 'Debate Page',
+    description: 'A split-screen point/counterpoint debate page with fair treatment and voting',
+    estimatedMinutes: { standard: 12 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Structure Debate', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+
+  time_capsule: {
+    displayName: 'Time Capsule',
+    description: 'Sealed messages with a reveal-date countdown that auto-unlocks via JS',
+    estimatedMinutes: { standard: 10 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Compose Messages', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+
+  scoreboard: {
+    displayName: 'Scoreboard',
+    description: 'A mobile-first leaderboard with podium treatment and scoring rules',
+    estimatedMinutes: { standard: 8 },
+    qualityTiers: ['standard'],
+    outputFormat: 'html_site',
+    ephemeral: true,
+    phases: [
+      { id: 'setup', name: 'Define Rules', durationPercent: 30 },
+      { id: 'build', name: 'Build Page', durationPercent: 50 },
+      { id: 'polish', name: 'Polish', durationPercent: 20 },
+    ],
+    modelRouting: {
+      primary:   { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      secondary: { provider: 'gemini',    model: 'gemini-2.5-flash' },
+    },
+  },
+};
+
+/** Get config for a TBWO type, or null if not configured */
+export function getTBWOTypeConfig(type) {
+  return TBWO_TYPE_CONFIG[type] || null;
+}
+
+/** All valid TBWO types that have pipeline configs */
+export const VALID_TBWO_TYPES = new Set(Object.keys(TBWO_TYPE_CONFIG));
+
 /**
  * Call any model (non-streaming) for a TBWO phase.
  * Returns the text response.

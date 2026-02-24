@@ -9,7 +9,7 @@ interface User {
   id: string;
   email: string;
   displayName: string;
-  plan: 'free' | 'pro' | 'elite';
+  plan: 'free' | 'spark' | 'pro' | 'agency';
   isAdmin?: boolean;
   emailVerified?: boolean;
 }

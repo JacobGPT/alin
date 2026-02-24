@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
-import { runTBWOPipeline } from '../services/tbwoOrchestrator.js';
+import { runTBWOPipeline, VALID_TBWO_TYPES, getTBWOTypeConfig } from '../services/tbwoOrchestrator.js';
 
 export function registerTBWORoutes(ctx) {
   const { app, stmts, requireAuth, sendError, safeJsonParse, PLAN_LIMITS, getQuotaCount, incrementQuota, tbwoWorkspaces } = ctx;
@@ -87,10 +87,14 @@ export function registerTBWORoutes(ctx) {
         }
       }
       const b = req.body;
+      const tbwoType = b.type || 'custom';
+      if (tbwoType !== 'custom' && tbwoType !== 'general' && !VALID_TBWO_TYPES.has(tbwoType)) {
+        return res.status(400).json({ error: `Invalid TBWO type: ${tbwoType}`, validTypes: [...VALID_TBWO_TYPES, 'custom'] });
+      }
       const id = b.id || randomUUID();
       const now = Date.now();
       stmts.insertTBWO.run(
-        id, b.type || 'general', b.status || 'draft', b.objective || '',
+        id, tbwoType, b.status || 'draft', b.objective || '',
         b.timeBudgetTotal || b.timeBudget?.total || 60,
         JSON.stringify(b.qualityTarget || {}), JSON.stringify(b.scope || {}),
         JSON.stringify(b.plan || null), JSON.stringify(b.pods || []),
@@ -188,9 +192,10 @@ export function registerTBWORoutes(ctx) {
       }
       const workspacePath = tbwoWorkspaces.get(req.params.id).path;
 
-      // Determine quality tier
+      // Determine quality tier and type config
       const tbwoMetadata = safeJsonParse(tbwo.metadata, {});
       const qualityTier = req.body.qualityTier || tbwoMetadata.qualityTier || 'standard';
+      const typeConfig = getTBWOTypeConfig(tbwo.type);
 
       // Parse the brief from the TBWO order
       const brief = safeJsonParse(tbwo.scope, {});
@@ -214,6 +219,8 @@ export function registerTBWORoutes(ctx) {
         objective: tbwo.objective,
         brief,
         tbwoId: req.params.id,
+        tbwoType: tbwo.type,
+        typeConfig,
         userId: req.user.id,
         qualityTier,
         workspacePath,
@@ -256,6 +263,17 @@ export function registerTBWORoutes(ctx) {
             );
           }
           console.log(`[TBWO ${req.params.id.slice(0, 8)}] COMPLETED [${result.tierLabel}] — Cost: ${result.costEstimate}, Quality: ${result.qualityScore}/10`);
+
+          // Silent training data collection — fire-and-forget
+          try {
+            ctx.trainingData?.collectTBWOCompletion?.({
+              userId: req.user.id,
+              tbwoId: req.params.id,
+              objective: current.objective,
+              result,
+              qualityTier: current.quality_target,
+            });
+          } catch {}
         } catch (e) { console.error('[TBWO] Completion update failed:', e.message); }
       }).catch(err => {
         console.error(`[TBWO ${req.params.id.slice(0, 8)}] FAILED:`, err.message);

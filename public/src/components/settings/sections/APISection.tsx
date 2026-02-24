@@ -10,8 +10,10 @@ export function APISection() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
 
-  const planLabel = user?.plan === 'elite' ? 'Elite' : user?.plan === 'pro' ? 'Pro' : 'Free';
-  const planColor = user?.plan === 'elite' ? 'text-amber-400' : user?.plan === 'pro' ? 'text-blue-400' : 'text-text-secondary';
+  const planLabelMap: Record<string, string> = { free: 'Free', spark: 'Spark', pro: 'Pro', agency: 'Agency' };
+  const planColorMap: Record<string, string> = { free: 'text-text-secondary', spark: 'text-emerald-400', pro: 'text-blue-400', agency: 'text-amber-400' };
+  const planLabel = planLabelMap[user?.plan || 'free'] || 'Free';
+  const planColor = planColorMap[user?.plan || 'free'] || 'text-text-secondary';
 
   return (
     <div className="space-y-6">
@@ -35,8 +37,9 @@ export function APISection() {
                 <p className="text-xs text-text-tertiary truncate">{user.email}</p>
               </div>
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                user.plan === 'elite' ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' :
+                user.plan === 'agency' ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' :
                 user.plan === 'pro' ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' :
+                user.plan === 'spark' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' :
                 'border-border-primary bg-background-tertiary text-text-secondary'
               }`}>
                 {planLabel}
@@ -63,7 +66,7 @@ export function APISection() {
                 You have access to all standard models, image generation, TBWO projects, and priority support.
               </p>
             )}
-            {(user.plan === 'elite' || user.isAdmin) && (
+            {(user.plan === 'agency' || user.isAdmin) && (
               <p className="text-xs text-text-tertiary leading-relaxed">
                 Full access to all models, features, and priority everything.
               </p>

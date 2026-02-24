@@ -88,6 +88,31 @@ export class CloudflarePagesDeploy {
     throw new Error(`CF Pages: failed to create project: ${JSON.stringify(resp.errors)}`);
   }
 
+  /**
+   * Delete a Cloudflare Pages project (for ephemeral site cleanup).
+   * @param {string} projectName
+   * @returns {{ success: boolean, stub?: boolean }}
+   */
+  async deleteProject(projectName) {
+    const safeName = projectName
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 58);
+
+    if (!this.isConfigured) {
+      return { success: true, stub: true };
+    }
+
+    try {
+      await this._cfFetch(`/accounts/${this.accountId}/pages/projects/${safeName}`, { method: 'DELETE' });
+      return { success: true };
+    } catch (err) {
+      if (err.message?.includes('not found')) return { success: true };
+      throw err;
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Deploy
   // --------------------------------------------------------------------------

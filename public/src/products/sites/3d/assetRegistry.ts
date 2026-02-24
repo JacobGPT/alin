@@ -19,21 +19,22 @@ export const BUILTIN_ASSETS: AssetEntry[] = [
 
 const TIER_HIERARCHY: Record<string, string[]> = {
   free: ['free'],
-  pro: ['free', 'pro'],
-  elite: ['free', 'pro', 'elite'],
-  admin: ['free', 'pro', 'elite'],
+  spark: ['free', 'spark'],
+  pro: ['free', 'spark', 'pro'],
+  agency: ['free', 'spark', 'pro', 'agency'],
+  admin: ['free', 'spark', 'pro', 'agency'],
 };
 
 export function getAssetById(id: string): AssetEntry | undefined {
   return BUILTIN_ASSETS.find((asset) => asset.id === id);
 }
 
-export function getAssetsForTier(tier: 'free' | 'pro' | 'elite'): AssetEntry[] {
+export function getAssetsForTier(tier: 'free' | 'spark' | 'pro' | 'agency'): AssetEntry[] {
   const allowedTiers = TIER_HIERARCHY[tier];
   return BUILTIN_ASSETS.filter((asset) => allowedTiers.includes(asset.tier));
 }
 
-export function isAssetAvailable(assetId: string, tier: 'free' | 'pro' | 'elite'): boolean {
+export function isAssetAvailable(assetId: string, tier: 'free' | 'spark' | 'pro' | 'agency'): boolean {
   const asset = getAssetById(assetId);
   if (!asset) return false;
   const allowedTiers = TIER_HIERARCHY[tier];

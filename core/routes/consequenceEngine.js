@@ -573,6 +573,19 @@ export function registerConsequenceEngineRoutes(ctx) {
         }
       }
 
+      // Silent training data collection — fire-and-forget
+      try {
+        ctx.trainingData?.collectOutcomeVerified?.({
+          userId,
+          predictionId,
+          predictionText: prediction.prediction_text,
+          result,
+          domain,
+          confidence: prediction.confidence,
+          sourceModel: prediction.source_model,
+        });
+      } catch {}
+
       res.json({
         outcome: {
           id: outcomeId,
@@ -1888,6 +1901,176 @@ export function registerConsequenceEngineRoutes(ctx) {
       }
     },
   };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ACTIVE GENES — top genes actively shaping behavior (feedback loop)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get('/api/consequence/active-genes', requireAuth, (req, res) => {
+    try {
+      const userId = req.userId;
+      const minStrength = parseFloat(req.query.minStrength) || 0.6;
+      const minActivations = parseInt(req.query.minActivations) || 3;
+      const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+
+      // Get active genes above strength threshold
+      const genes = stmts.listActiveGenes.all(userId, 'active', minStrength, 50);
+
+      // Filter by activation count (confirmations + applications) and take top N
+      const qualified = genes
+        .filter(g => (g.confirmations + g.applications) > minActivations)
+        .slice(0, limit)
+        .map(g => ({
+          id: g.id,
+          geneText: g.gene_text,
+          domain: g.domain,
+          strength: Math.round(g.strength * 100) / 100,
+          triggerCondition: g.trigger_condition,
+          actionDirective: g.action_directive,
+          confirmations: g.confirmations,
+          contradictions: g.contradictions,
+          applications: g.applications,
+          regressionRisk: g.regression_risk,
+          createdAt: g.created_at,
+          lastAppliedAt: g.last_applied_at,
+        }));
+
+      // Also return a "fallback" set: top active genes by strength even if activation threshold not met
+      // Useful during early phase when genes haven't been applied many times yet
+      const fallback = minActivations > 0 && qualified.length < 3
+        ? genes.slice(0, limit).map(g => ({
+            id: g.id,
+            geneText: g.gene_text,
+            domain: g.domain,
+            strength: Math.round(g.strength * 100) / 100,
+            triggerCondition: g.trigger_condition,
+            actionDirective: g.action_directive,
+            confirmations: g.confirmations,
+            applications: g.applications,
+          }))
+        : [];
+
+      res.json({
+        activeGenes: qualified,
+        fallbackGenes: fallback,
+        total: genes.length,
+        qualifiedCount: qualified.length,
+        killSwitchActive: _killSwitchActive,
+      });
+    } catch (e) {
+      console.error('[ConsequenceEngine] Active genes error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // INSIGHTS — human-readable summaries of what ALIN has learned
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get('/api/consequence/insights', requireAuth, (req, res) => {
+    try {
+      const userId = req.userId;
+      const config = getConfig();
+
+      // Gather data
+      const domainStates = stmts.listDomainStates.all(userId);
+      const activeGenes = stmts.listActiveGenes.all(userId, 'active', 0.3, 50);
+      const recentOutcomes = stmts.recentOutcomesWithPredictions?.all?.(userId, 20) || [];
+      const emergingPatterns = stmts.listEmergingPatterns?.all?.(userId, 'emerging', 10) || [];
+
+      const insights = [];
+
+      // 1. Domain strength insights
+      for (const d of domainStates) {
+        if (d.total_predictions < 3) continue;
+        const accuracy = Math.round(d.prediction_accuracy * 100);
+
+        if (accuracy >= 80) {
+          insights.push({
+            type: 'strength',
+            domain: d.domain,
+            title: `Strong in ${d.domain.replace(/_/g, ' ')}`,
+            summary: `${accuracy}% prediction accuracy across ${d.total_predictions} predictions. ${d.trend === 'improving' ? 'And still improving.' : ''}`,
+            confidence: d.prediction_accuracy,
+          });
+        } else if (accuracy < 50 && d.total_predictions >= 5) {
+          insights.push({
+            type: 'weakness',
+            domain: d.domain,
+            title: `Struggling with ${d.domain.replace(/_/g, ' ')}`,
+            summary: `Only ${accuracy}% accuracy across ${d.total_predictions} predictions. ${d.wrong_predictions} wrong calls. ${d.trend === 'declining' ? 'Getting worse.' : d.trend === 'improving' ? 'But improving.' : ''}`,
+            confidence: 1 - d.prediction_accuracy,
+          });
+        }
+
+        if (d.pain_score > 0.5) {
+          insights.push({
+            type: 'pain_point',
+            domain: d.domain,
+            title: `High pain in ${d.domain.replace(/_/g, ' ')}`,
+            summary: `Pain score ${Math.round(d.pain_score * 100)}%. Recent failures are accumulating. ${d.streak_type === 'wrong' && d.streak_count >= 2 ? `Currently on a ${d.streak_count}-streak of wrong predictions.` : ''}`,
+            confidence: d.pain_score,
+          });
+        }
+      }
+
+      // 2. Gene-based behavioral insights
+      for (const g of activeGenes.slice(0, 10)) {
+        insights.push({
+          type: 'learned_behavior',
+          domain: g.domain,
+          title: `Learned: ${g.action_directive || g.gene_text.slice(0, 60)}`,
+          summary: g.gene_text,
+          strength: g.strength,
+          confirmations: g.confirmations,
+          applications: g.applications,
+        });
+      }
+
+      // 3. Emerging pattern insights
+      for (const p of emergingPatterns) {
+        insights.push({
+          type: 'emerging_pattern',
+          domain: p.domain,
+          title: `Emerging pattern in ${p.domain.replace(/_/g, ' ')}`,
+          summary: p.description || `Detected recurring failure pattern: ${p.pattern_signature}`,
+          frequency: p.frequency,
+        });
+      }
+
+      // 4. Calibration insight
+      const calibrationData = stmts.predictionAccuracyByConfidenceBucket?.all?.(userId) || [];
+      const overconfidentBuckets = calibrationData.filter(b => {
+        const expected = ((b.bucket * 0.2) + ((b.bucket + 1) * 0.2)) / 2;
+        const actual = b.total > 0 ? b.correct / b.total : 0;
+        return b.total >= 5 && (expected - actual) > 0.15;
+      });
+      if (overconfidentBuckets.length > 0) {
+        insights.push({
+          type: 'calibration',
+          domain: 'general',
+          title: 'Overconfidence detected',
+          summary: `ALIN tends to be overconfident in ${overconfidentBuckets.length} confidence bracket${overconfidentBuckets.length > 1 ? 's' : ''}. High-confidence predictions are less accurate than expected.`,
+          confidence: 0.8,
+        });
+      }
+
+      // Sort: weaknesses and pain points first, then strengths, then behaviors
+      const priority = { weakness: 0, pain_point: 1, calibration: 2, emerging_pattern: 3, learned_behavior: 4, strength: 5 };
+      insights.sort((a, b) => (priority[a.type] ?? 99) - (priority[b.type] ?? 99));
+
+      res.json({
+        insights,
+        totalInsights: insights.length,
+        domainsAnalyzed: domainStates.length,
+        activeGeneCount: activeGenes.length,
+        generatedAt: Date.now(),
+      });
+    } catch (e) {
+      console.error('[ConsequenceEngine] Insights error:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   console.log(`[ConsequenceEngine] Routes registered (${getConfig().isPrivate ? 'PRIVATE' : 'PUBLIC'} mode, ${getConfig().domains.length} domains, bootstrap=${isBootstrapActive() ? 'ACTIVE' : 'OFF'})`);
 }

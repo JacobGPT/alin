@@ -27,6 +27,7 @@ export interface ServerStreamCallbacks {
   onThinking?: (thinking: string) => void;
   onToolUse?: (tool: { id: string; name: string; input: Record<string, unknown>; thought_signature?: string }) => void;
   onModeHint?: (hint: { suggestedMode: string; confidence: number; reason: string }) => void;
+  onMemoryInjection?: (data: { count: number; memories: Array<{ id: string; similarity: number; salience: number; score: number; layer: string; preview: string }> }) => void;
   onVideoEmbed?: (video: VideoEmbedData) => void;
   onError?: (error: Error) => void;
 }
@@ -152,6 +153,8 @@ export async function streamFromServer(params: ServerStreamParams): Promise<Serv
             if (data.outputTokens) usage.outputTokens = data.outputTokens;
           } else if (data.type === 'mode_hint') {
             callbacks.onModeHint?.(data);
+          } else if (data.type === 'memory_injection') {
+            callbacks.onMemoryInjection?.(data);
           } else if (data.type === 'video_embed') {
             // Flush any accumulated text before the video embed
             if (currentText) {

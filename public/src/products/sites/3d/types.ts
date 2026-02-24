@@ -151,7 +151,7 @@ export interface AssetEntry {
   id: string;
   name: string;
   type: 'builtin' | 'uploaded' | 'primitive';
-  tier: 'free' | 'pro' | 'elite';
+  tier: 'free' | 'spark' | 'pro' | 'agency';
   category: string;
   polycount: number;
   thumbnailUrl?: string;
@@ -264,7 +264,7 @@ export interface SceneTemplate {
   id: SceneTemplateId;
   name: string;
   description: string;
-  tier: 'free' | 'pro' | 'elite';
+  tier: 'free' | 'spark' | 'pro' | 'agency';
   defaultCamera: CameraPresetId;
   defaultLighting: LightingPresetId;
   defaultMaterial: MaterialPresetId;

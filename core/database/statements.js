@@ -16,6 +16,7 @@ export function createStatements(db) {
     // Messages
     insertMessage: db.prepare(`INSERT INTO messages (id,conversation_id,role,content,tokens_input,tokens_output,cost,model,is_edited,parent_id,metadata,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
     getMessages: db.prepare(`SELECT * FROM messages WHERE conversation_id=? AND user_id=? ORDER BY timestamp ASC`),
+    getMessageById: db.prepare('SELECT * FROM messages WHERE id=? AND user_id=?'),
     updateMessage: db.prepare(`UPDATE messages SET content=?,is_edited=1,metadata=? WHERE id=? AND user_id=?`),
     deleteMessage: db.prepare('DELETE FROM messages WHERE id = ? AND user_id = ?'),
 
@@ -52,7 +53,7 @@ export function createStatements(db) {
     deleteMemory: db.prepare('DELETE FROM memory_entries WHERE id = ? AND user_id = ?'),
 
     // Audit Entries
-    insertAudit: db.prepare(`INSERT INTO audit_entries (id,conversation_id,message_id,model,tokens_prompt,tokens_completion,tokens_total,cost,tools_used,duration_ms,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+    insertAudit: db.prepare(`INSERT INTO audit_entries (id,conversation_id,message_id,model,tokens_prompt,tokens_completion,tokens_total,cost,tools_used,duration_ms,memory_injections,timestamp,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
     listAudit: db.prepare('SELECT * FROM audit_entries WHERE user_id=? ORDER BY timestamp DESC LIMIT ?'),
     listAuditSince: db.prepare('SELECT * FROM audit_entries WHERE user_id=? AND timestamp>=? ORDER BY timestamp DESC'),
     pruneAudit: db.prepare('DELETE FROM audit_entries WHERE user_id=? AND timestamp < ?'),
@@ -63,11 +64,14 @@ export function createStatements(db) {
     deleteImage: db.prepare('DELETE FROM images WHERE id = ? AND user_id = ?'),
 
     // Sites
-    insertSite: db.prepare(`INSERT INTO sites (id,user_id,project_id,name,tbwo_run_id,status,cloudflare_project_name,domain,manifest,storage_path,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+    insertSite: db.prepare(`INSERT INTO sites (id,user_id,project_id,name,tbwo_run_id,status,cloudflare_project_name,domain,manifest,storage_path,ephemeral,expires_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
     getSite: db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?'),
     listSites: db.prepare('SELECT * FROM sites WHERE user_id=? ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
     updateSite: db.prepare('UPDATE sites SET name=?,status=?,cloudflare_project_name=?,domain=?,manifest=?,updated_at=? WHERE id=? AND user_id=?'),
     deleteSite: db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?'),
+    listEphemeralSites: db.prepare('SELECT * FROM sites WHERE user_id=? AND ephemeral=1 AND status!=? ORDER BY expires_at ASC LIMIT ? OFFSET ?'),
+    listExpiredEphemeralSites: db.prepare("SELECT * FROM sites WHERE ephemeral=1 AND status IN ('draft','deployed') AND expires_at IS NOT NULL AND expires_at < ?"),
+    updateSiteExpiry: db.prepare('UPDATE sites SET expires_at=?, updated_at=? WHERE id=? AND user_id=?'),
     deleteDeploymentsBySite: db.prepare('DELETE FROM deployments WHERE site_id = ? AND user_id = ?'),
     deletePatchesBySite: db.prepare('DELETE FROM site_patches WHERE site_id = ? AND user_id = ?'),
 
@@ -342,5 +346,40 @@ export function createStatements(db) {
     updateSchedulerHistory: db.prepare('UPDATE scheduler_history SET completed_at=?, duration_ms=?, status=?, result=?, error=? WHERE id=? AND user_id=?'),
     listSchedulerHistory: db.prepare('SELECT * FROM scheduler_history WHERE user_id=? ORDER BY started_at DESC LIMIT ?'),
     listSchedulerHistoryByJob: db.prepare('SELECT * FROM scheduler_history WHERE user_id=? AND job_id=? ORDER BY started_at DESC LIMIT ?'),
+
+    // ========================================================================
+    // CREDIT SYSTEM
+    // ========================================================================
+
+    // Credit Balances
+    getCreditBalance: db.prepare('SELECT credit_type, SUM(amount) as total FROM user_credits WHERE user_id=? AND (expires_at IS NULL OR expires_at > ?) GROUP BY credit_type'),
+    getCreditByType: db.prepare('SELECT SUM(amount) as total FROM user_credits WHERE user_id=? AND credit_type=? AND (expires_at IS NULL OR expires_at > ?)'),
+    upsertCredit: db.prepare(`INSERT INTO user_credits (user_id,credit_type,amount,source,expires_at,created_at) VALUES (?,?,?,?,?,?)
+      ON CONFLICT(user_id,credit_type,source) DO UPDATE SET amount=excluded.amount, expires_at=excluded.expires_at`),
+    decrementCredit: db.prepare('UPDATE user_credits SET amount = amount - ? WHERE user_id=? AND credit_type=? AND source=? AND amount >= ?'),
+    deleteExpiredCredits: db.prepare('DELETE FROM user_credits WHERE expires_at IS NOT NULL AND expires_at < ?'),
+    deleteSubscriptionCredits: db.prepare('DELETE FROM user_credits WHERE user_id=? AND source=?'),
+    listUserCredits: db.prepare('SELECT * FROM user_credits WHERE user_id=? ORDER BY credit_type, source'),
+
+    // Credit Transactions
+    insertCreditTransaction: db.prepare('INSERT INTO credit_transactions (id,user_id,credit_type,amount,balance_after,description,reference_id,created_at) VALUES (?,?,?,?,?,?,?,?)'),
+    listCreditTransactions: db.prepare('SELECT * FROM credit_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?'),
+    listCreditTransactionsByType: db.prepare('SELECT * FROM credit_transactions WHERE user_id=? AND credit_type=? ORDER BY created_at DESC LIMIT ?'),
+
+    // All users for monthly reset
+    listAllUsers: db.prepare('SELECT id, plan FROM users'),
+
+    // ========================================================================
+    // TRAINING DATA COLLECTION
+    // ========================================================================
+    insertTrainingExample: db.prepare('INSERT INTO training_examples (id,user_id,example_type,input,output,quality_score,model_used,tools_used,source_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'),
+    listTrainingExamples: db.prepare('SELECT * FROM training_examples ORDER BY created_at DESC LIMIT ? OFFSET ?'),
+    listTrainingExamplesByType: db.prepare('SELECT * FROM training_examples WHERE example_type=? ORDER BY created_at DESC LIMIT ? OFFSET ?'),
+    countTrainingExamples: db.prepare('SELECT COUNT(*) as count FROM training_examples'),
+    countTrainingExamplesByType: db.prepare("SELECT example_type, COUNT(*) as count, AVG(quality_score) as avg_quality FROM training_examples GROUP BY example_type"),
+    countTrainingExamplesSince: db.prepare('SELECT COUNT(*) as count FROM training_examples WHERE created_at>=?'),
+    avgTrainingQuality: db.prepare('SELECT AVG(quality_score) as avg_quality FROM training_examples'),
+    exportTrainingExamples: db.prepare('SELECT * FROM training_examples WHERE quality_score>=? ORDER BY created_at ASC LIMIT ? OFFSET ?'),
+    findTrainingBySource: db.prepare('SELECT id FROM training_examples WHERE source_id=? LIMIT 1'),
   };
 }

@@ -39,11 +39,11 @@ const MODE_PROMPTS = {
  * Assemble the full system prompt for a given mode.
  *
  * @param {string} mode - The mode name (supports both frontend and prompt names)
- * @param {{ additionalContext?: string, date?: string }} [options]
+ * @param {{ additionalContext?: string, consequenceGuidance?: string, date?: string }} [options]
  * @returns {string}
  */
 export function assemblePrompt(mode, options = {}) {
-  const { additionalContext = '', date } = options;
+  const { additionalContext = '', consequenceGuidance = '', date } = options;
 
   // Resolve mode name
   const resolvedMode = MODE_MAP[mode] || 'chat';
@@ -55,8 +55,14 @@ export function assemblePrompt(mode, options = {}) {
   const getModePrompt = MODE_PROMPTS[resolvedMode];
   const modePrompt = getModePrompt ? getModePrompt() : getChatModePrompt();
 
-  // Assemble: base + mode + additional context
-  let prompt = base + '\n' + modePrompt;
+  // Assemble: base + consequence guidance + mode + additional context
+  let prompt = base;
+
+  if (consequenceGuidance) {
+    prompt += '\n' + consequenceGuidance;
+  }
+
+  prompt += '\n' + modePrompt;
 
   if (additionalContext) {
     prompt += '\n' + additionalContext;

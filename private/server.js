@@ -41,7 +41,9 @@ import { registerSelfModelRoutes } from '@alin/core/routes/selfModel';
 import { registerArtifactRoutes } from '@alin/core/routes/artifacts';
 import { registerAuditRoutes } from '@alin/core/routes/audit';
 import { registerConsequenceEngineRoutes } from '@alin/core/routes/consequenceEngine';
+import { registerTrainingDataRoutes } from '@alin/core/routes/trainingData';
 import { registerProactiveIntelligenceRoutes } from '@alin/core/routes/proactiveIntelligence';
+import { registerCreditRoutes } from '@alin/core/routes/credits';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +71,7 @@ const ctx = createServerContext({ db, stmts, app, rootDir: __dirname });
 // ── Mount Essential Routes ──
 registerAuthRoutes(ctx);
 registerMiscRoutes(ctx);
+registerTrainingDataRoutes(ctx);
 registerConversationRoutes(ctx);
 
 // streaming → coding must come before other routes (ctx late-binding)
@@ -79,6 +82,7 @@ registerSettingsRoutes(ctx);
 registerMemoryRoutes(ctx);
 registerAuditRoutes(ctx);
 registerArtifactRoutes(ctx);
+registerCreditRoutes(ctx);
 
 registerImageRoutes(ctx);
 registerVoiceRoutes(ctx);

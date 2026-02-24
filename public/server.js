@@ -48,7 +48,9 @@ import { registerFileWatcherRoutes } from '@alin/core/routes/fileWatcher';
 import { registerSelfModelRoutes } from '@alin/core/routes/selfModel';
 import { registerAssetRoutes } from '@alin/core/routes/assets';
 import { registerCloudflareRoutes } from '@alin/core/routes/cloudflare';
+import { registerCreditRoutes } from '@alin/core/routes/credits';
 import { registerConsequenceEngineRoutes } from '@alin/core/routes/consequenceEngine';
+import { registerTrainingDataRoutes } from '@alin/core/routes/trainingData';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,6 +114,7 @@ registerAuthRoutes(ctx);
 registerMiscRoutes(ctx);
 
 registerTelemetryRoutes(ctx);
+registerTrainingDataRoutes(ctx);
 registerConversationRoutes(ctx);
 
 // streaming → coding must come before TBWO/sites/images/misc (ctx late-binding)
@@ -153,6 +156,7 @@ registerConsequenceEngineRoutes(ctx);
 registerAssetRoutes(ctx);
 
 registerCloudflareRoutes(ctx);
+registerCreditRoutes(ctx);
 
 // Start server
 app.listen(PORT, () => {
@@ -163,7 +167,7 @@ app.listen(PORT, () => {
   console.log(`  Running on: http://localhost:${PORT}`);
   console.log(`  Database:   ${dbPath}`);
   console.log(`  API Keys:   Anthropic=${!!process.env.ANTHROPIC_API_KEY ? 'Y' : 'N'} OpenAI=${!!process.env.OPENAI_API_KEY ? 'Y' : 'N'} Brave=${!!(process.env.BRAVE_API_KEY || process.env.VITE_BRAVE_API_KEY) ? 'Y' : 'N'}`);
-  console.log(`  Routes:     28 modules loaded`);
+  console.log(`  Routes:     29 modules loaded`);
   console.log('  Health:     GET /api/health');
   console.log('========================================================');
   console.log('');

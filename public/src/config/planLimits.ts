@@ -3,7 +3,7 @@
  *
  * The server is the enforcement point. This is only for showing/hiding UI elements.
  *
- * Tiers: free | pro | elite | admin
+ * Tiers: free | spark | pro | agency | admin
  * - "admin" is a virtual tier — any user with isAdmin: true gets admin limits
  * - Hosting is separate from the plan (see HOSTING_LIMITS)
  */
@@ -36,6 +36,8 @@ export interface PlanLimits {
   vectorizeEnabled: boolean;
   maxCfImages: number;               // per month, -1 = unlimited
   maxCfVideos: number;               // per month, -1 = unlimited
+  localModelEnabled: boolean;        // can connect to local models (Ollama, LM Studio)
+  ephemeralEnabled?: boolean;        // can create ephemeral fun TBWOs (spark+)
 }
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
@@ -73,6 +75,46 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     vectorizeEnabled: false,
     maxCfImages: 5,
     maxCfVideos: 0,
+    localModelEnabled: false,
+    ephemeralEnabled: false,
+  },
+  spark: {
+    messagesPerHour: 200,
+    allowedModels: [
+      'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+      'gpt-5-mini', 'gpt-5-nano',
+      'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
+      'gpt-4o', 'gpt-4o-mini',
+      'o3-mini',
+      'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+      'deepseek-chat', 'deepseek-reasoner',
+    ],
+    opusCreditsPerMonth: 0,
+    maxConversations: -1,
+    tbwoEnabled: false,
+    tbwoParallel: false,
+    directModeEnabled: true,
+    codeLabEnabled: true,
+    imageStudioEnabled: true,
+    memoryLayers: 8,
+    memoryRetentionDays: 90,
+    selfLearning: false,
+    maxTokens: 24576,
+    computerUse: false,
+    maxToolCallsPerMessage: 15,
+    thinkingBudgetCap: 10000,
+    scene3DTemplates: 5,
+    scene3DUpload: false,
+    scene3DImmersive: false,
+    tbwoRunsPerMonth: 0,
+    sitesEnabled: true,
+    cfImagesEnabled: true,
+    cfStreamEnabled: false,
+    vectorizeEnabled: false,
+    maxCfImages: 25,
+    maxCfVideos: 0,
+    localModelEnabled: false,
+    ephemeralEnabled: true,
   },
   pro: {
     messagesPerHour: -1,
@@ -102,15 +144,17 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     scene3DTemplates: -1,
     scene3DUpload: true,
     scene3DImmersive: false,
-    tbwoRunsPerMonth: 50,
+    tbwoRunsPerMonth: 20,
     sitesEnabled: true,
     cfImagesEnabled: true,
     cfStreamEnabled: true,
     vectorizeEnabled: true,
-    maxCfImages: 50,
-    maxCfVideos: 20,
+    maxCfImages: 100,
+    maxCfVideos: 5,
+    localModelEnabled: true,
+    ephemeralEnabled: true,
   },
-  elite: {
+  agency: {
     messagesPerHour: -1,
     allowedModels: [
       'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001',
@@ -139,13 +183,15 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     scene3DTemplates: -1,
     scene3DUpload: true,
     scene3DImmersive: true,
-    tbwoRunsPerMonth: -1,
+    tbwoRunsPerMonth: 50,
     sitesEnabled: true,
     cfImagesEnabled: true,
     cfStreamEnabled: true,
     vectorizeEnabled: true,
     maxCfImages: 500,
     maxCfVideos: 100,
+    localModelEnabled: true,
+    ephemeralEnabled: true,
   },
   // Admin virtual tier — every capability maxed out
   admin: {
@@ -176,6 +222,8 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     vectorizeEnabled: true,
     maxCfImages: -1,
     maxCfVideos: -1,
+    localModelEnabled: true,
+    ephemeralEnabled: true,
   },
 };
 

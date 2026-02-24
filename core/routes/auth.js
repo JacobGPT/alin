@@ -426,7 +426,7 @@ export function registerAuthRoutes(ctx) {
   app.patch('/api/admin/users/:id/plan', requireAuth, requireAdmin, (req, res) => {
     try {
       const { plan } = req.body;
-      if (!['free', 'pro', 'elite'].includes(plan)) {
+      if (!['free', 'spark', 'pro', 'agency'].includes(plan)) {
         return res.status(400).json({ error: 'Invalid plan' });
       }
       db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, req.params.id);

@@ -154,7 +154,7 @@ export function initDatabase(dbPath) {
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT DEFAULT '',
-    plan TEXT DEFAULT 'free' CHECK(plan IN ('free','pro','elite')),
+    plan TEXT DEFAULT 'free' CHECK(plan IN ('free','spark','pro','agency')),
     email_verified INTEGER DEFAULT 0,
     verification_code TEXT,
     verification_expires INTEGER,
@@ -440,6 +440,47 @@ export function initDatabase(dbPath) {
 
   // ── Migrations ──
 
+  // Migrate plan tiers: add 'spark' and rename 'elite' → 'agency'
+  // SQLite doesn't support ALTER CHECK, so we recreate the constraint via a temp table migration.
+  try {
+    // Check if migration is needed by looking at the current CHECK constraint
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+    if (tableInfo?.sql && tableInfo.sql.includes("'elite'") && !tableInfo.sql.includes("'agency'")) {
+      console.log('[DB] Migrating plan tiers: adding spark, renaming elite → agency...');
+      db.exec(`
+        -- Rename existing elite users to agency
+        UPDATE users SET plan = 'agency' WHERE plan = 'elite';
+        -- Recreate table with updated CHECK constraint
+        CREATE TABLE users_new (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          display_name TEXT DEFAULT '',
+          plan TEXT DEFAULT 'free' CHECK(plan IN ('free','spark','pro','agency')),
+          email_verified INTEGER DEFAULT 0,
+          verification_code TEXT,
+          verification_expires INTEGER,
+          messages_used_today INTEGER DEFAULT 0,
+          is_admin INTEGER DEFAULT 0,
+          messages_reset_at INTEGER DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          user_id TEXT
+        );
+        INSERT INTO users_new SELECT * FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      `);
+      console.log('[DB] Plan tier migration complete');
+    }
+  } catch (e) {
+    // Table may not exist yet (first run) — the CREATE TABLE above handles it
+    if (!e.message.includes('no such table')) {
+      console.warn('[DB] Plan migration note:', e.message);
+    }
+  }
+
   // Add user_id columns to ALL user-scoped tables
   const userIdTables = ['conversations', 'messages', 'tbwo_orders', 'artifacts', 'memory_entries', 'audit_entries', 'images', 'tbwo_receipts', 'execution_outcomes', 'user_corrections', 'decision_log', 'thinking_traces', 'memory_layers', 'predictions', 'outcomes', 'domain_history', 'consequence_patterns', 'behavioral_genome', 'gene_audit_log', 'calibration_snapshots', 'product_metrics', 'product_alerts', 'user_rhythm', 'self_awareness_log', 'scheduler_jobs', 'scheduler_history'];
   for (const table of userIdTables) {
@@ -465,6 +506,31 @@ export function initDatabase(dbPath) {
 
   // Add execution_state column to tbwo_orders for resumable execution
   try { db.exec('ALTER TABLE tbwo_orders ADD COLUMN execution_state TEXT'); } catch { /* column already exists */ }
+
+  // Ephemeral sites: add ephemeral flag and expiry timestamp
+  try { db.exec('ALTER TABLE sites ADD COLUMN ephemeral INTEGER DEFAULT 0'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE sites ADD COLUMN expires_at INTEGER'); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE audit_entries ADD COLUMN memory_injections TEXT DEFAULT '[]'"); } catch { /* column already exists */ }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_sites_ephemeral_expires ON sites(ephemeral, expires_at)');
+
+  // Training data collection table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS training_examples (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      example_type TEXT NOT NULL CHECK(example_type IN ('tool_execution','tbwo_completion','correction','user_validated','outcome_verified')),
+      input TEXT NOT NULL,
+      output TEXT NOT NULL,
+      quality_score REAL NOT NULL CHECK(quality_score >= 0 AND quality_score <= 1),
+      model_used TEXT DEFAULT '',
+      tools_used TEXT DEFAULT '[]',
+      source_id TEXT DEFAULT '',
+      created_at INTEGER NOT NULL
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_training_user_type ON training_examples(user_id, example_type)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_training_quality ON training_examples(quality_score DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_training_created ON training_examples(created_at DESC)');
 
   // Create projects table (ownership-validated)
   db.exec(`
@@ -770,6 +836,34 @@ export function initDatabase(dbPath) {
       user_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_sh_job ON scheduler_history(job_id, started_at DESC);
+
+    -- Credit System: User credit balances
+    CREATE TABLE IF NOT EXISTS user_credits (
+      user_id TEXT NOT NULL,
+      credit_type TEXT NOT NULL CHECK(credit_type IN ('chat','tbwo_standard','tbwo_premium','tbwo_ultra','image','video','site_hosting','priority_queue')),
+      amount INTEGER DEFAULT 0,
+      source TEXT DEFAULT 'subscription' CHECK(source IN ('subscription','purchase','bonus')),
+      expires_at INTEGER,
+      created_at INTEGER,
+      PRIMARY KEY (user_id, credit_type, source)
+    );
+    CREATE INDEX IF NOT EXISTS idx_credits_user ON user_credits(user_id);
+    CREATE INDEX IF NOT EXISTS idx_credits_expires ON user_credits(expires_at);
+
+    -- Credit System: Transaction ledger
+    CREATE TABLE IF NOT EXISTS credit_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      credit_type TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      balance_after INTEGER,
+      description TEXT,
+      reference_id TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cred_tx_user ON credit_transactions(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_cred_tx_type ON credit_transactions(user_id, credit_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_cred_tx_ref ON credit_transactions(reference_id);
   `);
 
   console.log('[DB] SQLite database initialized at', dbPath);

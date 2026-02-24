@@ -152,12 +152,22 @@ export function registerSiteRoutes(ctx) {
   app.post('/api/sites', requireAuth, async (req, res) => {
     try {
       const userId = req.user.id;
-      const { name, tbwoRunId, manifest } = req.body;
+      const { name, tbwoRunId, manifest, ephemeral } = req.body;
       if (!name) return sendError(res, 400, 'name is required');
+
+      // Gate ephemeral sites to paid plans
+      const isEphemeral = !!ephemeral;
+      if (isEphemeral) {
+        const limits = PLAN_LIMITS[req.user.plan || 'free'] || PLAN_LIMITS.free;
+        if (!limits.ephemeralEnabled) {
+          return res.status(403).json({ error: 'Ephemeral sites require Spark plan or above', code: 'EPHEMERAL_DISABLED' });
+        }
+      }
 
       const siteId = randomUUID();
       const now = Date.now();
       const projectId = req.projectId || 'default';
+      const expiresAt = isEphemeral ? now + (30 * 24 * 60 * 60 * 1000) : null; // 30 days
 
       // If tbwoRunId provided, copy workspace files to persistent storage
       let storagePath = null;
@@ -173,11 +183,68 @@ export function registerSiteRoutes(ctx) {
       stmts.insertSite.run(
         siteId, userId, projectId, name,
         tbwoRunId || null, 'draft', null, null, manifest || null,
-        storagePath, now, now
+        storagePath, isEphemeral ? 1 : 0, expiresAt, now, now
       );
 
       const site = stmts.getSite.get(siteId, userId);
       res.json({ success: true, site });
+    } catch (error) { sendError(res, 500, error.message); }
+  });
+
+  // --- List user's ephemeral sites ---
+  app.get('/api/sites/ephemeral', requireAuth, (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+      const offset = parseInt(req.query.offset) || 0;
+      const now = Date.now();
+      const sites = stmts.listEphemeralSites.all(req.user.id, 'expired', limit, offset);
+
+      // Enrich with daysRemaining and isExpired
+      const enriched = sites.map(site => {
+        const isExpired = site.expires_at && site.expires_at < now;
+        const daysRemaining = site.expires_at
+          ? Math.max(0, Math.ceil((site.expires_at - now) / (24 * 60 * 60 * 1000)))
+          : null;
+        return { ...site, daysRemaining, isExpired };
+      });
+
+      res.json({ success: true, sites: enriched });
+    } catch (error) { sendError(res, 500, error.message); }
+  });
+
+  // --- Extend ephemeral site expiry (costs 1 site_hosting credit) ---
+  app.post('/api/sites/:siteId/extend-expiry', requireAuth, (req, res) => {
+    try {
+      const userId = req.user.id;
+      const site = stmts.getSite.get(req.params.siteId, userId);
+      if (!site) return sendError(res, 404, 'Site not found');
+      if (!site.ephemeral) return sendError(res, 400, 'Only ephemeral sites can be extended');
+
+      const now = Date.now();
+      if (site.status === 'expired') return sendError(res, 400, 'Site has already expired and been cleaned up');
+
+      // Deduct 1 site_hosting credit
+      const creditResult = stmts.decrementCredit.run(1, userId, 'site_hosting', 'subscription', 1);
+      if (creditResult.changes === 0) {
+        return res.status(402).json({ error: 'Insufficient site_hosting credits', code: 'INSUFFICIENT_CREDITS' });
+      }
+
+      // Record transaction
+      const balanceRow = stmts.getCreditByType.get(userId, 'site_hosting', now);
+      const balanceAfter = balanceRow ? balanceRow.total : 0;
+      stmts.insertCreditTransaction.run(
+        randomUUID(), userId, 'site_hosting', -1, balanceAfter,
+        `Extended ephemeral site "${site.name}" by 30 days`,
+        site.id, now
+      );
+
+      // Extend by 30 days from current expiry (or from now if past)
+      const baseTime = (site.expires_at && site.expires_at > now) ? site.expires_at : now;
+      const newExpiry = baseTime + (30 * 24 * 60 * 60 * 1000);
+      stmts.updateSiteExpiry.run(newExpiry, now, site.id, userId);
+
+      const daysRemaining = Math.ceil((newExpiry - now) / (24 * 60 * 60 * 1000));
+      res.json({ success: true, expiresAt: newExpiry, daysRemaining });
     } catch (error) { sendError(res, 500, error.message); }
   });
 
@@ -887,4 +954,76 @@ Extract and return ONLY valid JSON:
       return sendError(res, 500, error.message);
     }
   });
+
+  // ============================================================================
+  // EPHEMERAL SITE CLEANUP — runs every 24h, cleans up expired ephemeral sites
+  // ============================================================================
+
+  const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  const CLEANUP_INITIAL_DELAY = 60 * 1000; // 60 seconds after startup
+
+  setTimeout(() => {
+    async function cleanupExpiredEphemeralSites() {
+      const now = Date.now();
+      let cleanedCount = 0;
+      let errorCount = 0;
+
+      try {
+        const expired = stmts.listExpiredEphemeralSites.all(now);
+        if (expired.length === 0) return;
+
+        console.log(`[Ephemeral Cleanup] Found ${expired.length} expired ephemeral site(s)`);
+
+        for (const site of expired) {
+          try {
+            // 1. Delete CF Pages project
+            if (site.cloudflare_project_name && cfDeploy) {
+              try {
+                await cfDeploy.deleteProject(site.cloudflare_project_name);
+              } catch (err) {
+                console.warn(`[Ephemeral Cleanup] CF Pages delete failed for ${site.id}: ${err.message}`);
+              }
+            }
+
+            // 2. Unregister domain from KV
+            if (cfKV?.isConfigured && site.cloudflare_project_name) {
+              try {
+                const subdomain = site.cloudflare_project_name;
+                await cfKV.unregisterDomain(subdomain);
+                await cfKV.delete('version:' + site.id);
+              } catch (err) {
+                console.warn(`[Ephemeral Cleanup] KV cleanup failed for ${site.id}: ${err.message}`);
+              }
+            }
+
+            // 3. Mark site as expired in DB
+            db.prepare('UPDATE sites SET status=?, updated_at=? WHERE id=?').run('expired', now, site.id);
+
+            // 4. Delete local storage files
+            if (site.storage_path) {
+              try {
+                await fs.rm(site.storage_path, { recursive: true, force: true });
+              } catch (err) {
+                console.warn(`[Ephemeral Cleanup] File cleanup failed for ${site.id}: ${err.message}`);
+              }
+            }
+
+            cleanedCount++;
+          } catch (err) {
+            errorCount++;
+            console.error(`[Ephemeral Cleanup] Error cleaning site ${site.id}: ${err.message}`);
+          }
+        }
+
+        console.log(`[Ephemeral Cleanup] Done: ${cleanedCount} cleaned, ${errorCount} errors`);
+      } catch (err) {
+        console.error('[Ephemeral Cleanup] Fatal error:', err.message);
+      }
+    }
+
+    // Run immediately on startup (after delay), then every 24h
+    cleanupExpiredEphemeralSites();
+    setInterval(cleanupExpiredEphemeralSites, CLEANUP_INTERVAL);
+    console.log('[Ephemeral Cleanup] Scheduler initialized (24h interval)');
+  }, CLEANUP_INITIAL_DELAY);
 }

@@ -6,7 +6,7 @@
 import { assemblePrompt, detectMode } from '../prompts/index.js';
 
 export function registerStreamingRoutes(ctx) {
-  const { app, requireAuth, checkPlanLimits, setupSSE, sendSSE, DEFAULT_MODELS, MODEL_METADATA } = ctx;
+  const { app, requireAuth, checkPlanLimits, setupSSE, sendSSE, DEFAULT_MODELS, MODEL_METADATA, stmts } = ctx;
 
   /**
    * Enhanced streaming proxy with full tool_use support, thinking, and auth.
@@ -326,6 +326,130 @@ export function registerStreamingRoutes(ctx) {
         } catch {}
       }
     }
+    let stopReason;
+    if (Object.keys(toolCalls).length > 0) {
+      stopReason = 'tool_use';
+    } else if (lastFinishReason === 'length') {
+      stopReason = 'max_tokens';
+    } else {
+      stopReason = 'end_turn';
+    }
+    sendSSE(res, 'done', { model, stopReason });
+    res.end();
+  }
+
+  /**
+   * Stream local models (Ollama, LM Studio, etc.) via OpenAI-compatible endpoint.
+   * Uses the same SSE parsing as streamOpenAIToSSE but targets the user's local endpoint.
+   */
+  async function streamLocalToSSE(res, { model, messages, system, tools, maxTokens, temperature, localEndpoint, localApiKey }) {
+    if (!localEndpoint) {
+      sendSSE(res, 'error', { error: 'No local model endpoint configured. Set it in Settings → Models → Local Model.' });
+      return res.end();
+    }
+
+    // Normalize endpoint: ensure it ends with /chat/completions
+    let endpoint = localEndpoint.replace(/\/+$/, '');
+    if (!endpoint.endsWith('/chat/completions')) {
+      endpoint = endpoint.replace(/\/v1\/?$/, '') + '/v1/chat/completions';
+    }
+
+    const oaiMessages = convertMessagesToOpenAI(messages, system);
+
+    const body = {
+      model: model || 'llama3.2:latest',
+      stream: true,
+      messages: oaiMessages,
+      max_tokens: maxTokens || 4096,
+    };
+    if (temperature != null) {
+      body.temperature = temperature;
+    }
+    const oaiTools = convertToolsToOpenAI(tools);
+    if (oaiTools.length > 0) body.tools = oaiTools;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (localApiKey) headers['Authorization'] = `Bearer ${localApiKey}`;
+
+    let response;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s connection timeout
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+    } catch (err) {
+      const isAbort = err.name === 'AbortError';
+      const msg = isAbort
+        ? 'Connection timed out after 15 seconds.'
+        : 'Could not connect to your local model. Make sure Ollama or LM Studio is running at the specified endpoint.';
+      sendSSE(res, 'error', { error: msg, details: err.message });
+      return res.end();
+    }
+
+    if (!response.ok) {
+      const t = await response.text().catch(() => '');
+      sendSSE(res, 'error', { error: `Local model returned ${response.status}`, details: t });
+      return res.end();
+    }
+
+    // Reuse OpenAI SSE parsing — local endpoints speak the same protocol
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    const toolCalls = {};
+    let lastFinishReason = '';
+
+    sendSSE(res, 'start', { model, provider: 'local' });
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(raw);
+            const choice = ev.choices?.[0];
+            if (!choice) continue;
+            if (choice.delta?.content) {
+              sendSSE(res, 'text_delta', { text: choice.delta.content });
+            }
+            if (choice.delta?.tool_calls) {
+              for (const tc of choice.delta.tool_calls) {
+                if (!toolCalls[tc.index]) toolCalls[tc.index] = { id: '', name: '', arguments: '' };
+                if (tc.id) toolCalls[tc.index].id = tc.id;
+                if (tc.function?.name) toolCalls[tc.index].name = tc.function.name;
+                if (tc.function?.arguments) toolCalls[tc.index].arguments += tc.function.arguments;
+              }
+            }
+            if (choice.finish_reason) {
+              lastFinishReason = choice.finish_reason;
+              if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
+                for (const idx of Object.keys(toolCalls)) {
+                  const tc = toolCalls[idx];
+                  let parsedArgs = {};
+                  try { parsedArgs = JSON.parse(tc.arguments || '{}'); } catch {}
+                  sendSSE(res, 'tool_use', { id: tc.id, name: tc.name, input: parsedArgs });
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch (streamErr) {
+      sendSSE(res, 'error', { error: 'Local model stream interrupted', details: streamErr.message });
+    }
+
     let stopReason;
     if (Object.keys(toolCalls).length > 0) {
       stopReason = 'tool_use';
@@ -1020,6 +1144,60 @@ export function registerStreamingRoutes(ctx) {
       const isAnthropic = provider === 'anthropic' || model?.startsWith('claude');
       const isGemini = provider === 'gemini' || model?.startsWith('gemini-');
       const isDeepSeek = provider === 'deepseek' || model?.startsWith('deepseek');
+      const isLocal = provider === 'local';
+
+      // Local model plan gating
+      if (isLocal) {
+        if (!req.planLimits?.localModelEnabled) {
+          sendSSE(res, 'error', { error: 'Local model connections require a paid subscription.' });
+          return res.end();
+        }
+      }
+
+      // ── Consequence Engine Feedback Loop ──
+      // Fetch active behavioral genes and build a guidance block for system prompt injection.
+      // This closes the loop: predictions → outcomes → genes → behavior modification.
+      let consequenceGuidance = '';
+      try {
+        if (ctx.consequenceEngine) {
+          const addendum = ctx.consequenceEngine.getAddendumData(req.userId);
+          if (addendum && !addendum.bootstrapActive && !addendum.killSwitchActive && addendum.activeGenes?.length > 0) {
+            const topGenes = addendum.activeGenes
+              .filter(g => g.strength >= 0.6)
+              .slice(0, 5);
+
+            if (topGenes.length > 0) {
+              const geneLines = topGenes.map((g, i) =>
+                `${i + 1}. [${g.domain}] (strength ${Math.round(g.strength * 100)}%) ${g.gene_text}`
+              );
+
+              // Build domain pain context from high-pain domains
+              const painDomains = (addendum.domainStates || [])
+                .filter(d => d.pain_score > 0.4)
+                .sort((a, b) => b.pain_score - a.pain_score)
+                .slice(0, 3);
+              const painLines = painDomains.map(d =>
+                `- ${d.domain}: accuracy ${Math.round(d.prediction_accuracy * 100)}%, pain ${Math.round(d.pain_score * 100)}%${d.trend === 'declining' ? ' (declining)' : ''}`
+              );
+
+              consequenceGuidance = `\n## Behavioral Genome — Active Genes\n` +
+                `The following behavioral rules were learned from your prediction track record. Follow them:\n` +
+                geneLines.join('\n') +
+                (painLines.length > 0
+                  ? `\n\n## Domain Awareness\nExercise extra caution in these high-pain domains:\n${painLines.join('\n')}`
+                  : '');
+
+              // Track gene application — fire-and-forget
+              const now = Date.now();
+              for (const g of topGenes) {
+                try { stmts.applyGene.run(now, now, g.id, req.userId); } catch {}
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Streaming] Consequence guidance error (non-fatal):', e.message);
+      }
 
       // Server-side prompt assembly: if frontend sends '[DEPRECATED]' or no system prompt,
       // assemble from modular prompts. Otherwise use provided system prompt (backward compat).
@@ -1030,7 +1208,10 @@ export function registerStreamingRoutes(ctx) {
         sysPrompt = systemPrompt;
       } else {
         const mode = req.body.mode || 'regular';
-        sysPrompt = assemblePrompt(mode, { additionalContext: req.body.additionalContext || '' });
+        sysPrompt = assemblePrompt(mode, {
+          additionalContext: req.body.additionalContext || '',
+          consequenceGuidance,
+        });
       }
 
       // Mode detection hint (only in chat/regular mode)
@@ -1122,7 +1303,58 @@ export function registerStreamingRoutes(ctx) {
       }
       // === END SPECIALIST ROUTING ===
 
-      if (isAnthropic) {
+      // ── Proactive Memory Injection ──
+      // Semantically search user's memories for context relevant to the current message.
+      // Injected into system prompt so ALIN proactively surfaces relevant past context.
+      let memoryInjections = [];
+      try {
+        if (ctx.proactiveMemory && messages?.length > 0) {
+          const lastUser = [...messages].reverse().find(m => m.role === 'user');
+          const userText = typeof lastUser?.content === 'string'
+            ? lastUser.content
+            : Array.isArray(lastUser?.content)
+              ? lastUser.content.filter(b => b.type === 'text').map(b => b.text).join(' ')
+              : '';
+
+          if (userText && userText.length >= 10) {
+            const memories = await ctx.proactiveMemory.getContext(req.userId, userText, 5);
+            if (memories.length > 0) {
+              const memoryLines = memories.map((m, i) =>
+                `${i + 1}. [${m.layer}] (relevance ${Math.round(m.similarity * 100)}%, salience ${Math.round(m.salience * 100)}%) ${m.content.slice(0, 500)}`
+              );
+              sysPrompt += `\n\n## Relevant Context from Memory\nThe following memories are semantically relevant to the user's current message. Use them naturally — don't announce that you're recalling memories unless the user asks.\n${memoryLines.join('\n')}`;
+
+              // Track for audit
+              memoryInjections = memories.map(m => ({
+                id: m.id,
+                similarity: m.similarity,
+                salience: m.salience,
+                score: m.score,
+                layer: m.layer,
+                preview: m.content.slice(0, 100),
+              }));
+
+              // Send memory_injection SSE event so frontend can show indicator
+              sendSSE(res, 'memory_injection', {
+                count: memories.length,
+                memories: memoryInjections,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Streaming] Proactive memory error (non-fatal):', e.message);
+      }
+
+      // Stash memory injections on res for audit tracking
+      res._memoryInjections = memoryInjections;
+
+      if (isLocal) {
+        const localEndpoint = req.body.localEndpoint;
+        const localApiKey = req.body.localApiKey;
+        const localModel = req.body.localModelName || model || 'llama3.2:latest';
+        await streamLocalToSSE(res, { model: localModel, messages, system: sysPrompt, tools, maxTokens, temperature, localEndpoint, localApiKey });
+      } else if (isAnthropic) {
         await streamAnthropicToSSE(res, { model, messages, system: sysPrompt, tools, thinking, thinkingBudget, maxTokens, temperature });
       } else if (isGemini) {
         const thinkingLevel = req.body.thinkingLevel || (thinking ? 'high' : undefined);
@@ -1155,6 +1387,13 @@ export function registerStreamingRoutes(ctx) {
       const isAnthropic = provider === 'anthropic' || model?.startsWith('claude');
       const isGemini = provider === 'gemini' || model?.startsWith('gemini-');
       const isDeepSeek = provider === 'deepseek' || model?.startsWith('deepseek');
+      const isLocal = provider === 'local';
+
+      // Local model plan gating (continuation)
+      if (isLocal && !req.planLimits?.localModelEnabled) {
+        sendSSE(res, 'error', { error: 'Local model connections require a paid subscription.' });
+        return res.end();
+      }
 
       // Server-side prompt assembly (same logic as /api/chat/stream, no mode detection on continuations)
       let sysPrompt;
@@ -1167,7 +1406,12 @@ export function registerStreamingRoutes(ctx) {
         sysPrompt = assemblePrompt(mode, { additionalContext: req.body.additionalContext || '' });
       }
 
-      if (isAnthropic) {
+      if (isLocal) {
+        const localEndpoint = req.body.localEndpoint;
+        const localApiKey = req.body.localApiKey;
+        const localModel = req.body.localModelName || model || 'llama3.2:latest';
+        await streamLocalToSSE(res, { model: localModel, messages, system: sysPrompt, tools, maxTokens, temperature, localEndpoint, localApiKey });
+      } else if (isAnthropic) {
         await streamAnthropicToSSE(res, { model, messages, system: sysPrompt, tools, thinking, thinkingBudget, maxTokens, temperature });
       } else if (isGemini) {
         const thinkingLevel = req.body.thinkingLevel || (thinking ? 'high' : undefined);

@@ -12,11 +12,53 @@ import {
   CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import { TBWO_TEMPLATES, type TBWOTemplate } from '../../config/tbwoTemplates';
+import { TBWOType, isEphemeralType } from '../../types/tbwo';
 import { useTBWOStore } from '../../store/tbwoStore';
 import { useUIStore } from '../../store/uiStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useAuthStore } from '../../store/authStore';
+import { getPlanLimits } from '../../config/planLimits';
 
 import { productUIRegistry } from '../../alin-surface/productUIRegistry';
+
+// ── Template categories ──────────────────────────────────────
+interface TemplateCategory {
+  id: string;
+  label: string;
+  description: string;
+  types: TBWOType[];
+  locked?: boolean;
+  requiresPlan?: string;
+}
+
+const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  {
+    id: 'build',
+    label: 'Build',
+    description: 'Create websites, apps, and digital products',
+    types: [TBWOType.WEBSITE_SPRINT, TBWOType.CODE_PROJECT, TBWOType.DESIGN_SYSTEM],
+  },
+  {
+    id: 'research',
+    label: 'Research',
+    description: 'Gather intelligence, audit sites, and investigate',
+    types: [TBWOType.MARKET_RESEARCH, TBWOType.DUE_DILIGENCE, TBWOType.SEO_AUDIT, TBWOType.RESEARCH_REPORT],
+  },
+  {
+    id: 'documents',
+    label: 'Documents',
+    description: 'Generate plans, strategies, and content',
+    types: [TBWOType.BUSINESS_PLAN, TBWOType.CONTENT_STRATEGY, TBWOType.NEWSLETTER, TBWOType.CONTENT_CREATION],
+  },
+  {
+    id: 'fun',
+    label: 'Ephemeral Fun',
+    description: 'Shareable pages that expire in 30 days',
+    types: [TBWOType.ROAST_PAGE, TBWOType.TRIBUTE_PAGE, TBWOType.BET_TRACKER,
+            TBWOType.DEBATE_PAGE, TBWOType.TIME_CAPSULE, TBWOType.SCOREBOARD],
+    requiresPlan: 'spark',
+  },
+];
 
 interface TemplateSelectorProps {
   onSelect?: (templateId: string) => void;
@@ -24,6 +66,8 @@ interface TemplateSelectorProps {
 
 export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onSelect }) => {
   const tbwoSettings = useSettingsStore(s => s.tbwo);
+  const userPlan = useAuthStore(s => s.user?.plan) || 'free';
+  const planLimits = getPlanLimits(userPlan);
   const [selectedTemplate, setSelectedTemplate] = useState<TBWOTemplate | null>(null);
   const [inputs, setInputs] = useState<Record<string, string | number>>({});
   const [timeBudget, setTimeBudget] = useState<number>(tbwoSettings.defaultTimeBudget || 60);
@@ -106,41 +150,80 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({ onSelect }) 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            {/* Template Grid */}
             <h2 className="text-lg font-semibold text-text-primary mb-4">Choose a Template</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {TBWO_TEMPLATES.map(template => (
-                <motion.button
-                  key={template.id}
-                  onClick={() => handleSelectTemplate(template)}
-                  className="text-left p-4 rounded-xl border border-border-primary hover:border-accent-primary bg-background-secondary hover:bg-background-tertiary transition-all"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{template.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-text-primary">{template.name}</h3>
-                      <p className="text-xs text-text-secondary mt-1 line-clamp-2">{template.description}</p>
-                      <div className="flex items-center gap-3 mt-2 text-xs text-text-tertiary">
-                        <span className="flex items-center gap-1">
-                          <ClockIcon className="w-3.5 h-3.5" />
-                          {template.defaultTimeBudget} min
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <CpuChipIcon className="w-3.5 h-3.5" />
-                          {template.pods.length} pods
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <SparklesIcon className="w-3.5 h-3.5" />
-                          {template.defaultQuality}
-                        </span>
+
+            {TEMPLATE_CATEGORIES.map(category => {
+              const isGated = category.requiresPlan && !planLimits.ephemeralEnabled;
+              const templates = (category.locked || isGated)
+                ? TBWO_TEMPLATES.filter(t => category.types.includes(t.type))
+                : TBWO_TEMPLATES.filter(t => category.types.includes(t.type));
+              return (
+                <div key={category.id} className="mb-5">
+                  <h3 className="text-sm font-semibold text-text-secondary mb-1">{category.label}</h3>
+                  <p className="text-xs text-text-tertiary mb-2">{category.description}</p>
+
+                  {category.locked ? (
+                    <div className="rounded-xl border border-border-primary bg-background-tertiary/50 p-4 flex items-center gap-3 opacity-60">
+                      <svg className="h-5 w-5 text-text-quaternary flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                      </svg>
+                      <span className="text-sm text-text-tertiary">Coming soon — creative & experimental workflows</span>
+                    </div>
+                  ) : isGated ? (
+                    <div className="rounded-xl border border-border-primary bg-background-tertiary/50 p-4 opacity-60">
+                      <div className="flex items-center gap-3 mb-3">
+                        <svg className="h-5 w-5 text-text-quaternary flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                        </svg>
+                        <span className="text-sm text-text-tertiary">Available on Spark and above</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {templates.map(template => (
+                          <div key={template.id} className="flex items-center gap-2 text-xs text-text-quaternary p-2">
+                            <span>{template.icon}</span>
+                            <span>{template.name}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {templates.map(template => (
+                        <motion.button
+                          key={template.id}
+                          onClick={() => handleSelectTemplate(template)}
+                          className="text-left p-4 rounded-xl border border-border-primary hover:border-accent-primary bg-background-secondary hover:bg-background-tertiary transition-all"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="text-2xl">{template.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium text-text-primary">{template.name}</h3>
+                              <p className="text-xs text-text-secondary mt-1 line-clamp-2">{template.description}</p>
+                              <div className="flex items-center gap-3 mt-2 text-xs text-text-tertiary">
+                                <span className="flex items-center gap-1">
+                                  <ClockIcon className="w-3.5 h-3.5" />
+                                  {template.defaultTimeBudget} min
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <CpuChipIcon className="w-3.5 h-3.5" />
+                                  {template.pods.length} pods
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <SparklesIcon className="w-3.5 h-3.5" />
+                                  {template.defaultQuality}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </motion.div>
         ) : (
           <motion.div

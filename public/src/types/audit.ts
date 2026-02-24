@@ -38,8 +38,20 @@ export interface AuditEntry {
   // Tool usage in this message
   toolsUsed: ToolUsageEntry[];
 
+  // Memory injections from proactive memory
+  memoryInjections?: MemoryInjectionEntry[];
+
   // Duration
   durationMs: number;
+}
+
+export interface MemoryInjectionEntry {
+  id: string;
+  similarity: number;
+  salience: number;
+  score: number;
+  layer: string;
+  preview: string;
 }
 
 export interface ToolUsageEntry {
